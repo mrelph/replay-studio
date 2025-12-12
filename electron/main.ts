@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, protocol } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import fs from 'fs'
+import { exportVideo, getFFmpegVersion, type ExportOptions, type ExportProgress } from './ffmpegExport'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -23,11 +23,6 @@ let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.cjs')
-  console.log('=== ELECTRON DEBUG ===')
-  console.log('__dirname:', __dirname)
-  console.log('preload path:', preloadPath)
-  console.log('preload exists:', fs.existsSync(preloadPath))
-  console.log('======================')
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -177,12 +172,40 @@ ipcMain.handle('dialog:saveFile', async (_, defaultName: string) => {
   return null
 })
 
+// FFmpeg export handlers
+ipcMain.handle('ffmpeg:getVersion', async () => {
+  try {
+    return await getFFmpegVersion()
+  } catch {
+    return null
+  }
+})
+
+ipcMain.handle('ffmpeg:export', async (event, options: ExportOptions) => {
+  try {
+    await exportVideo(options, (progress: ExportProgress) => {
+      // Send progress to renderer
+      mainWindow?.webContents.send('export-progress', progress)
+    })
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Export failed' }
+  }
+})
+
+// Resolve local-video:// protocol to actual file path
+ipcMain.handle('video:resolvePath', async (_, videoUrl: string) => {
+  if (videoUrl.startsWith('local-video://')) {
+    return decodeURIComponent(videoUrl.replace('local-video://', ''))
+  }
+  return videoUrl
+})
+
 app.whenReady().then(() => {
   // Register custom protocol for serving local video files
   protocol.registerFileProtocol('local-video', (request, callback) => {
     // Remove the protocol prefix and decode the URL
     const filePath = decodeURIComponent(request.url.replace('local-video://', ''))
-    console.log('Serving video file:', filePath)
 
     // Determine MIME type based on extension
     const ext = path.extname(filePath).toLowerCase()

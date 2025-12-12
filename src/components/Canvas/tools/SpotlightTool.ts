@@ -1,4 +1,8 @@
-import { fabric } from 'fabric'
+import fabricModule from 'fabric'
+
+// Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fabric: any = (fabricModule as any).fabric || fabricModule
 
 export interface SpotlightOptions {
   x: number

@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { fabric } from 'fabric'
+import fabricModule from 'fabric'
 import { useToolStore } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { SpotlightTool } from './tools/SpotlightTool'
 import { AnimatedArrow } from './tools/AnimatedArrow'
 import { PlayerTracker } from './tools/PlayerTracker'
+
+// Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fabric: any = (fabricModule as any).fabric || fabricModule
 
 interface DrawingCanvasProps {
   videoElement: HTMLVideoElement
@@ -266,7 +270,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           return
 
         case 'text':
-          const text = new IText('Type here', {
+          const text = new fabric.IText('Type here', {
             left: pointer.x,
             top: pointer.y,
             fontSize: 24,
@@ -297,9 +301,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       const shape = currentShapeRef.current
       const start = startPointRef.current
 
-      if (shape instanceof Line) {
+      if (shape instanceof fabric.Line) {
         shape.set({ x2: pointer.x, y2: pointer.y })
-      } else if (shape instanceof Rect) {
+      } else if (shape instanceof fabric.Rect) {
         const width = pointer.x - start.x
         const height = pointer.y - start.y
         shape.set({
@@ -308,7 +312,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           width: Math.abs(width),
           height: Math.abs(height),
         })
-      } else if (shape instanceof Ellipse) {
+      } else if (shape instanceof fabric.Ellipse) {
         const rx = Math.abs(pointer.x - start.x) / 2
         const ry = Math.abs(pointer.y - start.y) / 2
         shape.set({
@@ -317,7 +321,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           rx,
           ry,
         })
-      } else if (shape instanceof Circle) {
+      } else if (shape instanceof fabric.Circle) {
         // For magnifier - maintain circular shape
         const radius = Math.max(
           Math.abs(pointer.x - start.x),
@@ -340,7 +344,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       shape.set({ selectable: true, evented: true })
 
       // Add arrowhead for arrow tool
-      if (currentTool === 'arrow' && shape instanceof Line) {
+      if (currentTool === 'arrow' && shape instanceof fabric.Line) {
         const x1 = shape.x1 || 0
         const y1 = shape.y1 || 0
         const x2 = shape.x2 || 0
@@ -349,7 +353,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
         const angle = Math.atan2(y2 - y1, x2 - x1)
         const headLength = 15
 
-        const arrowHead1 = new Line([
+        const arrowHead1 = new fabric.Line([
           x2,
           y2,
           x2 - headLength * Math.cos(angle - Math.PI / 6),
@@ -359,7 +363,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           strokeWidth: strokeWidth,
         })
 
-        const arrowHead2 = new Line([
+        const arrowHead2 = new fabric.Line([
           x2,
           y2,
           x2 - headLength * Math.cos(angle + Math.PI / 6),

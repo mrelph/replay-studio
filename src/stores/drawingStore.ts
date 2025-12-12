@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import { fabric } from 'fabric'
+import type fabricModule from 'fabric'
+
+type fabric = typeof fabricModule
 
 export interface Annotation {
   id: string

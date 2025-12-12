@@ -22,27 +22,10 @@ function App() {
   // Enable global keyboard shortcuts
   useKeyboardShortcuts()
 
-  // Debug: Show electronAPI status on startup
-  useEffect(() => {
-    console.log('App mounted')
-    console.log('window.electronAPI:', window.electronAPI)
-    console.log('electronAPI available:', !!window.electronAPI)
-    if (window.electronAPI) {
-      console.log('electronAPI methods:', Object.keys(window.electronAPI))
-    }
-  }, [])
-
-  // Debug: Track videoSrc changes
-  useEffect(() => {
-    console.log('videoSrc changed to:', videoSrc)
-  }, [videoSrc])
-
   const loadVideo = useCallback((filePath: string) => {
     // Use custom protocol to serve local video files
     const encodedPath = encodeURIComponent(filePath)
     const videoUrl = `local-video://${encodedPath}`
-    console.log('Loading video:', filePath)
-    console.log('Video URL:', videoUrl)
     setVideoSrc(videoUrl)
     addRecentFile(filePath)
     resetVideo()
@@ -88,7 +71,6 @@ function App() {
       const file = files[0]
       // Electron adds a 'path' property to File objects
       const filePath = (file as File & { path?: string }).path
-      console.log('Dropped file:', file.name, file.type, filePath)
 
       // Check if it's a video file
       if (file.type.startsWith('video/') || /\.(mp4|avi|mov|mkv|webm)$/i.test(file.name)) {
@@ -98,12 +80,9 @@ function App() {
         } else {
           // Fallback: create object URL
           const url = URL.createObjectURL(file)
-          console.log('Created object URL:', url)
           setVideoSrc(url)
           resetVideo()
         }
-      } else {
-        console.log('Not a video file:', file.type)
       }
     }
   }, [loadVideo, resetVideo])
@@ -111,10 +90,7 @@ function App() {
   // Listen for menu events from Electron - run only once on mount
   useEffect(() => {
     if (window.electronAPI) {
-      console.log('Setting up electron listeners')
-
       window.electronAPI.onFileOpened((filePath) => {
-        console.log('file-opened event received:', filePath)
         loadVideo(filePath)
       })
 
@@ -127,7 +103,6 @@ function App() {
       })
 
       return () => {
-        console.log('Cleaning up electron listeners')
         window.electronAPI.removeFileOpenedListener()
         window.electronAPI.removeExportClipListener()
         window.electronAPI.removeShowShortcutsListener()

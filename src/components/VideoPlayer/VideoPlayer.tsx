@@ -10,10 +10,7 @@ interface VideoPlayerProps {
 export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [videoError, setVideoError] = useState<string | null>(null)
-  const [videoLoaded, setVideoLoaded] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-
-  console.log('VideoPlayer render, src:', src)
 
   const {
     isPlaying,
@@ -60,18 +57,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       setVideoError(errorMsg)
     }
     const handleCanPlay = () => {
-      console.log('Video can play, duration:', video.duration)
       setVideoError(null)
-      setVideoLoaded(true)
-    }
-
-    const handleLoadStart = () => {
-      console.log('Video load started')
-    }
-
-    const handleLoadedData = () => {
-      console.log('Video data loaded')
-      setVideoLoaded(true)
     }
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata)
@@ -81,8 +67,6 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     video.addEventListener('ended', handleEnded)
     video.addEventListener('error', handleError)
     video.addEventListener('canplay', handleCanPlay)
-    video.addEventListener('loadstart', handleLoadStart)
-    video.addEventListener('loadeddata', handleLoadedData)
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata)
@@ -92,8 +76,6 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       video.removeEventListener('ended', handleEnded)
       video.removeEventListener('error', handleError)
       video.removeEventListener('canplay', handleCanPlay)
-      video.removeEventListener('loadstart', handleLoadStart)
-      video.removeEventListener('loadeddata', handleLoadedData)
     }
   }, [setCurrentTime, setDuration, setIsPlaying])
 
@@ -167,21 +149,16 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   return (
     <div ref={containerRef} className="flex flex-col h-full w-full">
       <div className="flex-1 relative flex items-center justify-center bg-black">
-        {/* Always show URL for debugging */}
-        <div className="absolute top-4 left-4 right-4 bg-blue-900 text-white p-3 rounded z-10">
-          <p className="font-bold">Video Source:</p>
-          <p className="text-xs break-all">{src}</p>
-          <p className="text-yellow-400 mt-1">Status: {videoLoaded ? 'Loaded' : 'Loading...'}</p>
-          {videoError && (
-            <p className="text-red-400 mt-2">Error: {videoError}</p>
-          )}
-        </div>
+        {videoError && (
+          <div className="absolute top-4 left-4 right-4 bg-red-600/90 text-white p-3 rounded z-10">
+            <p className="font-bold">Error loading video</p>
+            <p className="text-sm">{videoError}</p>
+          </div>
+        )}
         <video
           ref={videoRef}
           src={src}
-          className="max-h-full max-w-full border-4 border-green-500"
-          style={{ minWidth: '640px', minHeight: '360px', background: '#222' }}
-          controls
+          className="max-h-full max-w-full"
           onClick={() => {
             const video = videoRef.current
             if (video) {

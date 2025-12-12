@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import type { ExportOptions, ExportProgress } from '@/types/electron'
 
 interface ExportDialogProps {
   onClose: () => void
-  videoSrc: string // Used for future FFmpeg export
+  videoSrc: string
 }
 
 type ExportFormat = 'mp4' | 'gif'
@@ -18,7 +19,7 @@ interface ExportSettings {
   fps: number
 }
 
-export default function ExportDialog({ onClose }: ExportDialogProps) {
+export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
   const { inPoint, outPoint, duration } = useVideoStore()
   const { annotations } = useDrawingStore()
 
@@ -33,10 +34,37 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [ffmpegVersion, setFfmpegVersion] = useState<string | null>(null)
+  const [ffmpegChecked, setFfmpegChecked] = useState(false)
 
   const startTime = settings.useInOutPoints && inPoint !== null ? inPoint : 0
   const endTime = settings.useInOutPoints && outPoint !== null ? outPoint : duration
   const clipDuration = endTime - startTime
+
+  // Check FFmpeg availability on mount
+  useEffect(() => {
+    if (window.electronAPI?.getFFmpegVersion) {
+      window.electronAPI.getFFmpegVersion().then((version) => {
+        setFfmpegVersion(version)
+        setFfmpegChecked(true)
+      })
+    } else {
+      setFfmpegChecked(true)
+    }
+  }, [])
+
+  // Listen for export progress updates
+  useEffect(() => {
+    if (!window.electronAPI?.onExportProgress) return
+
+    window.electronAPI.onExportProgress((progressData: ExportProgress) => {
+      setProgress(progressData.percent)
+    })
+
+    return () => {
+      window.electronAPI?.removeExportProgressListener?.()
+    }
+  }, [])
 
   const handleExport = useCallback(async () => {
     if (!window.electronAPI) {
@@ -54,36 +82,36 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
     setError(null)
 
     try {
-      // For now, show a message that export is being prepared
-      // Full FFmpeg integration would require more complex setup
+      // Resolve the video path from the local-video:// protocol
+      const inputPath = await window.electronAPI.resolveVideoPath(videoSrc)
 
-      // Simulate export progress
-      const totalFrames = Math.ceil(clipDuration * settings.fps)
-
-      for (let frame = 0; frame <= totalFrames; frame++) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-        setProgress((frame / totalFrames) * 100)
+      const exportOptions: ExportOptions = {
+        inputPath,
+        outputPath: savePath,
+        startTime: settings.useInOutPoints ? startTime : undefined,
+        endTime: settings.useInOutPoints ? endTime : undefined,
+        quality: settings.quality,
+        fps: settings.fps,
+        format: settings.format,
       }
 
-      // In a full implementation, this would:
-      // 1. Extract frames from video at each timestamp
-      // 2. Render canvas annotations onto each frame
-      // 3. Use FFmpeg to encode the composited frames into video
+      const result = await window.electronAPI.exportVideo(exportOptions)
 
-      setProgress(100)
-
-      // Show success message
-      setTimeout(() => {
-        alert(`Export complete!\nSaved to: ${savePath}\n\nNote: Full FFmpeg export integration coming soon.`)
-        onClose()
-      }, 500)
-
+      if (result.success) {
+        setProgress(100)
+        // Show success and close dialog
+        setTimeout(() => {
+          onClose()
+        }, 500)
+      } else {
+        setError(result.error || 'Export failed')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
     } finally {
       setIsExporting(false)
     }
-  }, [settings, clipDuration, onClose])
+  }, [settings, startTime, endTime, videoSrc, onClose])
 
   const getQualitySettings = (quality: ExportQuality) => {
     switch (quality) {
@@ -117,6 +145,29 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
 
         {/* Content */}
         <div className="p-6 space-y-4">
+          {/* FFmpeg status */}
+          {ffmpegChecked && (
+            <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${
+              ffmpegVersion ? 'bg-green-900/30 border border-green-600/30' : 'bg-yellow-900/30 border border-yellow-600/30'
+            }`}>
+              {ffmpegVersion ? (
+                <>
+                  <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-green-400">FFmpeg {ffmpegVersion} ready</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-yellow-400">FFmpeg not found - export may not work</span>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Format selection */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Format</label>
@@ -155,9 +206,9 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
               disabled={isExporting}
               className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
             >
-              <option value="high">High (1080p, 8Mbps)</option>
-              <option value="medium">Medium (720p, 4Mbps)</option>
-              <option value="low">Low (480p, 2Mbps)</option>
+              <option value="high">High (1080p)</option>
+              <option value="medium">Medium (720p)</option>
+              <option value="low">Low (480p)</option>
             </select>
           </div>
 
@@ -174,6 +225,9 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
               <option value={30}>30 fps (Standard)</option>
               <option value={60}>60 fps (Smooth)</option>
             </select>
+            {settings.format === 'gif' && settings.fps > 15 && (
+              <p className="text-xs text-yellow-400 mt-1">GIFs are capped at 15 fps for file size</p>
+            )}
           </div>
 
           {/* Range selection */}
@@ -193,20 +247,15 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
             </div>
           )}
 
-          {/* Include annotations */}
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="includeAnnotations"
-              checked={settings.includeAnnotations}
-              onChange={(e) => setSettings({ ...settings, includeAnnotations: e.target.checked })}
-              disabled={isExporting}
-              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
-            />
-            <label htmlFor="includeAnnotations" className="text-sm text-gray-300">
-              Include annotations ({annotations.length} items)
-            </label>
-          </div>
+          {/* Include annotations info */}
+          {annotations.length > 0 && (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <span>Note: Annotations overlay export coming soon</span>
+            </div>
+          )}
 
           {/* Export info */}
           <div className="bg-gray-900 rounded p-3 text-sm">
@@ -221,7 +270,7 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
             <div className="flex justify-between text-gray-400 mt-1">
               <span>Est. size:</span>
               <span className="text-white">
-                {estimateFileSize(settings.useInOutPoints ? clipDuration : duration, qualityInfo.bitrate)}
+                {estimateFileSize(settings.useInOutPoints ? clipDuration : duration, qualityInfo.bitrate, settings.format)}
               </span>
             </div>
           </div>
@@ -261,7 +310,7 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
           </button>
           <button
             onClick={handleExport}
-            disabled={isExporting}
+            disabled={isExporting || !ffmpegVersion}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isExporting ? 'Exporting...' : 'Export'}
@@ -278,7 +327,18 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-function estimateFileSize(duration: number, bitrate: string): string {
+function estimateFileSize(duration: number, bitrate: string, format: 'mp4' | 'gif'): string {
+  if (format === 'gif') {
+    // GIF estimation (much larger than video)
+    const bytes = duration * 500000 // Rough estimate: 500KB/s
+    if (bytes > 1000000000) {
+      return `~${(bytes / 1000000000).toFixed(1)} GB`
+    } else if (bytes > 1000000) {
+      return `~${(bytes / 1000000).toFixed(0)} MB`
+    }
+    return `~${(bytes / 1000).toFixed(0)} KB`
+  }
+
   const bps = parseFloat(bitrate) * 1000000 // Convert Mbps to bps
   const bytes = (bps * duration) / 8
 
@@ -286,7 +346,6 @@ function estimateFileSize(duration: number, bitrate: string): string {
     return `~${(bytes / 1000000000).toFixed(1)} GB`
   } else if (bytes > 1000000) {
     return `~${(bytes / 1000000).toFixed(0)} MB`
-  } else {
-    return `~${(bytes / 1000).toFixed(0)} KB`
   }
+  return `~${(bytes / 1000).toFixed(0)} KB`
 }

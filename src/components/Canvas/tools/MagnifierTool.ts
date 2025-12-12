@@ -1,4 +1,8 @@
-import { Canvas, Circle, Group } from 'fabric'
+import fabricModule from 'fabric'
+
+// Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fabric: any = (fabricModule as any).fabric || fabricModule
 
 export interface MagnifierOptions {
   x: number
@@ -10,13 +14,13 @@ export interface MagnifierOptions {
 }
 
 export class MagnifierTool {
-  private canvas: Canvas
+  private canvas: fabric.Canvas
   private videoElement: HTMLVideoElement | null = null
-  private magnifierGroup: Group | null = null
+  private magnifierGroup: fabric.Group | null = null
   private zoomCanvas: HTMLCanvasElement | null = null
   private animationFrame: number | null = null
 
-  constructor(canvas: Canvas, videoElement?: HTMLVideoElement) {
+  constructor(canvas: fabric.Canvas, videoElement?: HTMLVideoElement) {
     this.canvas = canvas
     this.videoElement = videoElement || null
   }
@@ -25,7 +29,7 @@ export class MagnifierTool {
     this.videoElement = video
   }
 
-  create(options: MagnifierOptions): Group {
+  create(options: MagnifierOptions): fabric.Group {
     const {
       x,
       y,
@@ -41,7 +45,7 @@ export class MagnifierTool {
     this.zoomCanvas.height = radius * 2
 
     // Create the magnifier lens (circular border)
-    const lens = new Circle({
+    const lens = new fabric.Circle({
       left: 0,
       top: 0,
       radius: radius,
@@ -53,7 +57,7 @@ export class MagnifierTool {
     })
 
     // Create crosshairs
-    const crosshairH = new (require('fabric').Line)(
+    const crosshairH = new fabric.Line(
       [-radius * 0.3, 0, radius * 0.3, 0],
       {
         stroke: borderColor,
@@ -63,7 +67,7 @@ export class MagnifierTool {
       }
     )
 
-    const crosshairV = new (require('fabric').Line)(
+    const crosshairV = new fabric.Line(
       [0, -radius * 0.3, 0, radius * 0.3],
       {
         stroke: borderColor,
@@ -74,7 +78,7 @@ export class MagnifierTool {
     )
 
     // Group all elements
-    this.magnifierGroup = new Group([lens, crosshairH, crosshairV], {
+    this.magnifierGroup = new fabric.Group([lens, crosshairH, crosshairV], {
       left: x,
       top: y,
       originX: 'center',
@@ -171,13 +175,13 @@ export class MagnifierTool {
 
 // Simple magnifier marker (visual indicator without live zoom)
 export function createMagnifierMarker(
-  canvas: Canvas,
+  canvas: fabric.Canvas,
   x: number,
   y: number,
   radius: number,
   color: string = '#00d4ff'
-): Circle {
-  const marker = new Circle({
+): fabric.Circle {
+  const marker = new fabric.Circle({
     left: x - radius,
     top: y - radius,
     radius: radius,
@@ -190,11 +194,11 @@ export function createMagnifierMarker(
 
   // Add a "+" indicator
   const plusSize = radius * 0.4
-  const plusH = new (require('fabric').Line)(
+  const plusH = new fabric.Line(
     [x - plusSize, y, x + plusSize, y],
     { stroke: color, strokeWidth: 2 }
   )
-  const plusV = new (require('fabric').Line)(
+  const plusV = new fabric.Line(
     [x, y - plusSize, x, y + plusSize],
     { stroke: color, strokeWidth: 2 }
   )
