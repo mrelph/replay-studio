@@ -6,6 +6,7 @@ import { useVideoStore } from '@/stores/videoStore'
 import { SpotlightTool } from './tools/SpotlightTool'
 import { AnimatedArrow } from './tools/AnimatedArrow'
 import { PlayerTracker } from './tools/PlayerTracker'
+import { getToolDefaults } from '@/utils/annotationDefaults'
 
 // Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,8 +27,11 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const animatedArrowRef = useRef<AnimatedArrow | null>(null)
   const playerTrackerRef = useRef<PlayerTracker | null>(null)
 
+  // Track magnifiers for live video zoom updates
+  const magnifiersRef = useRef<Map<string, { circle: any, centerX: number, centerY: number, radius: number }>>(new Map())
+
   const { currentTool, strokeColor, strokeWidth, setIsDrawing } = useToolStore()
-  const { setCanvas, addAnnotation } = useDrawingStore()
+  const { setCanvas, addAnnotation, annotations } = useDrawingStore()
   const { currentTime, duration } = useVideoStore()
 
   // Track drawing state for shapes
@@ -123,15 +127,144 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
   }, [currentTime])
 
+  // Update magnifier content from video frame
+  const updateMagnifierContent = useCallback((magnifierId: string, circle: any, centerX: number, centerY: number, radius: number) => {
+    if (!videoElement || !fabricRef.current) return
+
+    const zoomLevel = 2.5
+    const canvas = fabricRef.current
+
+    // Create off-screen canvas for zoomed content
+    const tempCanvas = document.createElement('canvas')
+    const size = radius * 2
+    tempCanvas.width = size
+    tempCanvas.height = size
+    const ctx = tempCanvas.getContext('2d')
+    if (!ctx) return
+
+    // Calculate source region from video
+    const videoScaleX = videoElement.videoWidth / dimensions.width
+    const videoScaleY = videoElement.videoHeight / dimensions.height
+
+    const sourceSize = (radius * 2) / zoomLevel
+    const sourceX = (centerX - sourceSize / 2) * videoScaleX
+    const sourceY = (centerY - sourceSize / 2) * videoScaleY
+    const sourceWidth = sourceSize * videoScaleX
+    const sourceHeight = sourceSize * videoScaleY
+
+    // Draw zoomed video portion
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(radius, radius, radius - 4, 0, Math.PI * 2)
+    ctx.clip()
+
+    try {
+      ctx.drawImage(
+        videoElement,
+        Math.max(0, sourceX),
+        Math.max(0, sourceY),
+        Math.min(sourceWidth, videoElement.videoWidth - sourceX),
+        Math.min(sourceHeight, videoElement.videoHeight - sourceY),
+        0, 0, size, size
+      )
+    } catch (e) {
+      // Video might not be ready
+    }
+
+    ctx.restore()
+
+    // Draw border inside
+    ctx.strokeStyle = '#00d4ff'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.arc(radius, radius, radius - 2, 0, Math.PI * 2)
+    ctx.stroke()
+
+    // Draw crosshair
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.6)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(radius - 15, radius)
+    ctx.lineTo(radius + 15, radius)
+    ctx.moveTo(radius, radius - 15)
+    ctx.lineTo(radius, radius + 15)
+    ctx.stroke()
+
+    // Create pattern from temp canvas and apply to circle
+    const pattern = new fabric.Pattern({
+      source: tempCanvas,
+      repeat: 'no-repeat',
+    })
+
+    circle.set({
+      fill: pattern,
+      dirty: true
+    })
+
+    canvas.renderAll()
+  }, [videoElement, dimensions])
+
+  // Update all magnifiers when video time changes
+  useEffect(() => {
+    magnifiersRef.current.forEach((mag, id) => {
+      updateMagnifierContent(id, mag.circle, mag.centerX, mag.centerY, mag.radius)
+    })
+  }, [currentTime, updateMagnifierContent])
+
+  // Control annotation visibility based on current time with fade effects
+  useEffect(() => {
+    const canvas = fabricRef.current
+    if (!canvas) return
+
+    annotations.forEach((annotation) => {
+      const { startTime, endTime, fadeIn = 0, fadeOut = 0 } = annotation
+      const isInTimeRange = currentTime >= startTime && currentTime <= endTime
+
+      if (!isInTimeRange) {
+        // Hide annotation outside time range
+        annotation.object.visible = false
+        annotation.object.opacity = 0
+      } else {
+        // Show annotation and calculate opacity for fade effects
+        annotation.object.visible = true
+
+        const timeInRange = currentTime - startTime
+        const timeToEnd = endTime - currentTime
+
+        let opacity = 1
+
+        // Fade in effect - ensure minimum 0.5 opacity so new drawings are visible
+        if (fadeIn > 0 && timeInRange < fadeIn) {
+          opacity = Math.max(0.5, timeInRange / fadeIn)
+        }
+        // Fade out effect
+        else if (fadeOut > 0 && timeToEnd < fadeOut) {
+          opacity = Math.max(0.2, timeToEnd / fadeOut)
+        }
+
+        annotation.object.opacity = opacity
+      }
+    })
+
+    canvas.renderAll()
+  }, [currentTime, annotations])
+
   // Create annotation with proper time range
   const createAnnotation = useCallback((object: any, toolType: string) => {
-    const annotationDuration = toolType === 'tracker' ? 30 : 5 // Trackers last longer
+    const defaults = getToolDefaults(toolType)
+    const endTime = duration > 0
+      ? Math.min(currentTime + defaults.duration, duration)
+      : currentTime + defaults.duration
+
     addAnnotation({
       id: `${toolType}-${Date.now()}`,
       object,
       startTime: currentTime,
-      endTime: duration > 0 ? Math.min(currentTime + annotationDuration, duration) : currentTime + annotationDuration,
+      endTime,
       layer: 0,
+      toolType,
+      fadeIn: defaults.fadeIn,
+      fadeOut: defaults.fadeOut,
     })
   }, [addAnnotation, currentTime, duration])
 
@@ -152,25 +285,41 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
       switch (currentTool) {
         case 'line':
+          // Broadcast-style line with glow
           shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
             stroke: strokeColor,
-            strokeWidth: strokeWidth,
+            strokeWidth: Math.max(strokeWidth, 3),
+            strokeLineCap: 'round',
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 10,
+              offsetX: 0,
+              offsetY: 0,
+            }),
             selectable: false,
             evented: false,
           })
           break
 
         case 'arrow':
-          // Create initial line for arrow
+          // Create broadcast-style arrow with glow effect
           shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
             stroke: strokeColor,
-            strokeWidth: strokeWidth,
+            strokeWidth: Math.max(strokeWidth, 4),
+            strokeLineCap: 'round',
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 15,
+              offsetX: 0,
+              offsetY: 0,
+            }),
             selectable: false,
             evented: false,
           })
           break
 
         case 'rectangle':
+          // Broadcast-style rectangle with glow
           shape = new fabric.Rect({
             left: pointer.x,
             top: pointer.y,
@@ -178,13 +327,20 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             height: 0,
             fill: 'transparent',
             stroke: strokeColor,
-            strokeWidth: strokeWidth,
+            strokeWidth: Math.max(strokeWidth, 3),
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 12,
+              offsetX: 0,
+              offsetY: 0,
+            }),
             selectable: false,
             evented: false,
           })
           break
 
         case 'circle':
+          // Broadcast-style circle with glow
           shape = new fabric.Ellipse({
             left: pointer.x,
             top: pointer.y,
@@ -192,74 +348,144 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             ry: 0,
             fill: 'transparent',
             stroke: strokeColor,
-            strokeWidth: strokeWidth,
+            strokeWidth: Math.max(strokeWidth, 3),
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 12,
+              offsetX: 0,
+              offsetY: 0,
+            }),
             selectable: false,
             evented: false,
           })
           break
 
         case 'spotlight':
-          // Create spotlight with darkening effect
+          // Create broadcast-style spotlight with dramatic glow
           shape = new fabric.Ellipse({
             left: pointer.x,
             top: pointer.y,
             rx: 0,
             ry: 0,
-            fill: 'rgba(255, 255, 0, 0.15)',
-            stroke: '#ffff00',
-            strokeWidth: 3,
-            strokeDashArray: [8, 4],
+            fill: 'rgba(255, 255, 0, 0.08)',
+            stroke: '#ffcc00',
+            strokeWidth: 4,
+            shadow: new fabric.Shadow({
+              color: '#ffff00',
+              blur: 25,
+              offsetX: 0,
+              offsetY: 0,
+            }),
             selectable: false,
             evented: false,
           })
           break
 
         case 'magnifier':
-          // Create magnifier circle
-          shape = new fabric.Circle({
-            left: pointer.x,
-            top: pointer.y,
-            radius: 0,
+          // Create working magnifier with live video zoom
+          const magRadius = 60
+          const magId = `magnifier-${Date.now()}`
+          const magnifierCircle = new fabric.Circle({
+            left: pointer.x - magRadius,
+            top: pointer.y - magRadius,
+            radius: magRadius,
             fill: 'rgba(0, 212, 255, 0.1)',
             stroke: '#00d4ff',
-            strokeWidth: 3,
-            selectable: false,
-            evented: false,
+            strokeWidth: 4,
+            shadow: new fabric.Shadow({
+              color: '#00d4ff',
+              blur: 20,
+              offsetX: 0,
+              offsetY: 0,
+            }),
+            selectable: true,
+            evented: true,
           })
-          break
+
+          canvas.add(magnifierCircle)
+
+          // Register magnifier for live updates
+          magnifiersRef.current.set(magId, {
+            circle: magnifierCircle,
+            centerX: pointer.x,
+            centerY: pointer.y,
+            radius: magRadius
+          })
+
+          // Initialize with current video frame
+          updateMagnifierContent(magId, magnifierCircle, pointer.x, pointer.y, magRadius)
+
+          // Store magId on the object for cleanup
+          ;(magnifierCircle as any).magnifierId = magId
+
+          createAnnotation(magnifierCircle, 'magnifier')
+
+          isDrawingRef.current = false
+          setIsDrawing(false)
+          return
 
         case 'tracker':
-          // Create player tracker marker
-          const trackerRadius = 25
+          // Broadcast-style player tracker with glowing ring
+          const trackerRadius = 30
           const trackerCircle = new fabric.Circle({
             left: pointer.x - trackerRadius,
             top: pointer.y - trackerRadius,
             radius: trackerRadius,
             fill: 'transparent',
             stroke: strokeColor,
-            strokeWidth: strokeWidth,
+            strokeWidth: 4,
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 18,
+              offsetX: 0,
+              offsetY: 0,
+            }),
             selectable: true,
             evented: true,
           })
 
-          // Add crosshairs
-          const crossSize = trackerRadius * 0.6
+          // Add inner ring for depth
+          const innerRing = new fabric.Circle({
+            left: pointer.x - trackerRadius * 0.7,
+            top: pointer.y - trackerRadius * 0.7,
+            radius: trackerRadius * 0.7,
+            fill: 'transparent',
+            stroke: strokeColor,
+            strokeWidth: 2,
+            opacity: 0.5,
+          })
+
+          // Add crosshairs with glow
+          const crossSize = trackerRadius * 0.5
           const crossH = new fabric.Line([
             pointer.x - crossSize, pointer.y,
             pointer.x + crossSize, pointer.y,
           ], {
             stroke: strokeColor,
-            strokeWidth: 2,
+            strokeWidth: 3,
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 8,
+              offsetX: 0,
+              offsetY: 0,
+            }),
           })
           const crossV = new fabric.Line([
             pointer.x, pointer.y - crossSize,
             pointer.x, pointer.y + crossSize,
           ], {
             stroke: strokeColor,
-            strokeWidth: 2,
+            strokeWidth: 3,
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 8,
+              offsetX: 0,
+              offsetY: 0,
+            }),
           })
 
           canvas.add(trackerCircle)
+          canvas.add(innerRing)
           canvas.add(crossH)
           canvas.add(crossV)
 
@@ -343,7 +569,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       const shape = currentShapeRef.current
       shape.set({ selectable: true, evented: true })
 
-      // Add arrowhead for arrow tool
+      // Add broadcast-style arrowhead and group with line
       if (currentTool === 'arrow' && shape instanceof fabric.Line) {
         const x1 = shape.x1 || 0
         const y1 = shape.y1 || 0
@@ -351,33 +577,40 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
         const y2 = shape.y2 || 0
 
         const angle = Math.atan2(y2 - y1, x2 - x1)
-        const headLength = 15
+        const headLength = 25  // Larger arrowhead
+        const headWidth = 12   // Width of arrowhead base
 
-        const arrowHead1 = new fabric.Line([
-          x2,
-          y2,
-          x2 - headLength * Math.cos(angle - Math.PI / 6),
-          y2 - headLength * Math.sin(angle - Math.PI / 6),
-        ], {
+        // Create filled triangle arrowhead
+        const arrowHead = new fabric.Triangle({
+          left: x2,
+          top: y2,
+          width: headWidth * 2,
+          height: headLength,
+          fill: strokeColor,
           stroke: strokeColor,
-          strokeWidth: strokeWidth,
+          strokeWidth: 1,
+          angle: (angle * 180 / Math.PI) + 90,
+          originX: 'center',
+          originY: 'bottom',
+          shadow: new fabric.Shadow({
+            color: strokeColor,
+            blur: 15,
+            offsetX: 0,
+            offsetY: 0,
+          }),
         })
 
-        const arrowHead2 = new fabric.Line([
-          x2,
-          y2,
-          x2 - headLength * Math.cos(angle + Math.PI / 6),
-          y2 - headLength * Math.sin(angle + Math.PI / 6),
-        ], {
-          stroke: strokeColor,
-          strokeWidth: strokeWidth,
+        // Remove the line and create a group with both line and arrowhead
+        canvas.remove(shape)
+        const arrowGroup = new fabric.Group([shape, arrowHead], {
+          selectable: true,
+          evented: true,
         })
-
-        canvas.add(arrowHead1)
-        canvas.add(arrowHead2)
+        canvas.add(arrowGroup)
+        createAnnotation(arrowGroup, currentTool)
+      } else {
+        createAnnotation(shape, currentTool)
       }
-
-      createAnnotation(shape, currentTool)
 
       isDrawingRef.current = false
       currentShapeRef.current = null
@@ -415,7 +648,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center pointer-events-none"
+      className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
     >
       <canvas
         ref={canvasRef}

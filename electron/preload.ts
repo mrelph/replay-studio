@@ -64,6 +64,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // Project save/load
+  saveProject: async (defaultName: string) => {
+    try {
+      return await ipcRenderer.invoke('dialog:saveProject', defaultName)
+    } catch (err) {
+      console.error('saveProject error:', err)
+      return null
+    }
+  },
+  loadProject: async () => {
+    try {
+      return await ipcRenderer.invoke('dialog:loadProject')
+    } catch (err) {
+      console.error('loadProject error:', err)
+      return null
+    }
+  },
+  writeFile: async (filePath: string, content: string) => {
+    try {
+      return await ipcRenderer.invoke('file:write', filePath, content)
+    } catch (err) {
+      console.error('writeFile error:', err)
+      return { success: false, error: err instanceof Error ? err.message : 'Write failed' }
+    }
+  },
+  readFile: async (filePath: string) => {
+    try {
+      return await ipcRenderer.invoke('file:read', filePath)
+    } catch (err) {
+      console.error('readFile error:', err)
+      return { success: false, error: err instanceof Error ? err.message : 'Read failed' }
+    }
+  },
+
   // Event listeners
   onFileOpened: (callback: (filePath: string) => void) => {
     ipcRenderer.on('file-opened', (_, filePath) => {
@@ -79,6 +113,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onExportProgress: (callback: (progress: ExportProgress) => void) => {
     ipcRenderer.on('export-progress', (_, progress) => callback(progress))
   },
+  onSaveProject: (callback: () => void) => {
+    ipcRenderer.on('save-project', () => callback())
+  },
+  onLoadProject: (callback: () => void) => {
+    ipcRenderer.on('load-project', () => callback())
+  },
 
   // Remove listeners
   removeFileOpenedListener: () => {
@@ -92,5 +132,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   removeExportProgressListener: () => {
     ipcRenderer.removeAllListeners('export-progress')
+  },
+  removeSaveProjectListener: () => {
+    ipcRenderer.removeAllListeners('save-project')
+  },
+  removeLoadProjectListener: () => {
+    ipcRenderer.removeAllListeners('load-project')
   },
 })

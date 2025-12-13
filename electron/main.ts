@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, protocol } from 'electron'
 import path from 'path'
+import fs from 'fs'
 import { fileURLToPath } from 'url'
 import { exportVideo, getFFmpegVersion, type ExportOptions, type ExportProgress } from './ffmpegExport'
 
@@ -68,6 +69,21 @@ function createWindow() {
           accelerator: 'CmdOrCtrl+E',
           click: () => {
             mainWindow?.webContents.send('export-clip')
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Save Project...',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            mainWindow?.webContents.send('save-project')
+          },
+        },
+        {
+          label: 'Load Project...',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => {
+            mainWindow?.webContents.send('load-project')
           },
         },
         { type: 'separator' },
@@ -170,6 +186,53 @@ ipcMain.handle('dialog:saveFile', async (_, defaultName: string) => {
     return result.filePath
   }
   return null
+})
+
+// Project file handlers
+ipcMain.handle('dialog:saveProject', async (_, defaultName: string) => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    defaultPath: defaultName || 'project.rsproj',
+    filters: [
+      { name: 'Replay Studio Project', extensions: ['rsproj'] },
+      { name: 'JSON', extensions: ['json'] },
+    ],
+  })
+  if (!result.canceled && result.filePath) {
+    return result.filePath
+  }
+  return null
+})
+
+ipcMain.handle('dialog:loadProject', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Replay Studio Project', extensions: ['rsproj', 'json'] },
+    ],
+  })
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0]
+  }
+  return null
+})
+
+// File read/write for projects
+ipcMain.handle('file:write', async (_, filePath: string, content: string) => {
+  try {
+    fs.writeFileSync(filePath, content, 'utf-8')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Write failed' }
+  }
+})
+
+ipcMain.handle('file:read', async (_, filePath: string) => {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    return { success: true, content }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Read failed' }
+  }
 })
 
 // FFmpeg export handlers

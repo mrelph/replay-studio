@@ -6,19 +6,28 @@ import { useDrawingStore } from '@/stores/drawingStore'
 const TOOL_SHORTCUTS: Record<string, ToolType> = {
   v: 'select',
   p: 'pen',
-  l: 'line',
   a: 'arrow',
   r: 'rectangle',
   c: 'circle',
   t: 'text',
   s: 'spotlight',
-  m: 'magnifier',
-  k: 'tracker',
 }
 
 export function useKeyboardShortcuts() {
   const { setCurrentTool, currentTool } = useToolStore()
-  const { togglePlay, stepFrame, seek, duration, setInPoint, setOutPoint, videoElement } = useVideoStore()
+  const {
+    togglePlay,
+    stepFrame,
+    skip,
+    seek,
+    duration,
+    setInPoint,
+    setOutPoint,
+    toggleMute,
+    setIsLooping,
+    isLooping,
+    videoElement
+  } = useVideoStore()
   const { undo, redo, canvas } = useDrawingStore()
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -84,6 +93,24 @@ export function useKeyboardShortcuts() {
         return
       }
 
+      // Shift + key for tools that conflict with video controls
+      if (e.shiftKey) {
+        switch (key) {
+          case 'l':
+            e.preventDefault()
+            setCurrentTool('line')
+            return
+          case 'm':
+            e.preventDefault()
+            setCurrentTool('magnifier')
+            return
+          case 'k':
+            e.preventDefault()
+            setCurrentTool('tracker')
+            return
+        }
+      }
+
       // Video control shortcuts
       switch (key) {
         case ' ':
@@ -100,26 +127,37 @@ export function useKeyboardShortcuts() {
           return
         case 'j':
           e.preventDefault()
-          // Reverse - step back faster
-          if (videoElement) {
-            videoElement.currentTime = Math.max(0, videoElement.currentTime - 0.1)
-          }
+          skip(-10)
           return
         case 'k':
-          // Note: 'k' is also tracker tool - use pause behavior when video focused
-          // Pause
-          if (videoElement && !videoElement.paused) {
+          e.preventDefault()
+          if (videoElement) {
             videoElement.pause()
-            return
           }
-          break
+          return
         case 'l':
-          // Note: 'l' is also line tool - forward step when not drawing
-          if (currentTool === 'select' && videoElement) {
-            videoElement.currentTime = Math.min(duration, videoElement.currentTime + 0.1)
-            return
+          e.preventDefault()
+          if (e.shiftKey) {
+            setIsLooping(!isLooping)
+          } else {
+            skip(10)
           }
-          break
+          return
+        case 'm':
+          e.preventDefault()
+          toggleMute()
+          return
+        case 'f':
+          e.preventDefault()
+          const videoContainer = document.querySelector('.video-container')
+          if (videoContainer) {
+            if (document.fullscreenElement) {
+              document.exitFullscreen()
+            } else {
+              videoContainer.requestFullscreen()
+            }
+          }
+          return
         case 'i':
           e.preventDefault()
           if (videoElement) {
@@ -134,7 +172,6 @@ export function useKeyboardShortcuts() {
           return
         case '[':
           e.preventDefault()
-          // Jump to in point
           const inPoint = useVideoStore.getState().inPoint
           if (inPoint !== null) {
             seek(inPoint)
@@ -142,7 +179,6 @@ export function useKeyboardShortcuts() {
           return
         case ']':
           e.preventDefault()
-          // Jump to out point
           const outPoint = useVideoStore.getState().outPoint
           if (outPoint !== null) {
             seek(outPoint)
@@ -159,7 +195,6 @@ export function useKeyboardShortcuts() {
         case 'delete':
         case 'backspace':
           e.preventDefault()
-          // Delete selected canvas objects
           if (canvas) {
             const active = canvas.getActiveObjects()
             if (active.length > 0) {
@@ -171,7 +206,6 @@ export function useKeyboardShortcuts() {
           return
         case 'escape':
           e.preventDefault()
-          // Deselect and switch to select tool
           if (canvas) {
             canvas.discardActiveObject()
             canvas.renderAll()
@@ -190,7 +224,7 @@ export function useKeyboardShortcuts() {
         useToolStore.getState().setStrokeColor(presetColors[colorIndex])
       }
     }
-  }, [setCurrentTool, currentTool, togglePlay, stepFrame, seek, duration, setInPoint, setOutPoint, videoElement, undo, redo, canvas])
+  }, [setCurrentTool, currentTool, togglePlay, stepFrame, skip, seek, duration, setInPoint, setOutPoint, toggleMute, setIsLooping, isLooping, videoElement, undo, redo, canvas])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)

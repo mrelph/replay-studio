@@ -20,6 +20,12 @@ export interface ExportResult {
   error?: string
 }
 
+export interface FileResult {
+  success: boolean
+  content?: string
+  error?: string
+}
+
 export interface ElectronAPI {
   // File dialogs
   openFile: () => Promise<string | null>
@@ -30,17 +36,27 @@ export interface ElectronAPI {
   exportVideo: (options: ExportOptions) => Promise<ExportResult>
   resolveVideoPath: (videoUrl: string) => Promise<string>
 
+  // Project save/load
+  saveProject: (defaultName: string) => Promise<string | null>
+  loadProject: () => Promise<string | null>
+  writeFile: (filePath: string, content: string) => Promise<ExportResult>
+  readFile: (filePath: string) => Promise<FileResult>
+
   // Event listeners
   onFileOpened: (callback: (filePath: string) => void) => void
   onExportClip: (callback: () => void) => void
   onShowShortcuts: (callback: () => void) => void
   onExportProgress: (callback: (progress: ExportProgress) => void) => void
+  onSaveProject: (callback: () => void) => void
+  onLoadProject: (callback: () => void) => void
 
   // Remove listeners
   removeFileOpenedListener: () => void
   removeExportClipListener: () => void
   removeShowShortcutsListener: () => void
   removeExportProgressListener: () => void
+  removeSaveProjectListener: () => void
+  removeLoadProjectListener: () => void
 }
 
 declare global {

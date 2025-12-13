@@ -41,8 +41,14 @@
     "directories": {
       "output": "release"
     },
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**/*"
+    ],
     "win": {
       "target": "nsis"
+    },
+    "linux": {
+      "target": ["AppImage"]
     }
   }
 }

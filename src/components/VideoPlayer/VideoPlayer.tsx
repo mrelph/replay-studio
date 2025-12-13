@@ -147,8 +147,8 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   }, [handleKeyDown])
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full w-full">
-      <div className="flex-1 relative flex items-center justify-center bg-black">
+    <div ref={containerRef} className="flex flex-col h-full w-full overflow-hidden">
+      <div className="flex-1 min-h-0 relative flex items-center justify-center bg-black overflow-hidden">
         {videoError && (
           <div className="absolute top-4 left-4 right-4 bg-red-600/90 text-white p-3 rounded z-10">
             <p className="font-bold">Error loading video</p>
@@ -158,7 +158,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         <video
           ref={videoRef}
           src={src}
-          className="max-h-full max-w-full"
+          className="max-h-full max-w-full object-contain"
           onClick={() => {
             const video = videoRef.current
             if (video) {
@@ -168,7 +168,9 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           }}
         />
       </div>
-      <VideoControls />
+      <div className="shrink-0 relative z-50">
+        <VideoControls />
+      </div>
     </div>
   )
 }

@@ -3,21 +3,33 @@ import VideoPlayer from './components/VideoPlayer/VideoPlayer'
 import DrawingToolbar from './components/Toolbar/DrawingToolbar'
 import DrawingCanvas from './components/Canvas/DrawingCanvas'
 import ShortcutsHelp from './components/ShortcutsHelp'
+import ShortcutsEditor from './components/ShortcutsEditor'
 import AnnotationTimeline from './components/Timeline/AnnotationTimeline'
 import ExportDialog from './components/Export/ExportDialog'
+import LayerPanel from './components/LayerPanel/LayerPanel'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAppStore } from './stores/appStore'
 import { useVideoStore } from './stores/videoStore'
+import { useDrawingStore } from './stores/drawingStore'
+import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
+import fabricModule from 'fabric'
+
+// Handle CommonJS/ESM interop
+const fabric: any = (fabricModule as any).fabric || fabricModule
 
 function App() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showShortcutsEditor, setShowShortcutsEditor] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showLayerPanel, setShowLayerPanel] = useState(true)
   const [dragOver, setDragOver] = useState(false)
 
   const { recentFiles, addRecentFile, removeRecentFile } = useAppStore()
-  const { reset: resetVideo } = useVideoStore()
+  const { reset: resetVideo, inPoint, outPoint, setInPoint, setOutPoint } = useVideoStore()
+  const { annotations, canvas, addAnnotation, clearAnnotations } = useDrawingStore()
+  const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
 
   // Enable global keyboard shortcuts
   useKeyboardShortcuts()
@@ -47,6 +59,90 @@ function App() {
   const handleVideoRef = useCallback((video: HTMLVideoElement | null) => {
     setVideoElement(video)
   }, [])
+
+  // Save project
+  const handleSaveProject = useCallback(async () => {
+    if (!window.electronAPI) return
+
+    try {
+      const defaultName = currentProjectPath || 'project.rsproj'
+      const filePath = await window.electronAPI.saveProject(defaultName)
+      if (!filePath) return
+
+      // Get the actual video path from the URL
+      let actualVideoPath: string | undefined
+      if (videoSrc) {
+        actualVideoPath = await window.electronAPI.resolveVideoPath(videoSrc)
+      }
+
+      const project = serializeProject(annotations, actualVideoPath, inPoint, outPoint)
+      const json = exportProjectToJSON(project)
+
+      const result = await window.electronAPI.writeFile(filePath, json)
+      if (result.success) {
+        setCurrentProjectPath(filePath)
+        console.log('Project saved successfully')
+      } else {
+        console.error('Failed to save project:', result.error)
+      }
+    } catch (err) {
+      console.error('Error saving project:', err)
+    }
+  }, [annotations, videoSrc, inPoint, outPoint, currentProjectPath])
+
+  // Load project
+  const handleLoadProject = useCallback(async () => {
+    if (!window.electronAPI || !canvas) return
+
+    try {
+      const filePath = await window.electronAPI.loadProject()
+      if (!filePath) return
+
+      const result = await window.electronAPI.readFile(filePath)
+      if (!result.success || !result.content) {
+        console.error('Failed to read project file:', result.error)
+        return
+      }
+
+      const project = importProjectFromJSON(result.content)
+
+      // Load the video if specified
+      if (project.videoPath) {
+        loadVideo(project.videoPath)
+      }
+
+      // Set in/out points
+      if (project.inPoint !== null) setInPoint(project.inPoint)
+      if (project.outPoint !== null) setOutPoint(project.outPoint)
+
+      // Clear existing annotations
+      clearAnnotations()
+      canvas.clear()
+
+      // Recreate annotations from project
+      for (const serializedAnn of project.annotations) {
+        const fabricObj = deserializeFabricObject(fabric, serializedAnn.fabricData)
+        canvas.add(fabricObj)
+
+        addAnnotation({
+          id: serializedAnn.id,
+          object: fabricObj,
+          startTime: serializedAnn.startTime,
+          endTime: serializedAnn.endTime,
+          layer: serializedAnn.layer,
+          toolType: serializedAnn.toolType,
+          fadeIn: serializedAnn.fadeIn,
+          fadeOut: serializedAnn.fadeOut,
+        })
+      }
+
+      canvas.renderAll()
+      setCurrentProjectPath(filePath)
+      console.log('Project loaded successfully')
+    } catch (err) {
+      console.error('Error loading project:', err)
+    }
+  }, [canvas, loadVideo, setInPoint, setOutPoint, clearAnnotations, addAnnotation])
 
   // Handle drag and drop (works without electronAPI)
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -102,10 +198,20 @@ function App() {
         setShowShortcuts(true)
       })
 
+      window.electronAPI.onSaveProject(() => {
+        handleSaveProject()
+      })
+
+      window.electronAPI.onLoadProject(() => {
+        handleLoadProject()
+      })
+
       return () => {
         window.electronAPI.removeFileOpenedListener()
         window.electronAPI.removeExportClipListener()
         window.electronAPI.removeShowShortcutsListener()
+        window.electronAPI.removeSaveProjectListener()
+        window.electronAPI.removeLoadProjectListener()
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,13 +224,14 @@ function App() {
         setShowShortcuts((prev) => !prev)
       }
       if (e.key === 'Escape') {
-        if (showShortcuts) setShowShortcuts(false)
+        if (showShortcutsEditor) setShowShortcutsEditor(false)
+        else if (showShortcuts) setShowShortcuts(false)
         if (showExport) setShowExport(false)
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [showShortcuts, showExport])
+  }, [showShortcuts, showShortcutsEditor, showExport])
 
   return (
     <div
@@ -143,6 +250,28 @@ function App() {
       <header className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
         <h1 className="text-lg font-semibold text-white">Replay Studio</h1>
         <div className="flex items-center gap-2">
+          {/* Project save/load */}
+          <button
+            onClick={handleLoadProject}
+            className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
+            title="Load Project (Ctrl+Shift+O)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+            </svg>
+          </button>
+          {annotations.length > 0 && (
+            <button
+              onClick={handleSaveProject}
+              className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
+              title="Save Project (Ctrl+S)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+            </button>
+          )}
+          <div className="w-px h-6 bg-gray-600 mx-1" />
           {videoSrc && (
             <button
               onClick={() => setShowExport(true)}
@@ -177,13 +306,16 @@ function App() {
         {/* Video area */}
         <div className="flex-1 flex flex-col">
           {videoSrc ? (
-            <>
-              <div className="flex-1 relative bg-black flex items-center justify-center min-h-0">
-                <VideoPlayer src={videoSrc} onVideoRef={handleVideoRef} />
-                {videoElement && <DrawingCanvas videoElement={videoElement} />}
+            <div className="flex-1 flex min-h-0">
+              <div className="flex-1 flex flex-col min-h-0">
+                <div className="video-container flex-1 flex flex-col min-h-0 relative">
+                  <VideoPlayer src={videoSrc} onVideoRef={handleVideoRef} />
+                  {videoElement && <DrawingCanvas videoElement={videoElement} />}
+                </div>
+                <AnnotationTimeline />
               </div>
-              <AnnotationTimeline />
-            </>
+              {/* <LayerPanel isOpen={showLayerPanel} onToggle={() => setShowLayerPanel(!showLayerPanel)} /> */}
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center max-w-md">
@@ -244,7 +376,18 @@ function App() {
       </div>
 
       {/* Modals */}
-      {showShortcuts && <ShortcutsHelp onClose={() => setShowShortcuts(false)} />}
+      {showShortcuts && (
+        <ShortcutsHelp
+          onClose={() => setShowShortcuts(false)}
+          onOpenEditor={() => {
+            setShowShortcuts(false)
+            setShowShortcutsEditor(true)
+          }}
+        />
+      )}
+      {/* {showShortcutsEditor && (
+        <ShortcutsEditor onClose={() => setShowShortcutsEditor(false)} />
+      )} */}
       {showExport && videoSrc && (
         <ExportDialog onClose={() => setShowExport(false)} videoSrc={videoSrc} />
       )}

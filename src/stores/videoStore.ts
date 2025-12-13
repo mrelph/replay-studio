@@ -28,6 +28,12 @@ interface VideoState {
   togglePlay: () => void
   seek: (time: number) => void
   stepFrame: (direction: 'forward' | 'backward') => void
+  skip: (seconds: number) => void
+  jumpToStart: () => void
+  jumpToEnd: () => void
+  goToInPoint: () => void
+  goToOutPoint: () => void
+  toggleMute: () => void
   reset: () => void
 }
 
@@ -101,6 +107,43 @@ export const useVideoStore = create<VideoState>((set, get) => ({
       const delta = direction === 'forward' ? FRAME_DURATION : -FRAME_DURATION
       videoElement.currentTime = Math.max(0, Math.min(duration, currentTime + delta))
     }
+  },
+  skip: (seconds) => {
+    const { videoElement, duration, currentTime } = get()
+    if (videoElement) {
+      videoElement.currentTime = Math.max(0, Math.min(duration, currentTime + seconds))
+    }
+  },
+  jumpToStart: () => {
+    const { videoElement } = get()
+    if (videoElement) {
+      videoElement.currentTime = 0
+    }
+  },
+  jumpToEnd: () => {
+    const { videoElement, duration } = get()
+    if (videoElement) {
+      videoElement.currentTime = duration
+    }
+  },
+  goToInPoint: () => {
+    const { videoElement, inPoint } = get()
+    if (videoElement && inPoint !== null) {
+      videoElement.currentTime = inPoint
+    }
+  },
+  goToOutPoint: () => {
+    const { videoElement, outPoint } = get()
+    if (videoElement && outPoint !== null) {
+      videoElement.currentTime = outPoint
+    }
+  },
+  toggleMute: () => {
+    const { videoElement, isMuted } = get()
+    if (videoElement) {
+      videoElement.muted = !isMuted
+    }
+    set({ isMuted: !isMuted })
   },
   reset: () => set({
     isPlaying: false,

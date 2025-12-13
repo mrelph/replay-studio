@@ -1,5 +1,6 @@
 interface ShortcutsHelpProps {
   onClose: () => void
+  onOpenEditor?: () => void
 }
 
 interface ShortcutGroup {
@@ -13,14 +14,14 @@ const shortcutGroups: ShortcutGroup[] = [
     shortcuts: [
       { key: 'V', description: 'Select tool' },
       { key: 'P', description: 'Pen (freehand draw)' },
-      { key: 'L', description: 'Line tool' },
+      { key: 'Shift+L', description: 'Line tool' },
       { key: 'A', description: 'Arrow tool' },
       { key: 'R', description: 'Rectangle tool' },
       { key: 'C', description: 'Circle/Ellipse tool' },
       { key: 'T', description: 'Text tool' },
       { key: 'S', description: 'Spotlight tool' },
-      { key: 'M', description: 'Magnifier tool' },
-      { key: 'K', description: 'Player tracker' },
+      { key: 'Shift+M', description: 'Magnifier tool' },
+      { key: 'Shift+K', description: 'Player tracker' },
     ],
   },
   {
@@ -29,9 +30,9 @@ const shortcutGroups: ShortcutGroup[] = [
       { key: 'Space', description: 'Play / Pause' },
       { key: '←', description: 'Previous frame' },
       { key: '→', description: 'Next frame' },
-      { key: 'J', description: 'Step backward' },
+      { key: 'J', description: 'Skip backward 10s' },
       { key: 'K', description: 'Pause' },
-      { key: 'L', description: 'Step forward' },
+      { key: 'L', description: 'Skip forward 10s' },
       { key: 'Home', description: 'Go to start' },
       { key: 'End', description: 'Go to end' },
     ],

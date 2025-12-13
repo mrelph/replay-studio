@@ -2,14 +2,41 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 
-// Try to get ffmpeg path from ffmpeg-static
-let ffmpegPath: string
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  ffmpegPath = require('ffmpeg-static')
-} catch {
+// Get ffmpeg path - handles both dev and production (asar unpacked)
+function getFFmpegPath(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    let ffmpegPath = require('ffmpeg-static')
+
+    // In production, ffmpeg-static is unpacked from asar
+    // The path needs to be adjusted from app.asar to app.asar.unpacked
+    if (ffmpegPath && ffmpegPath.includes('app.asar')) {
+      ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked')
+    }
+
+    // Verify the binary exists
+    if (ffmpegPath && fs.existsSync(ffmpegPath)) {
+      console.log('Using ffmpeg-static at:', ffmpegPath)
+      return ffmpegPath
+    }
+
+    console.warn('ffmpeg-static binary not found at:', ffmpegPath)
+  } catch (e) {
+    console.error('Failed to load ffmpeg-static:', e)
+  }
+
   // Fallback to system ffmpeg
-  ffmpegPath = 'ffmpeg'
+  console.log('Falling back to system ffmpeg')
+  return 'ffmpeg'
+}
+
+// Lazy load ffmpeg path
+let _ffmpegPath: string | null = null
+function getFfmpeg(): string {
+  if (!_ffmpegPath) {
+    _ffmpegPath = getFFmpegPath()
+  }
+  return _ffmpegPath
 }
 
 export interface ExportOptions {
@@ -104,7 +131,7 @@ export function exportVideo(
       : 0
 
     // Spawn FFmpeg process
-    const ffmpeg = spawn(ffmpegPath, args)
+    const ffmpeg = spawn(getFfmpeg(), args)
 
     let stderr = ''
 
@@ -166,7 +193,7 @@ export function exportVideo(
 // Get FFmpeg version to verify it's working
 export async function getFFmpegVersion(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const ffmpeg = spawn(ffmpegPath, ['-version'])
+    const ffmpeg = spawn(getFfmpeg(), ['-version'])
     let stdout = ''
 
     ffmpeg.stdout.on('data', (data: Buffer) => {
