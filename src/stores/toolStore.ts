@@ -11,6 +11,7 @@ export type ToolType =
   | 'spotlight'
   | 'magnifier'
   | 'tracker'
+  | 'laser'
 
 interface ToolState {
   currentTool: ToolType

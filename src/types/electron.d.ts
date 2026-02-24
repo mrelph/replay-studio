@@ -26,6 +26,12 @@ export interface FileResult {
   error?: string
 }
 
+export interface LaserPosition {
+  x: number
+  y: number
+  visible: boolean
+}
+
 export interface ElectronAPI {
   // File dialogs
   openFile: () => Promise<string | null>
@@ -41,6 +47,20 @@ export interface ElectronAPI {
   loadProject: () => Promise<string | null>
   writeFile: (filePath: string, content: string) => Promise<ExportResult>
   readFile: (filePath: string) => Promise<FileResult>
+
+  // Audience view
+  openAudienceView: () => Promise<void>
+  closeAudienceView: () => Promise<void>
+  sendFrameToAudience: (frameData: string) => void
+  sendLaserPosition: (pos: LaserPosition) => void
+  onAudienceFrame: (callback: (frameData: string) => void) => void
+  onAudienceLaser: (callback: (pos: LaserPosition) => void) => void
+  onAudienceClosed: (callback: () => void) => void
+  onAudienceReady: (callback: () => void) => void
+  removeAudienceFrameListener: () => void
+  removeAudienceLaserListener: () => void
+  removeAudienceClosedListener: () => void
+  removeAudienceReadyListener: () => void
 
   // Event listeners
   onFileOpened: (callback: (filePath: string) => void) => void

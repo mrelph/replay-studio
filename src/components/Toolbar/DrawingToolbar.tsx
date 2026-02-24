@@ -1,5 +1,6 @@
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useAudienceStore } from '@/stores/audienceStore'
 
 interface ToolButtonProps {
   tool: ToolType
@@ -51,8 +52,9 @@ const COLOR_NAMES: Record<string, string> = {
 }
 
 export default function DrawingToolbar() {
-  const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth } = useToolStore()
+  const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth, currentTool, setCurrentTool } = useToolStore()
   const { undo, redo, clearAnnotations, undoStack, redoStack } = useDrawingStore()
+  const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
 
   return (
     <div className="w-14 bg-gray-800/95 border-r border-gray-700/50 flex flex-col items-center py-3 backdrop-blur-sm">
@@ -194,6 +196,31 @@ export default function DrawingToolbar() {
             </svg>
           }
         />
+      </div>
+
+      <Divider />
+
+      {/* Presentation tools */}
+      <SectionLabel>Present</SectionLabel>
+      <div className="flex flex-col gap-0.5">
+        <button
+          onClick={() => setCurrentTool('laser')}
+          className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-150 ${
+            currentTool === 'laser'
+              ? 'bg-red-600 text-white shadow-lg shadow-red-600/30 scale-105'
+              : isAudienceOpen
+              ? 'hover:bg-gray-700/80 text-gray-400 hover:text-white'
+              : 'text-gray-600 cursor-not-allowed opacity-40'
+          }`}
+          disabled={!isAudienceOpen}
+          title={`Laser Pointer (Shift+P)${!isAudienceOpen ? ' - Open Audience View first' : ''}`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="4" fill="currentColor"/>
+            <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.5"/>
+            <circle cx="12" cy="12" r="11" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.25"/>
+          </svg>
+        </button>
       </div>
 
       <Divider />

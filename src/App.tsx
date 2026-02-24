@@ -8,9 +8,11 @@ import AnnotationTimeline from './components/Timeline/AnnotationTimeline'
 import ExportDialog from './components/Export/ExportDialog'
 import LayerPanel from './components/LayerPanel/LayerPanel'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { useAudienceStream } from './hooks/useAudienceStream'
 import { useAppStore } from './stores/appStore'
 import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
+import { useAudienceStore } from './stores/audienceStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
 import fabricModule from 'fabric'
 
@@ -29,10 +31,14 @@ function App() {
   const { recentFiles, addRecentFile, removeRecentFile } = useAppStore()
   const { reset: resetVideo, inPoint, outPoint, setInPoint, setOutPoint } = useVideoStore()
   const { annotations, canvas, addAnnotation, clearAnnotations } = useDrawingStore()
+  const { isAudienceOpen, openAudienceView, closeAudienceView, setAudienceOpen } = useAudienceStore()
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
 
   // Enable global keyboard shortcuts
   useKeyboardShortcuts()
+
+  // Stream composited frames to audience window when open
+  useAudienceStream({ videoElement, fabricCanvas: canvas })
 
   const loadVideo = useCallback((filePath: string) => {
     // Use custom protocol to serve local video files
@@ -214,12 +220,22 @@ function App() {
         handleLoadProjectRef.current()
       })
 
+      window.electronAPI.onAudienceReady(() => {
+        useAudienceStore.getState().setAudienceOpen(true)
+      })
+
+      window.electronAPI.onAudienceClosed(() => {
+        useAudienceStore.getState().setAudienceOpen(false)
+      })
+
       return () => {
         window.electronAPI.removeFileOpenedListener()
         window.electronAPI.removeExportClipListener()
         window.electronAPI.removeShowShortcutsListener()
         window.electronAPI.removeSaveProjectListener()
         window.electronAPI.removeLoadProjectListener()
+        window.electronAPI.removeAudienceReadyListener()
+        window.electronAPI.removeAudienceClosedListener()
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -281,12 +297,25 @@ function App() {
           )}
           <div className="w-px h-6 bg-gray-600 mx-1" />
           {videoSrc && (
-            <button
-              onClick={() => setShowExport(true)}
-              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded transition-colors"
-            >
-              Export
-            </button>
+            <>
+              <button
+                onClick={() => isAudienceOpen ? closeAudienceView() : openAudienceView()}
+                className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                  isAudienceOpen
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
+                title="Toggle Audience View (Ctrl+Shift+A)"
+              >
+                {isAudienceOpen ? 'Close Audience' : 'Audience View'}
+              </button>
+              <button
+                onClick={() => setShowExport(true)}
+                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded transition-colors"
+              >
+                Export
+              </button>
+            </>
           )}
           <button
             onClick={() => setShowShortcuts(true)}

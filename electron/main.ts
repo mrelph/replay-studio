@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, screen } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -15,12 +15,68 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       stream: true,
-      bypassCSP: true
+      bypassCSP: true,
+      corsEnabled: true
     }
   }
 ])
 
 let mainWindow: BrowserWindow | null = null
+let audienceWindow: BrowserWindow | null = null
+
+function createAudienceWindow() {
+  if (audienceWindow) {
+    audienceWindow.focus()
+    return
+  }
+
+  const preloadPath = path.join(__dirname, 'preload.cjs')
+  const displays = screen.getAllDisplays()
+  const primaryDisplay = screen.getPrimaryDisplay()
+
+  // Use secondary display if available, otherwise primary
+  const targetDisplay = displays.length > 1
+    ? displays.find(d => d.id !== primaryDisplay.id) || primaryDisplay
+    : primaryDisplay
+
+  const { x, y, width, height } = targetDisplay.bounds
+
+  audienceWindow = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    fullscreen: true,
+    frame: false,
+    alwaysOnTop: true,
+    autoHideMenuBar: true,
+    backgroundColor: '#000000',
+    webPreferences: {
+      preload: preloadPath,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+    },
+  })
+
+  // Load the same app with ?audience=true query parameter
+  if (process.env.VITE_DEV_SERVER_URL) {
+    audienceWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?audience=true`)
+  } else {
+    audienceWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
+      query: { audience: 'true' }
+    })
+  }
+
+  audienceWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.webContents.send('audience-ready')
+  })
+
+  audienceWindow.on('closed', () => {
+    audienceWindow = null
+    mainWindow?.webContents.send('audience-closed')
+  })
+}
 
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.cjs')
@@ -112,6 +168,18 @@ function createWindow() {
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
+        { type: 'separator' },
+        {
+          label: 'Audience View',
+          accelerator: 'CmdOrCtrl+Shift+A',
+          click: () => {
+            if (audienceWindow) {
+              audienceWindow.close()
+            } else {
+              createAudienceWindow()
+            }
+          },
+        },
       ],
     },
     {
@@ -252,6 +320,29 @@ ipcMain.handle('ffmpeg:export', async (event, options: ExportOptions) => {
     return { success: true }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Export failed' }
+  }
+})
+
+// Audience view IPC handlers
+ipcMain.handle('audience:open', () => {
+  createAudienceWindow()
+})
+
+ipcMain.handle('audience:close', () => {
+  if (audienceWindow) {
+    audienceWindow.close()
+  }
+})
+
+ipcMain.on('audience:frame', (_, frameData: string) => {
+  if (audienceWindow && !audienceWindow.isDestroyed()) {
+    audienceWindow.webContents.send('audience:frame', frameData)
+  }
+})
+
+ipcMain.on('audience:laser', (_, pos: { x: number; y: number; visible: boolean }) => {
+  if (audienceWindow && !audienceWindow.isDestroyed()) {
+    audienceWindow.webContents.send('audience:laser', pos)
   }
 })
 

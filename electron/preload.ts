@@ -98,6 +98,52 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // Audience view
+  openAudienceView: async () => {
+    try {
+      return await ipcRenderer.invoke('audience:open')
+    } catch (err) {
+      console.error('openAudienceView error:', err)
+    }
+  },
+  closeAudienceView: async () => {
+    try {
+      return await ipcRenderer.invoke('audience:close')
+    } catch (err) {
+      console.error('closeAudienceView error:', err)
+    }
+  },
+  sendFrameToAudience: (frameData: string) => {
+    ipcRenderer.send('audience:frame', frameData)
+  },
+  sendLaserPosition: (pos: { x: number; y: number; visible: boolean }) => {
+    ipcRenderer.send('audience:laser', pos)
+  },
+  onAudienceFrame: (callback: (frameData: string) => void) => {
+    ipcRenderer.on('audience:frame', (_, frameData) => callback(frameData))
+  },
+  onAudienceLaser: (callback: (pos: { x: number; y: number; visible: boolean }) => void) => {
+    ipcRenderer.on('audience:laser', (_, pos) => callback(pos))
+  },
+  onAudienceClosed: (callback: () => void) => {
+    ipcRenderer.on('audience-closed', () => callback())
+  },
+  onAudienceReady: (callback: () => void) => {
+    ipcRenderer.on('audience-ready', () => callback())
+  },
+  removeAudienceFrameListener: () => {
+    ipcRenderer.removeAllListeners('audience:frame')
+  },
+  removeAudienceLaserListener: () => {
+    ipcRenderer.removeAllListeners('audience:laser')
+  },
+  removeAudienceClosedListener: () => {
+    ipcRenderer.removeAllListeners('audience-closed')
+  },
+  removeAudienceReadyListener: () => {
+    ipcRenderer.removeAllListeners('audience-ready')
+  },
+
   // Event listeners
   onFileOpened: (callback: (filePath: string) => void) => {
     ipcRenderer.on('file-opened', (_, filePath) => {

@@ -111,6 +111,10 @@ export function useKeyboardShortcuts() {
             e.preventDefault()
             setCurrentTool('tracker')
             return
+          case 'p':
+            e.preventDefault()
+            setCurrentTool('laser')
+            return
         }
       }
 

@@ -3,6 +3,7 @@ import fabricModule from 'fabric'
 import { useToolStore } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
+import { useAudienceStore } from '@/stores/audienceStore'
 import { SpotlightTool } from './tools/SpotlightTool'
 import { AnimatedArrow } from './tools/AnimatedArrow'
 import { PlayerTracker } from './tools/PlayerTracker'
@@ -20,7 +21,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const fabricRef = useRef<fabric.Canvas | null>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0, offsetX: 0, offsetY: 0 })
 
   // Tool instances
   const spotlightToolRef = useRef<SpotlightTool | null>(null)
@@ -31,6 +32,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const magnifiersRef = useRef<Map<string, { circle: any, centerX: number, centerY: number, radius: number }>>(new Map())
 
   const { currentTool, strokeColor, strokeWidth, setIsDrawing } = useToolStore()
+  const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
+  const laserColor = useAudienceStore((s) => s.laserColor)
   const { setCanvas, addAnnotation, annotations } = useDrawingStore()
   const { currentTime, duration } = useVideoStore()
 
@@ -39,23 +42,19 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const startPointRef = useRef({ x: 0, y: 0 })
   const currentShapeRef = useRef<fabric.Line | fabric.Circle | fabric.Rect | fabric.Ellipse | fabric.Group | null>(null)
 
-  // Calculate video display dimensions
+  // Calculate video display dimensions based on the actual video element position
   const calcDimensions = useCallback(() => {
-    if (!videoElement || !containerRef.current) return { width: 0, height: 0 }
+    if (!videoElement || !containerRef.current) return { width: 0, height: 0, offsetX: 0, offsetY: 0 }
 
+    const videoRect = videoElement.getBoundingClientRect()
     const containerRect = containerRef.current.getBoundingClientRect()
-    const videoAspect = videoElement.videoWidth / videoElement.videoHeight
-    const containerAspect = containerRect.width / containerRect.height
 
-    let width, height
-    if (videoAspect > containerAspect) {
-      width = containerRect.width
-      height = width / videoAspect
-    } else {
-      height = containerRect.height
-      width = height * videoAspect
+    return {
+      width: videoRect.width,
+      height: videoRect.height,
+      offsetX: videoRect.left - containerRect.left,
+      offsetY: videoRect.top - containerRect.top,
     }
-    return { width, height }
   }, [videoElement])
 
   // Initialize Fabric canvas once when video element is ready
@@ -313,7 +312,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     if (!canvas) return
 
     const handleMouseDown = (e: any) => {
-      if (currentTool === 'pen' || currentTool === 'select') return
+      if (currentTool === 'pen' || currentTool === 'select' || currentTool === 'laser') return
 
       const pointer = canvas.getPointer(e.e)
       isDrawingRef.current = true
@@ -685,19 +684,94 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
   }, [createAnnotation])
 
+  // Laser pointer: overlay dot + IPC broadcasting
+  const laserDotRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const canvas = fabricRef.current
+    if (!canvas || currentTool !== 'laser') {
+      // Hide laser and notify audience when not in laser mode
+      if (laserDotRef.current) laserDotRef.current.style.display = 'none'
+      if (isAudienceOpen && window.electronAPI) {
+        window.electronAPI.sendLaserPosition({ x: 0, y: 0, visible: false })
+      }
+      return
+    }
+
+    // Disable drawing/selection while laser is active
+    canvas.isDrawingMode = false
+    canvas.selection = false
+
+    const handleLaserMove = (e: any) => {
+      const pointer = canvas.getPointer(e.e)
+      const dot = laserDotRef.current
+      if (dot) {
+        dot.style.display = 'block'
+        dot.style.left = `${pointer.x - 10}px`
+        dot.style.top = `${pointer.y - 10}px`
+      }
+      if (isAudienceOpen && window.electronAPI && dimensions.width > 0) {
+        window.electronAPI.sendLaserPosition({
+          x: pointer.x / dimensions.width,
+          y: pointer.y / dimensions.height,
+          visible: true,
+        })
+      }
+    }
+
+    const handleLaserOut = () => {
+      if (laserDotRef.current) laserDotRef.current.style.display = 'none'
+      if (isAudienceOpen && window.electronAPI) {
+        window.electronAPI.sendLaserPosition({ x: 0, y: 0, visible: false })
+      }
+    }
+
+    canvas.on('mouse:move', handleLaserMove)
+    canvas.on('mouse:out', handleLaserOut)
+
+    return () => {
+      canvas.off('mouse:move', handleLaserMove)
+      canvas.off('mouse:out', handleLaserOut)
+    }
+  }, [currentTool, isAudienceOpen, dimensions, laserColor])
+
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
+      className="absolute inset-0 pointer-events-none z-10"
     >
-      <canvas
-        ref={canvasRef}
-        className="pointer-events-auto"
+      <div
+        className="relative"
         style={{
-          width: dimensions.width,
-          height: dimensions.height,
+          position: 'absolute',
+          left: dimensions.offsetX,
+          top: dimensions.offsetY,
         }}
-      />
+      >
+        <canvas
+          ref={canvasRef}
+          className="pointer-events-auto"
+          style={{
+            width: dimensions.width,
+            height: dimensions.height,
+          }}
+        />
+        {/* Laser pointer dot overlay */}
+        <div
+          ref={laserDotRef}
+          style={{
+            display: 'none',
+            position: 'absolute',
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            backgroundColor: laserColor,
+            boxShadow: `0 0 12px 4px ${laserColor}, 0 0 24px 8px ${laserColor}40`,
+            pointerEvents: 'none',
+            zIndex: 50,
+          }}
+        />
+      </div>
     </div>
   )
 }
