@@ -39,52 +39,42 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const startPointRef = useRef({ x: 0, y: 0 })
   const currentShapeRef = useRef<fabric.Line | fabric.Circle | fabric.Rect | fabric.Ellipse | fabric.Group | null>(null)
 
-  // Update canvas dimensions to match video
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (!videoElement || !containerRef.current) return
+  // Calculate video display dimensions
+  const calcDimensions = useCallback(() => {
+    if (!videoElement || !containerRef.current) return { width: 0, height: 0 }
 
-      const containerRect = containerRef.current.getBoundingClientRect()
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const videoAspect = videoElement.videoWidth / videoElement.videoHeight
+    const containerAspect = containerRect.width / containerRect.height
 
-      // Calculate the actual video display size (respecting aspect ratio)
-      const videoAspect = videoElement.videoWidth / videoElement.videoHeight
-      const containerAspect = containerRect.width / containerRect.height
-
-      let width, height
-      if (videoAspect > containerAspect) {
-        width = containerRect.width
-        height = width / videoAspect
-      } else {
-        height = containerRect.height
-        width = height * videoAspect
-      }
-
-      setDimensions({ width, height })
+    let width, height
+    if (videoAspect > containerAspect) {
+      width = containerRect.width
+      height = width / videoAspect
+    } else {
+      height = containerRect.height
+      width = height * videoAspect
     }
-
-    updateDimensions()
-    videoElement.addEventListener('loadedmetadata', updateDimensions)
-    window.addEventListener('resize', updateDimensions)
-
-    return () => {
-      videoElement.removeEventListener('loadedmetadata', updateDimensions)
-      window.removeEventListener('resize', updateDimensions)
-    }
+    return { width, height }
   }, [videoElement])
 
-  // Initialize Fabric canvas
+  // Initialize Fabric canvas once when video element is ready
   useEffect(() => {
-    if (!canvasRef.current || dimensions.width === 0) return
+    if (!canvasRef.current || !videoElement) return
+
+    const dims = calcDimensions()
+    if (dims.width === 0) return
 
     const canvas = new fabric.Canvas(canvasRef.current, {
-      width: dimensions.width,
-      height: dimensions.height,
+      width: dims.width,
+      height: dims.height,
       selection: currentTool === 'select',
       isDrawingMode: currentTool === 'pen',
     })
 
     fabricRef.current = canvas
     setCanvas(canvas)
+    setDimensions(dims)
 
     // Initialize tool instances
     spotlightToolRef.current = new SpotlightTool(canvas)
@@ -99,7 +89,40 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       animatedArrowRef.current = null
       playerTrackerRef.current = null
     }
-  }, [dimensions, setCanvas])
+  // Only re-init when the video element itself changes, not on resize
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoElement, setCanvas])
+
+  // Update canvas dimensions on resize/metadata load (without recreating)
+  useEffect(() => {
+    if (!videoElement) return
+
+    let resizeTimer: ReturnType<typeof setTimeout>
+
+    const updateDimensions = () => {
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        const canvas = fabricRef.current
+        if (!canvas) return
+
+        const dims = calcDimensions()
+        if (dims.width === 0) return
+
+        canvas.setDimensions({ width: dims.width, height: dims.height })
+        setDimensions(dims)
+        canvas.renderAll()
+      }, 50) // Debounce resize
+    }
+
+    videoElement.addEventListener('loadedmetadata', updateDimensions)
+    window.addEventListener('resize', updateDimensions)
+
+    return () => {
+      clearTimeout(resizeTimer)
+      videoElement.removeEventListener('loadedmetadata', updateDimensions)
+      window.removeEventListener('resize', updateDimensions)
+    }
+  }, [videoElement, calcDimensions])
 
   // Update canvas settings when tool changes
   useEffect(() => {
@@ -248,6 +271,22 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
     canvas.renderAll()
   }, [currentTime, annotations])
+
+  // Clean up magnifier refs when annotations are removed
+  useEffect(() => {
+    const annotationIds = new Set(annotations.map(a => a.id))
+    magnifiersRef.current.forEach((_, magId) => {
+      // magnifier IDs match annotation IDs via the createAnnotation call
+      // Find if any annotation still references this magnifier object
+      const magEntry = magnifiersRef.current.get(magId)
+      if (magEntry) {
+        const stillExists = annotations.some(a => a.object === magEntry.circle)
+        if (!stillExists) {
+          magnifiersRef.current.delete(magId)
+        }
+      }
+    })
+  }, [annotations])
 
   // Create annotation with proper time range
   const createAnnotation = useCallback((object: any, toolType: string) => {
@@ -424,12 +463,13 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           setIsDrawing(false)
           return
 
-        case 'tracker':
+        case 'tracker': {
           // Broadcast-style player tracker with glowing ring
+          // All parts grouped so they move/delete/serialize as one annotation
           const trackerRadius = 30
-          const trackerCircle = new fabric.Circle({
-            left: pointer.x - trackerRadius,
-            top: pointer.y - trackerRadius,
+          const outerRing = new fabric.Circle({
+            left: -trackerRadius,
+            top: -trackerRadius,
             radius: trackerRadius,
             fill: 'transparent',
             stroke: strokeColor,
@@ -440,14 +480,11 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
               offsetX: 0,
               offsetY: 0,
             }),
-            selectable: true,
-            evented: true,
           })
 
-          // Add inner ring for depth
           const innerRing = new fabric.Circle({
-            left: pointer.x - trackerRadius * 0.7,
-            top: pointer.y - trackerRadius * 0.7,
+            left: -trackerRadius * 0.7,
+            top: -trackerRadius * 0.7,
             radius: trackerRadius * 0.7,
             fill: 'transparent',
             stroke: strokeColor,
@@ -455,11 +492,10 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             opacity: 0.5,
           })
 
-          // Add crosshairs with glow
           const crossSize = trackerRadius * 0.5
           const crossH = new fabric.Line([
-            pointer.x - crossSize, pointer.y,
-            pointer.x + crossSize, pointer.y,
+            -crossSize, 0,
+            crossSize, 0,
           ], {
             stroke: strokeColor,
             strokeWidth: 3,
@@ -471,8 +507,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             }),
           })
           const crossV = new fabric.Line([
-            pointer.x, pointer.y - crossSize,
-            pointer.x, pointer.y + crossSize,
+            0, -crossSize,
+            0, crossSize,
           ], {
             stroke: strokeColor,
             strokeWidth: 3,
@@ -484,16 +520,20 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             }),
           })
 
-          canvas.add(trackerCircle)
-          canvas.add(innerRing)
-          canvas.add(crossH)
-          canvas.add(crossV)
+          const trackerGroup = new fabric.Group([outerRing, innerRing, crossH, crossV], {
+            left: pointer.x - trackerRadius,
+            top: pointer.y - trackerRadius,
+            selectable: true,
+            evented: true,
+          })
 
-          createAnnotation(trackerCircle, 'tracker')
+          canvas.add(trackerGroup)
+          createAnnotation(trackerGroup, 'tracker')
 
           isDrawingRef.current = false
           setIsDrawing(false)
           return
+        }
 
         case 'text':
           const text = new fabric.IText('Type here', {

@@ -35,7 +35,6 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, // Required for preload scripts in newer Electron
-      webSecurity: false, // Allow loading local video files
     },
     backgroundColor: '#111827',
     titleBarStyle: 'default',

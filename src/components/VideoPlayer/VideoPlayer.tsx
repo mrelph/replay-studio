@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useVideoStore } from '@/stores/videoStore'
 import VideoControls from './VideoControls'
 
@@ -14,7 +14,6 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
 
   const {
     isPlaying,
-    duration,
     playbackRate,
     setIsPlaying,
     setCurrentTime,
@@ -85,66 +84,6 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       videoRef.current.playbackRate = playbackRate
     }
   }, [playbackRate])
-
-  // Keyboard shortcuts
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    const video = videoRef.current
-    if (!video) return
-
-    // Don't handle if typing in an input
-    if ((e.target as HTMLElement).tagName === 'INPUT') return
-
-    switch (e.key) {
-      case ' ':
-        e.preventDefault()
-        if (isPlaying) {
-          video.pause()
-        } else {
-          video.play()
-        }
-        break
-      case 'ArrowLeft':
-        e.preventDefault()
-        // Step back one frame (assuming 30fps)
-        video.currentTime = Math.max(0, video.currentTime - 1/30)
-        break
-      case 'ArrowRight':
-        e.preventDefault()
-        // Step forward one frame
-        video.currentTime = Math.min(duration, video.currentTime + 1/30)
-        break
-      case 'j':
-        // Reverse playback (step back)
-        e.preventDefault()
-        video.currentTime = Math.max(0, video.currentTime - 1/10)
-        break
-      case 'k':
-        // Pause
-        e.preventDefault()
-        video.pause()
-        break
-      case 'l':
-        // Forward (step forward or play)
-        e.preventDefault()
-        if (!isPlaying) {
-          video.currentTime = Math.min(duration, video.currentTime + 1/10)
-        }
-        break
-      case 'Home':
-        e.preventDefault()
-        video.currentTime = 0
-        break
-      case 'End':
-        e.preventDefault()
-        video.currentTime = duration
-        break
-    }
-  }, [isPlaying, duration])
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleKeyDown])
 
   return (
     <div ref={containerRef} className="flex flex-col h-full w-full overflow-hidden">

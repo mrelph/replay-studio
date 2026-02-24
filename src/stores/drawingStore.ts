@@ -23,6 +23,24 @@ export interface Layer {
   color: string
 }
 
+// Serializable annotation metadata (no fabric object references)
+interface AnnotationSnapshot {
+  id: string
+  startTime: number
+  endTime: number
+  layer: number
+  toolType: string
+  fadeIn?: number
+  fadeOut?: number
+  name?: string
+}
+
+// A full undo/redo snapshot: annotation metadata + fabric canvas JSON
+interface UndoSnapshot {
+  annotations: AnnotationSnapshot[]
+  canvasJSON: string
+}
+
 const LAYER_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
 
 interface DrawingState {
@@ -31,8 +49,8 @@ interface DrawingState {
   layers: Layer[]
   activeLayerId: number
   selectedAnnotationId: string | null
-  undoStack: string[]
-  redoStack: string[]
+  undoStack: UndoSnapshot[]
+  redoStack: UndoSnapshot[]
 
   // Canvas actions
   setCanvas: (canvas: fabric.Canvas | null) => void
@@ -226,34 +244,103 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
   },
 
   saveState: () => {
-    const { annotations } = get()
+    const { annotations, canvas } = get()
+    if (!canvas) return
+
+    const snapshot: UndoSnapshot = {
+      annotations: annotations.map(a => ({
+        id: a.id,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        layer: a.layer,
+        toolType: a.toolType,
+        fadeIn: a.fadeIn,
+        fadeOut: a.fadeOut,
+        name: a.name,
+      })),
+      canvasJSON: JSON.stringify(canvas.toJSON()),
+    }
     set((state) => ({
-      undoStack: [...state.undoStack, JSON.stringify(annotations)].slice(-50),
+      undoStack: [...state.undoStack, snapshot].slice(-50),
       redoStack: [],
     }))
   },
 
   undo: () => {
-    const { undoStack, annotations } = get()
-    if (undoStack.length === 0) return
+    const { undoStack, annotations, canvas } = get()
+    if (undoStack.length === 0 || !canvas) return
 
-    const previousState = undoStack[undoStack.length - 1]
-    set({
-      undoStack: undoStack.slice(0, -1),
-      redoStack: [...get().redoStack, JSON.stringify(annotations)],
-      annotations: JSON.parse(previousState),
+    // Save current state to redo stack
+    const currentSnapshot: UndoSnapshot = {
+      annotations: annotations.map(a => ({
+        id: a.id,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        layer: a.layer,
+        toolType: a.toolType,
+        fadeIn: a.fadeIn,
+        fadeOut: a.fadeOut,
+        name: a.name,
+      })),
+      canvasJSON: JSON.stringify(canvas.toJSON()),
+    }
+
+    const previousSnapshot = undoStack[undoStack.length - 1]
+
+    // Restore canvas objects from the snapshot
+    canvas.loadFromJSON(JSON.parse(previousSnapshot.canvasJSON), () => {
+      // Rebuild annotations by pairing metadata with restored canvas objects
+      const canvasObjects = canvas.getObjects()
+      const restoredAnnotations: Annotation[] = previousSnapshot.annotations.map((meta, i) => ({
+        ...meta,
+        object: canvasObjects[i],
+      })).filter(a => a.object) // Guard against mismatch
+
+      set({
+        undoStack: undoStack.slice(0, -1),
+        redoStack: [...get().redoStack, currentSnapshot],
+        annotations: restoredAnnotations,
+        selectedAnnotationId: null,
+      })
+      canvas.renderAll()
     })
   },
 
   redo: () => {
-    const { redoStack, annotations } = get()
-    if (redoStack.length === 0) return
+    const { redoStack, annotations, canvas } = get()
+    if (redoStack.length === 0 || !canvas) return
 
-    const nextState = redoStack[redoStack.length - 1]
-    set({
-      redoStack: redoStack.slice(0, -1),
-      undoStack: [...get().undoStack, JSON.stringify(annotations)],
-      annotations: JSON.parse(nextState),
+    // Save current state to undo stack
+    const currentSnapshot: UndoSnapshot = {
+      annotations: annotations.map(a => ({
+        id: a.id,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        layer: a.layer,
+        toolType: a.toolType,
+        fadeIn: a.fadeIn,
+        fadeOut: a.fadeOut,
+        name: a.name,
+      })),
+      canvasJSON: JSON.stringify(canvas.toJSON()),
+    }
+
+    const nextSnapshot = redoStack[redoStack.length - 1]
+
+    canvas.loadFromJSON(JSON.parse(nextSnapshot.canvasJSON), () => {
+      const canvasObjects = canvas.getObjects()
+      const restoredAnnotations: Annotation[] = nextSnapshot.annotations.map((meta, i) => ({
+        ...meta,
+        object: canvasObjects[i],
+      })).filter(a => a.object)
+
+      set({
+        redoStack: redoStack.slice(0, -1),
+        undoStack: [...get().undoStack, currentSnapshot],
+        annotations: restoredAnnotations,
+        selectedAnnotationId: null,
+      })
+      canvas.renderAll()
     })
   },
 }))

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import VideoPlayer from './components/VideoPlayer/VideoPlayer'
 import DrawingToolbar from './components/Toolbar/DrawingToolbar'
 import DrawingCanvas from './components/Canvas/DrawingCanvas'
@@ -183,11 +183,19 @@ function App() {
     }
   }, [loadVideo, resetVideo])
 
-  // Listen for menu events from Electron - run only once on mount
+  // Refs to hold the latest callback versions so IPC listeners are never stale
+  const loadVideoRef = useRef(loadVideo)
+  const handleSaveProjectRef = useRef(handleSaveProject)
+  const handleLoadProjectRef = useRef(handleLoadProject)
+  useEffect(() => { loadVideoRef.current = loadVideo }, [loadVideo])
+  useEffect(() => { handleSaveProjectRef.current = handleSaveProject }, [handleSaveProject])
+  useEffect(() => { handleLoadProjectRef.current = handleLoadProject }, [handleLoadProject])
+
+  // Listen for menu events from Electron - register once, delegate through refs
   useEffect(() => {
     if (window.electronAPI) {
       window.electronAPI.onFileOpened((filePath) => {
-        loadVideo(filePath)
+        loadVideoRef.current(filePath)
       })
 
       window.electronAPI.onExportClip(() => {
@@ -199,11 +207,11 @@ function App() {
       })
 
       window.electronAPI.onSaveProject(() => {
-        handleSaveProject()
+        handleSaveProjectRef.current()
       })
 
       window.electronAPI.onLoadProject(() => {
-        handleLoadProject()
+        handleLoadProjectRef.current()
       })
 
       return () => {

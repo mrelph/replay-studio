@@ -1,7 +1,12 @@
 import { useEffect, useCallback } from 'react'
-import { useToolStore, type ToolType } from '@/stores/toolStore'
+import { useToolStore, PRESET_COLORS, type ToolType } from '@/stores/toolStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import fabricModule from 'fabric'
+
+// Handle CommonJS/ESM interop
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fabric: any = (fabricModule as any).fabric || fabricModule
 
 const TOOL_SHORTCUTS: Record<string, ToolType> = {
   v: 'select',
@@ -62,8 +67,6 @@ export function useKeyboardShortcuts() {
             const objects = canvas.getObjects()
             if (objects.length > 0) {
               canvas.discardActiveObject()
-              // Use fabric.ActiveSelection
-              const { fabric } = require('fabric')
               const selection = new fabric.ActiveSelection(objects, { canvas })
               canvas.setActiveObject(selection)
               canvas.renderAll()
@@ -215,13 +218,12 @@ export function useKeyboardShortcuts() {
       }
     }
 
-    // Number keys for color presets
+    // Number keys for color presets (uses same PRESET_COLORS as toolbar)
     if (!isCtrlOrCmd && !e.altKey && /^[1-9]$/.test(key)) {
       const colorIndex = parseInt(key) - 1
-      const presetColors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff', '#000000', '#ff8000']
-      if (colorIndex < presetColors.length) {
+      if (colorIndex < PRESET_COLORS.length) {
         e.preventDefault()
-        useToolStore.getState().setStrokeColor(presetColors[colorIndex])
+        useToolStore.getState().setStrokeColor(PRESET_COLORS[colorIndex])
       }
     }
   }, [setCurrentTool, currentTool, togglePlay, stepFrame, skip, seek, duration, setInPoint, setOutPoint, toggleMute, setIsLooping, isLooping, videoElement, undo, redo, canvas])
