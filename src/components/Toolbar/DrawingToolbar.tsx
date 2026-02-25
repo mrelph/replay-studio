@@ -61,7 +61,7 @@ export default function DrawingToolbar() {
   const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
 
   return (
-    <div className="w-14 bg-surface-elevated/95 border-r border-border-subtle flex flex-col items-center py-3 backdrop-blur-sm">
+    <div className="w-14 bg-surface-elevated/95 border-r border-border-subtle flex flex-col items-center py-3 backdrop-blur-sm overflow-y-auto overflow-x-hidden min-h-0 scrollbar-narrow">
       {/* Selection tool */}
       <SectionLabel>Select</SectionLabel>
       <ToolButton

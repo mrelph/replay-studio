@@ -32,3 +32,8 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-scrollbar-thumb-hover);
 }
+
+/* Narrow scrollbar for tight panels */
+.scrollbar-narrow::-webkit-scrollbar {
+  width: 4px;
+}
