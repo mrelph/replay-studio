@@ -1,3 +1,6 @@
+@import './theme/tokens.css';
+@import '@fontsource-variable/inter';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,46 +10,25 @@ body {
   padding: 0;
   overflow: hidden;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar for dark theme */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f2937;
+  background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
-}
-
-/* Video controls styling */
-.video-timeline {
-  -webkit-appearance: none;
-  width: 100%;
-  height: 4px;
-  background: #374151;
-  border-radius: 2px;
-  cursor: pointer;
-}
-
-.video-timeline::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  background: #3b82f6;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.video-timeline::-webkit-slider-thumb:hover {
-  background: #60a5fa;
+  background: var(--color-scrollbar-thumb-hover);
 }

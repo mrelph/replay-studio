@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor } from 'lucide-react'
 import VideoPlayer from './components/VideoPlayer/VideoPlayer'
 import DrawingToolbar from './components/Toolbar/DrawingToolbar'
 import DrawingCanvas from './components/Canvas/DrawingCanvas'
@@ -7,17 +8,37 @@ import ShortcutsEditor from './components/ShortcutsEditor'
 import AnnotationTimeline from './components/Timeline/AnnotationTimeline'
 import ExportDialog from './components/Export/ExportDialog'
 import LayerPanel from './components/LayerPanel/LayerPanel'
+import { Button, IconButton, Kbd } from './components/ui'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAudienceStream } from './hooks/useAudienceStream'
 import { useAppStore } from './stores/appStore'
 import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
 import { useAudienceStore } from './stores/audienceStore'
+import { useThemeStore } from './stores/themeStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
 import fabricModule from 'fabric'
 
 // Handle CommonJS/ESM interop
 const fabric: any = (fabricModule as any).fabric || fabricModule
+
+function ThemeToggle() {
+  const { theme, setTheme } = useThemeStore()
+
+  const cycleTheme = () => {
+    if (theme === 'dark') setTheme('light')
+    else if (theme === 'light') setTheme('system')
+    else setTheme('dark')
+  }
+
+  return (
+    <IconButton onClick={cycleTheme} title={`Theme: ${theme}`}>
+      {theme === 'dark' ? <Moon className="w-4 h-4" /> :
+       theme === 'light' ? <Sun className="w-4 h-4" /> :
+       <Monitor className="w-4 h-4" />}
+    </IconButton>
+  )
+}
 
 function App() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
@@ -259,79 +280,69 @@ function App() {
 
   return (
     <div
-      className="h-screen flex flex-col bg-gray-900"
+      className="h-screen flex flex-col bg-surface-base"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Drag overlay */}
       {dragOver && (
-        <div className="fixed inset-0 bg-blue-600/50 z-50 flex items-center justify-center pointer-events-none">
-          <div className="text-white text-2xl font-bold">Drop video file here</div>
+        <div className="fixed inset-0 bg-accent/20 border-2 border-dashed border-accent z-50 flex items-center justify-center pointer-events-none">
+          <div className="text-text-primary text-2xl font-bold">Drop video file here</div>
         </div>
       )}
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-        <h1 className="text-lg font-semibold text-white">Replay Studio</h1>
+      <header className="flex items-center justify-between px-4 py-2 bg-surface-elevated border-b border-border-subtle shadow-sm">
         <div className="flex items-center gap-2">
+          <Film className="w-4 h-4 text-text-tertiary" />
+          <span className="text-sm text-text-secondary font-medium">Replay Studio</span>
+        </div>
+        <div className="flex items-center gap-1.5">
           {/* Project save/load */}
-          <button
+          <IconButton
             onClick={handleLoadProject}
-            className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
             title="Load Project (Ctrl+Shift+O)"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-            </svg>
-          </button>
+            <FolderOpen className="w-4 h-4" />
+          </IconButton>
           {annotations.length > 0 && (
-            <button
+            <IconButton
               onClick={handleSaveProject}
-              className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
               title="Save Project (Ctrl+S)"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-              </svg>
-            </button>
+              <Save className="w-4 h-4" />
+            </IconButton>
           )}
-          <div className="w-px h-6 bg-gray-600 mx-1" />
+          <div className="w-px h-5 bg-border-subtle mx-0.5" />
           {videoSrc && (
             <>
-              <button
+              <Button
                 onClick={() => isAudienceOpen ? closeAudienceView() : openAudienceView()}
-                className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                  isAudienceOpen
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                }`}
+                variant={isAudienceOpen ? 'danger' : 'secondary'}
+                size="sm"
                 title="Toggle Audience View (Ctrl+Shift+A)"
               >
                 {isAudienceOpen ? 'Close Audience' : 'Audience View'}
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setShowExport(true)}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded transition-colors"
+                size="sm"
+                className="bg-success hover:brightness-90 text-white"
               >
                 Export
-              </button>
+              </Button>
             </>
           )}
-          <button
+          <ThemeToggle />
+          <IconButton
             onClick={() => setShowShortcuts(true)}
-            className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
             title="Keyboard Shortcuts (?)"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </button>
-          <button
-            onClick={handleOpenFile}
-            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
-          >
+            <HelpCircle className="w-4 h-4" />
+          </IconButton>
+          <Button onClick={handleOpenFile} size="sm">
             Open Video
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -356,46 +367,40 @@ function App() {
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center max-w-md">
-                <div className="text-6xl mb-4">🎬</div>
-                <h2 className="text-xl font-medium text-gray-300 mb-2">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-surface-elevated border border-border-subtle flex items-center justify-center">
+                  <Film className="w-8 h-8 text-text-tertiary" />
+                </div>
+                <h2 className="text-xl font-medium text-text-primary mb-2">
                   No video loaded
                 </h2>
-                <p className="text-gray-500 mb-6">
+                <p className="text-text-tertiary mb-6">
                   Drag and drop a video file, or click Open to start
                 </p>
-                <button
-                  onClick={handleOpenFile}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-                >
+                <Button onClick={handleOpenFile} size="lg">
                   Open Video File
-                </button>
+                </Button>
 
                 {/* Recent files */}
                 {recentFiles.length > 0 && (
                   <div className="mt-8">
-                    <h3 className="text-sm font-medium text-gray-400 mb-3">Recent Files</h3>
+                    <h3 className="text-sm font-medium text-text-tertiary mb-3">Recent Files</h3>
                     <div className="space-y-1">
                       {recentFiles.slice(0, 5).map((file) => (
                         <div
                           key={file.path}
-                          className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded cursor-pointer group"
+                          className="flex items-center gap-2 px-3 py-2 bg-surface-elevated hover:bg-surface-sunken border border-border-subtle rounded-lg cursor-pointer group transition-colors"
                           onClick={() => loadVideo(file.path)}
                         >
-                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span className="text-sm text-gray-300 truncate flex-1 text-left">{file.name}</span>
+                          <Film className="w-4 h-4 text-text-disabled flex-shrink-0" />
+                          <span className="text-sm text-text-secondary truncate flex-1 text-left">{file.name}</span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
                               removeRecentFile(file.path)
                             }}
-                            className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-600 rounded text-gray-400 hover:text-white transition-all"
+                            className="p-1 opacity-0 group-hover:opacity-100 hover:bg-error-subtle rounded text-text-tertiary hover:text-error transition-all"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ))}
@@ -403,8 +408,8 @@ function App() {
                   </div>
                 )}
 
-                <p className="text-gray-600 text-sm mt-6">
-                  Press <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-gray-400">?</kbd> for keyboard shortcuts
+                <p className="text-text-disabled text-sm mt-6">
+                  Press <Kbd>?</Kbd> for keyboard shortcuts
                 </p>
               </div>
             </div>
@@ -422,9 +427,6 @@ function App() {
           }}
         />
       )}
-      {/* {showShortcutsEditor && (
-        <ShortcutsEditor onClose={() => setShowShortcutsEditor(false)} />
-      )} */}
       {showExport && videoSrc && (
         <ExportDialog onClose={() => setShowExport(false)} videoSrc={videoSrc} />
       )}

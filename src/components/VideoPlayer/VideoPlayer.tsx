@@ -89,7 +89,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     <div ref={containerRef} className="flex flex-col h-full w-full overflow-hidden">
       <div className="flex-1 min-h-0 relative flex items-center justify-center bg-black overflow-hidden">
         {videoError && (
-          <div className="absolute top-4 left-4 right-4 bg-red-600/90 text-white p-3 rounded z-10">
+          <div className="absolute top-4 left-4 right-4 bg-error/90 text-white p-3 rounded-lg z-10">
             <p className="font-bold">Error loading video</p>
             <p className="text-sm">{videoError}</p>
           </div>

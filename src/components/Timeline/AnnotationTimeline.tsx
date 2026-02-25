@@ -1,6 +1,8 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
+import { Trash2 } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
+import { Button, Select } from '@/components/ui'
 
 interface TimelineMarkerProps {
   annotation: Annotation
@@ -63,23 +65,23 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
   // Get color based on annotation type
   const getColor = () => {
     const id = annotation.id
-    if (id.startsWith('path')) return 'bg-red-500'
-    if (id.startsWith('arrow')) return 'bg-orange-500'
-    if (id.startsWith('line')) return 'bg-yellow-500'
-    if (id.startsWith('rectangle')) return 'bg-green-500'
-    if (id.startsWith('circle')) return 'bg-cyan-500'
-    if (id.startsWith('text')) return 'bg-blue-500'
-    if (id.startsWith('spotlight')) return 'bg-yellow-400'
-    if (id.startsWith('magnifier')) return 'bg-cyan-400'
-    if (id.startsWith('tracker')) return 'bg-purple-500'
-    return 'bg-gray-500'
+    if (id.startsWith('path')) return 'bg-red-500/80'
+    if (id.startsWith('arrow')) return 'bg-orange-500/80'
+    if (id.startsWith('line')) return 'bg-yellow-500/80'
+    if (id.startsWith('rectangle')) return 'bg-green-500/80'
+    if (id.startsWith('circle')) return 'bg-cyan-500/80'
+    if (id.startsWith('text')) return 'bg-blue-500/80'
+    if (id.startsWith('spotlight')) return 'bg-yellow-400/80'
+    if (id.startsWith('magnifier')) return 'bg-cyan-400/80'
+    if (id.startsWith('tracker')) return 'bg-purple-500/80'
+    return 'bg-text-tertiary'
   }
 
   return (
     <div
       ref={markerRef}
-      className={`absolute h-6 rounded cursor-pointer group ${getColor()} ${
-        isSelected ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-900' : 'opacity-80 hover:opacity-100'
+      className={`absolute h-6 rounded-md cursor-pointer group ${getColor()} ${
+        isSelected ? 'ring-2 ring-accent ring-offset-1 ring-offset-surface-sunken' : 'opacity-80 hover:opacity-100'
       }`}
       style={{
         left: `${left}%`,
@@ -148,34 +150,32 @@ export default function AnnotationTimeline() {
   if (duration === 0) return null
 
   return (
-    <div className="bg-gray-800 border-t border-gray-700 px-4 py-2">
+    <div className="bg-surface-elevated border-t border-border-subtle px-4 py-2">
       {/* Timeline header */}
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-gray-400 uppercase tracking-wide">Annotations Timeline</span>
+        <span className="text-xs text-text-tertiary uppercase tracking-wide">Annotations Timeline</span>
         <div className="flex items-center gap-2">
           {selectedAnnotationId && (
-            <button
-              onClick={handleDeleteSelected}
-              className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
-            >
+            <Button onClick={handleDeleteSelected} variant="danger" size="sm">
+              <Trash2 className="w-3 h-3" />
               Delete
-            </button>
+            </Button>
           )}
-          <span className="text-xs text-gray-500">{annotations.length} annotations</span>
+          <span className="text-xs text-text-disabled">{annotations.length} annotations</span>
         </div>
       </div>
 
       {/* Timeline track */}
       <div
         ref={timelineRef}
-        className="relative h-24 bg-gray-900 rounded cursor-pointer overflow-hidden"
+        className="relative h-24 bg-surface-sunken rounded-lg cursor-pointer overflow-hidden"
         onClick={handleTimelineClick}
       >
         {/* Time markers */}
-        <div className="absolute inset-x-0 top-0 h-4 flex border-b border-gray-700">
+        <div className="absolute inset-x-0 top-0 h-4 flex border-b border-border-subtle">
           {Array.from({ length: 11 }).map((_, i) => (
-            <div key={i} className="flex-1 border-r border-gray-700 last:border-r-0">
-              <span className="text-[10px] text-gray-500 pl-1">
+            <div key={i} className="flex-1 border-r border-border-subtle last:border-r-0">
+              <span className="text-[10px] text-text-disabled pl-1">
                 {formatTime((duration * i) / 10)}
               </span>
             </div>
@@ -185,19 +185,19 @@ export default function AnnotationTimeline() {
         {/* In/Out point markers */}
         {inPoint !== null && (
           <div
-            className="absolute top-4 bottom-0 w-0.5 bg-green-500 z-20"
+            className="absolute top-4 bottom-0 w-0.5 bg-success z-20"
             style={{ left: `${(inPoint / duration) * 100}%` }}
           />
         )}
         {outPoint !== null && (
           <div
-            className="absolute top-4 bottom-0 w-0.5 bg-red-500 z-20"
+            className="absolute top-4 bottom-0 w-0.5 bg-error z-20"
             style={{ left: `${(outPoint / duration) * 100}%` }}
           />
         )}
         {inPoint !== null && outPoint !== null && (
           <div
-            className="absolute top-4 bottom-0 bg-blue-500/10 z-10"
+            className="absolute top-4 bottom-0 bg-accent/10 z-10"
             style={{
               left: `${(inPoint / duration) * 100}%`,
               width: `${((outPoint - inPoint) / duration) * 100}%`,
@@ -221,10 +221,10 @@ export default function AnnotationTimeline() {
 
         {/* Playhead */}
         <div
-          className="absolute top-0 bottom-0 w-0.5 bg-white z-30 pointer-events-none"
+          className="absolute top-0 bottom-0 w-0.5 bg-text-primary z-30 pointer-events-none"
           style={{ left: `${progress}%` }}
         >
-          <div className="absolute -top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-white rotate-45" />
+          <div className="absolute -top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-text-primary rotate-45" />
         </div>
       </div>
 
@@ -248,50 +248,47 @@ interface AnnotationDetailsProps {
 
 function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetailsProps) {
   return (
-    <div className="mt-2 p-2 bg-gray-900 rounded flex items-center gap-4">
+    <div className="mt-2 p-2 bg-surface-sunken rounded-lg flex items-center gap-4">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">Type:</span>
-        <span className="text-xs text-white font-medium">{annotation.id.split('-')[0]}</span>
+        <span className="text-xs text-text-tertiary">Type:</span>
+        <span className="text-xs text-text-primary font-medium">{annotation.id.split('-')[0]}</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">Start:</span>
+        <span className="text-xs text-text-tertiary">Start:</span>
         <input
           type="number"
           step="0.1"
           value={annotation.startTime.toFixed(2)}
           onChange={(e) => onUpdate({ startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
-          className="w-20 px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-700"
+          className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
         />
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">End:</span>
+        <span className="text-xs text-text-tertiary">End:</span>
         <input
           type="number"
           step="0.1"
           value={annotation.endTime.toFixed(2)}
           onChange={(e) => onUpdate({ endTime: Math.max(annotation.startTime + 0.1, parseFloat(e.target.value) || 0) })}
-          className="w-20 px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-700"
+          className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
         />
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">Layer:</span>
-        <select
+        <span className="text-xs text-text-tertiary">Layer:</span>
+        <Select
           value={annotation.layer}
           onChange={(e) => onUpdate({ layer: parseInt(e.target.value) })}
-          className="px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-700"
+          className="text-xs py-1"
         >
           {[0, 1, 2].map((layer) => (
             <option key={layer} value={layer}>Layer {layer + 1}</option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="flex-1" />
-      <button
-        onClick={onDelete}
-        className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
-      >
+      <Button onClick={onDelete} variant="danger" size="sm">
         Delete
-      </button>
+      </Button>
     </div>
   )
 }
