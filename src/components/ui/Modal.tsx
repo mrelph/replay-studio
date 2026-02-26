@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { X } from 'lucide-react'
 import { IconButton } from './IconButton'
 
@@ -13,6 +13,8 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-w-lg', disableClose }: ModalProps) {
+  const [visible, setVisible] = useState(false)
+
   const handleEscape = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape' && !disableClose) {
       onClose()
@@ -21,8 +23,11 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-
 
   useEffect(() => {
     if (open) {
+      requestAnimationFrame(() => setVisible(true))
       window.addEventListener('keydown', handleEscape)
       return () => window.removeEventListener('keydown', handleEscape)
+    } else {
+      setVisible(false)
     }
   }, [open, handleEscape])
 
@@ -30,16 +35,23 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-
 
   return (
     <div
-      className="fixed inset-0 bg-surface-overlay backdrop-blur-sm flex items-center justify-center z-50"
+      className={`fixed inset-0 bg-surface-overlay backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-200 ${
+        visible ? 'opacity-100' : 'opacity-0'
+      }`}
       onClick={disableClose ? undefined : onClose}
     >
       <div
-        className={`bg-surface-elevated rounded-xl shadow-xl w-full ${maxWidth} mx-4 max-h-[85vh] overflow-hidden border border-border-subtle`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className={`bg-surface-elevated rounded-xl shadow-xl w-full ${maxWidth} mx-4 max-h-[85vh] overflow-hidden border border-border-subtle transition-all duration-200 ${
+          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
-          <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
+          <h2 id="modal-title" className="text-lg font-semibold text-text-primary">{title}</h2>
           {!disableClose && (
             <IconButton onClick={onClose} variant="ghost" size="sm">
               <X className="w-5 h-5" />

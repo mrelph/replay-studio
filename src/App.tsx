@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor } from 'lucide-react'
+import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor, Layers, PenTool, Users, Download, Presentation } from 'lucide-react'
 import VideoPlayer from './components/VideoPlayer/VideoPlayer'
 import DrawingToolbar from './components/Toolbar/DrawingToolbar'
 import DrawingCanvas from './components/Canvas/DrawingCanvas'
@@ -8,7 +8,7 @@ import ShortcutsEditor from './components/ShortcutsEditor'
 import AnnotationTimeline from './components/Timeline/AnnotationTimeline'
 import ExportDialog from './components/Export/ExportDialog'
 import LayerPanel from './components/LayerPanel/LayerPanel'
-import { Button, IconButton, Kbd } from './components/ui'
+import { Button, IconButton, Kbd, ToastContainer, toast } from './components/ui'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAudienceStream } from './hooks/useAudienceStream'
 import { useAppStore } from './stores/appStore'
@@ -17,6 +17,11 @@ import { useDrawingStore } from './stores/drawingStore'
 import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore } from './stores/themeStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
+import { useWaveformStore } from './stores/waveformStore'
+// Plugin infrastructure — registry is initialized as a singleton on import.
+// Future tools can be registered via: ToolRegistry.register(myPlugin)
+import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
+export const toolRegistry = _ToolRegistry
 import fabricModule from 'fabric'
 
 // Handle CommonJS/ESM interop
@@ -68,6 +73,8 @@ function App() {
     setVideoSrc(videoUrl)
     addRecentFile(filePath)
     resetVideo()
+    // Decode audio for waveform display
+    useWaveformStore.getState().decodeAudio(videoUrl)
   }, [addRecentFile, resetVideo])
 
   const handleOpenFile = useCallback(async () => {
@@ -108,12 +115,12 @@ function App() {
       const result = await window.electronAPI.writeFile(filePath, json)
       if (result.success) {
         setCurrentProjectPath(filePath)
-        console.log('Project saved successfully')
+        toast('success', 'Project saved')
       } else {
-        console.error('Failed to save project:', result.error)
+        toast('error', `Failed to save project: ${result.error}`)
       }
     } catch (err) {
-      console.error('Error saving project:', err)
+      toast('error', 'Error saving project')
     }
   }, [annotations, videoSrc, inPoint, outPoint, currentProjectPath])
 
@@ -127,7 +134,7 @@ function App() {
 
       const result = await window.electronAPI.readFile(filePath)
       if (!result.success || !result.content) {
-        console.error('Failed to read project file:', result.error)
+        toast('error', `Failed to read project file: ${result.error}`)
         return
       }
 
@@ -165,9 +172,9 @@ function App() {
 
       canvas.renderAll()
       setCurrentProjectPath(filePath)
-      console.log('Project loaded successfully')
+      toast('success', 'Project loaded')
     } catch (err) {
-      console.error('Error loading project:', err)
+      toast('error', 'Error loading project')
     }
   }, [canvas, loadVideo, setInPoint, setOutPoint, clearAnnotations, addAnnotation])
 
@@ -316,6 +323,13 @@ function App() {
           <div className="w-px h-5 bg-border-subtle mx-0.5" />
           {videoSrc && (
             <>
+              <IconButton
+                onClick={() => setShowLayerPanel(!showLayerPanel)}
+                title="Toggle Layer Panel"
+                className={showLayerPanel ? 'text-accent' : ''}
+              >
+                <Layers className="w-4 h-4" />
+              </IconButton>
               <Button
                 onClick={() => isAudienceOpen ? closeAudienceView() : openAudienceView()}
                 variant={isAudienceOpen ? 'danger' : 'secondary'}
@@ -347,31 +361,29 @@ function App() {
       </header>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Drawing toolbar */}
-        <DrawingToolbar />
-
-        {/* Video area */}
-        <div className="flex-1 flex flex-col">
-          {videoSrc ? (
-            <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {videoSrc ? (
+          <>
+            <div className="flex-1 flex min-h-0 relative">
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="video-container flex-1 flex flex-col min-h-0 relative">
                   <VideoPlayer src={videoSrc} onVideoRef={handleVideoRef} />
                   {videoElement && <DrawingCanvas videoElement={videoElement} />}
                 </div>
-                <AnnotationTimeline />
               </div>
-              {/* <LayerPanel isOpen={showLayerPanel} onToggle={() => setShowLayerPanel(!showLayerPanel)} /> */}
+              <LayerPanel isOpen={showLayerPanel} onToggle={() => setShowLayerPanel(!showLayerPanel)} />
             </div>
-          ) : (
+            <DrawingToolbar />
+            <AnnotationTimeline />
+          </>
+        ) : (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-md">
+              <div className="text-center max-w-lg">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-surface-elevated border border-border-subtle flex items-center justify-center">
                   <Film className="w-8 h-8 text-text-tertiary" />
                 </div>
                 <h2 className="text-xl font-medium text-text-primary mb-2">
-                  No video loaded
+                  Replay Studio
                 </h2>
                 <p className="text-text-tertiary mb-6">
                   Drag and drop a video file, or click Open to start
@@ -379,6 +391,29 @@ function App() {
                 <Button onClick={handleOpenFile} size="lg">
                   Open Video File
                 </Button>
+
+                {/* Feature cards */}
+                <div className="grid grid-cols-2 gap-3 mt-8">
+                  {[
+                    { icon: PenTool, title: 'Draw & Annotate', desc: 'Freehand, arrows, shapes, and text overlays' },
+                    { icon: Users, title: 'Player Tracking', desc: 'Spotlight, magnifier, and motion tracking' },
+                    { icon: Download, title: 'Export Clips', desc: 'MP4 and animated GIF with annotations' },
+                    { icon: Presentation, title: 'Present Live', desc: 'Audience view with laser pointer' },
+                  ].map(({ icon: Icon, title, desc }) => (
+                    <div
+                      key={title}
+                      className="flex items-start gap-3 p-3 bg-surface-elevated border border-border-subtle rounded-lg text-left"
+                    >
+                      <div className="p-2 rounded-lg bg-accent/10 text-accent flex-shrink-0">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-text-primary">{title}</div>
+                        <div className="text-xs text-text-tertiary mt-0.5">{desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
                 {/* Recent files */}
                 {recentFiles.length > 0 && (
@@ -414,7 +449,6 @@ function App() {
               </div>
             </div>
           )}
-        </div>
       </div>
 
       {/* Modals */}
@@ -430,6 +464,8 @@ function App() {
       {showExport && videoSrc && (
         <ExportDialog onClose={() => setShowExport(false)} videoSrc={videoSrc} />
       )}
+
+      <ToastContainer />
     </div>
   )
 }

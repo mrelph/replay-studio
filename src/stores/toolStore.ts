@@ -5,6 +5,7 @@ export type ToolType =
   | 'pen'
   | 'line'
   | 'arrow'
+  | 'arc-arrow'
   | 'rectangle'
   | 'circle'
   | 'text'
@@ -32,7 +33,7 @@ interface ToolState {
 
 export const useToolStore = create<ToolState>((set) => ({
   currentTool: 'select',
-  strokeColor: '#ff0000',
+  strokeColor: '#FF3B30',
   fillColor: 'transparent',
   strokeWidth: 4,
   fontSize: 24,
@@ -46,18 +47,18 @@ export const useToolStore = create<ToolState>((set) => ({
   setIsDrawing: (drawing) => set({ isDrawing: drawing }),
 }))
 
-// Preset colors for quick selection
+// Broadcast-standard color palette (desaturated, brightness-balanced)
 export const PRESET_COLORS = [
-  '#ff0000', // Red
-  '#ff6b00', // Orange
-  '#ffd000', // Yellow
-  '#00ff00', // Green
-  '#00d4ff', // Cyan
-  '#0066ff', // Blue
-  '#9900ff', // Purple
-  '#ff00ff', // Magenta
-  '#ffffff', // White
-  '#000000', // Black
+  '#FF3B30', // Red (Apple/ESPN standard)
+  '#FF9500', // Orange
+  '#FFCC00', // Yellow
+  '#34C759', // Green
+  '#00C7BE', // Teal
+  '#007AFF', // Blue (broadcast blue)
+  '#AF52DE', // Purple
+  '#FF2D55', // Pink
+  '#FFFFFF', // White
+  '#1C1C1E', // Near-black
 ]
 
 export const STROKE_WIDTHS = [2, 4, 6, 8, 12, 16]

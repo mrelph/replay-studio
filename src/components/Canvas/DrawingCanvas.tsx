@@ -40,7 +40,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // Track drawing state for shapes
   const isDrawingRef = useRef(false)
   const startPointRef = useRef({ x: 0, y: 0 })
-  const currentShapeRef = useRef<fabric.Line | fabric.Circle | fabric.Rect | fabric.Ellipse | fabric.Group | null>(null)
+  const currentShapeRef = useRef<fabric.Line | fabric.Circle | fabric.Rect | fabric.Ellipse | fabric.Group | fabric.Path | null>(null)
+  const arcPointsRef = useRef<{ x: number; y: number }[]>([])
 
   // Calculate video display dimensions based on the actual video element position
   const calcDimensions = useCallback(() => {
@@ -69,6 +70,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       height: dims.height,
       selection: currentTool === 'select',
       isDrawingMode: currentTool === 'pen',
+      enableRetinaScaling: true,
     })
 
     fabricRef.current = canvas
@@ -131,6 +133,25 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     canvas.isDrawingMode = currentTool === 'pen'
     canvas.selection = currentTool === 'select'
 
+    // Set cursor based on active tool
+    const cursorMap: Record<string, string> = {
+      select: 'default',
+      pen: 'crosshair',
+      line: 'crosshair',
+      arrow: 'crosshair',
+      'arc-arrow': 'crosshair',
+      rectangle: 'crosshair',
+      circle: 'crosshair',
+      text: 'text',
+      spotlight: 'crosshair',
+      magnifier: 'zoom-in',
+      tracker: 'crosshair',
+      laser: 'none',
+    }
+    const cursor = cursorMap[currentTool] || 'default'
+    canvas.defaultCursor = cursor
+    canvas.hoverCursor = currentTool === 'select' ? 'move' : cursor
+
     if (currentTool === 'pen') {
       const brush = new fabric.PencilBrush(canvas)
       brush.color = strokeColor
@@ -156,13 +177,15 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const zoomLevel = 2.5
     const canvas = fabricRef.current
 
-    // Create off-screen canvas for zoomed content
+    // Create off-screen canvas for zoomed content (HiDPI-aware)
+    const dpr = window.devicePixelRatio || 1
     const tempCanvas = document.createElement('canvas')
     const size = radius * 2
-    tempCanvas.width = size
-    tempCanvas.height = size
+    tempCanvas.width = size * dpr
+    tempCanvas.height = size * dpr
     const ctx = tempCanvas.getContext('2d')
     if (!ctx) return
+    ctx.scale(dpr, dpr)
 
     // Calculate source region from video
     const videoScaleX = videoElement.videoWidth / dimensions.width
@@ -311,6 +334,43 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const canvas = fabricRef.current
     if (!canvas) return
 
+    // Helper: find control point for arc-arrow from tracked mouse positions
+    const calculateArcControlPoint = (
+      start: { x: number; y: number },
+      end: { x: number; y: number },
+      trackedPoints: { x: number; y: number }[]
+    ) => {
+      const dx = end.x - start.x
+      const dy = end.y - start.y
+      const len = Math.sqrt(dx * dx + dy * dy)
+      if (len === 0) return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
+
+      // Unit vector along start→end and its perpendicular
+      const ux = dx / len
+      const uy = dy / len
+      const px = -uy  // perpendicular
+      const py = ux
+
+      // Find max perpendicular deviation (signed) from tracked points
+      let maxDev = 0
+      for (const pt of trackedPoints) {
+        const relX = pt.x - start.x
+        const relY = pt.y - start.y
+        const dev = relX * px + relY * py  // signed perpendicular distance
+        if (Math.abs(dev) > Math.abs(maxDev)) {
+          maxDev = dev
+        }
+      }
+
+      // Control point at midpoint of start→end, offset perpendicular by 2x max deviation
+      const midX = (start.x + end.x) / 2
+      const midY = (start.y + end.y) / 2
+      return {
+        x: midX + px * maxDev * 2,
+        y: midY + py * maxDev * 2,
+      }
+    }
+
     const handleMouseDown = (e: any) => {
       if (currentTool === 'pen' || currentTool === 'select' || currentTool === 'laser') return
 
@@ -338,6 +398,27 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             evented: false,
           })
           break
+
+        case 'arc-arrow': {
+          // Create arc arrow preview path
+          arcPointsRef.current = [{ x: pointer.x, y: pointer.y }]
+          const arcPath = new fabric.Path(`M ${pointer.x} ${pointer.y} L ${pointer.x} ${pointer.y}`, {
+            stroke: strokeColor,
+            strokeWidth: Math.max(strokeWidth, 4),
+            fill: 'transparent',
+            strokeLineCap: 'round',
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 15,
+              offsetX: 0,
+              offsetY: 0,
+            }),
+            selectable: false,
+            evented: false,
+          })
+          shape = arcPath
+          break
+        }
 
         case 'arrow':
           // Create broadcast-style arrow with glow effect
@@ -529,6 +610,20 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           canvas.add(trackerGroup)
           createAnnotation(trackerGroup, 'tracker')
 
+          // Enable auto-tracking via color template matching
+          if (playerTrackerRef.current) {
+            const trackerId = `tracker-${Date.now()}`
+            playerTrackerRef.current.create(trackerId, {
+              time: currentTime,
+              x: pointer.x,
+              y: pointer.y,
+            }, { color: strokeColor, radius: trackerRadius })
+            playerTrackerRef.current.enableAutoTracking(
+              trackerId, videoElement,
+              dimensions.width, dimensions.height
+            )
+          }
+
           isDrawingRef.current = false
           setIsDrawing(false)
           return
@@ -565,6 +660,34 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       const pointer = canvas.getPointer(e.e)
       const shape = currentShapeRef.current
       const start = startPointRef.current
+
+      // Arc arrow: update bezier preview
+      if (currentTool === 'arc-arrow' && shape instanceof fabric.Path) {
+        arcPointsRef.current.push({ x: pointer.x, y: pointer.y })
+        const cp = calculateArcControlPoint(start, pointer, arcPointsRef.current)
+        canvas.remove(shape)
+        const newPath = new fabric.Path(
+          `M ${start.x} ${start.y} Q ${cp.x} ${cp.y} ${pointer.x} ${pointer.y}`,
+          {
+            stroke: strokeColor,
+            strokeWidth: Math.max(strokeWidth, 4),
+            fill: 'transparent',
+            strokeLineCap: 'round',
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 15,
+              offsetX: 0,
+              offsetY: 0,
+            }),
+            selectable: false,
+            evented: false,
+          }
+        )
+        canvas.add(newPath)
+        currentShapeRef.current = newPath
+        canvas.renderAll()
+        return
+      }
 
       if (shape instanceof fabric.Line) {
         shape.set({ x2: pointer.x, y2: pointer.y })
@@ -607,6 +730,71 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
       const shape = currentShapeRef.current
       shape.set({ selectable: true, evented: true })
+
+      // Arc arrow: finalize with arrowhead
+      if (currentTool === 'arc-arrow' && shape instanceof fabric.Path) {
+        const start = startPointRef.current
+        const pts = arcPointsRef.current
+        const end = pts.length > 1 ? pts[pts.length - 1] : start
+        const cp = calculateArcControlPoint(start, end, pts)
+
+        // Arrowhead angle from tangent at endpoint = direction from control point to endpoint
+        const angle = Math.atan2(end.y - cp.y, end.x - cp.x)
+        const headLength = 25
+        const headWidth = 12
+
+        canvas.remove(shape)
+
+        const finalPath = new fabric.Path(
+          `M ${start.x} ${start.y} Q ${cp.x} ${cp.y} ${end.x} ${end.y}`,
+          {
+            stroke: strokeColor,
+            strokeWidth: Math.max(strokeWidth, 4),
+            fill: 'transparent',
+            strokeLineCap: 'round',
+            shadow: new fabric.Shadow({
+              color: strokeColor,
+              blur: 15,
+              offsetX: 0,
+              offsetY: 0,
+            }),
+            selectable: false,
+            evented: false,
+          }
+        )
+
+        const arrowHead = new fabric.Triangle({
+          left: end.x,
+          top: end.y,
+          width: headWidth * 2,
+          height: headLength,
+          fill: strokeColor,
+          stroke: strokeColor,
+          strokeWidth: 1,
+          angle: (angle * 180 / Math.PI) + 90,
+          originX: 'center',
+          originY: 'bottom',
+          shadow: new fabric.Shadow({
+            color: strokeColor,
+            blur: 15,
+            offsetX: 0,
+            offsetY: 0,
+          }),
+        })
+
+        const arcGroup = new fabric.Group([finalPath, arrowHead], {
+          selectable: true,
+          evented: true,
+        })
+        canvas.add(arcGroup)
+        createAnnotation(arcGroup, 'arc-arrow')
+
+        arcPointsRef.current = []
+        isDrawingRef.current = false
+        currentShapeRef.current = null
+        setIsDrawing(false)
+        return
+      }
 
       // Add broadcast-style arrowhead and group with line
       if (currentTool === 'arrow' && shape instanceof fabric.Line) {

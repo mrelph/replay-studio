@@ -48,6 +48,10 @@ export interface ElectronAPI {
   writeFile: (filePath: string, content: string) => Promise<ExportResult>
   readFile: (filePath: string) => Promise<FileResult>
 
+  // Annotation export/import
+  saveAnnotations: (defaultName: string) => Promise<string | null>
+  loadAnnotations: () => Promise<string | null>
+
   // Audience view
   openAudienceView: () => Promise<void>
   closeAudienceView: () => Promise<void>

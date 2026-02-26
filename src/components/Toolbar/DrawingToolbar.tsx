@@ -1,10 +1,12 @@
+import { useState } from 'react'
 import {
-  MousePointer2, Pen, Minus, ArrowUpRight, Square, Circle, Type,
+  MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
   Sun, ZoomIn, Crosshair, Radio, Undo2, Redo2, Trash2
 } from 'lucide-react'
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useAudienceStore } from '@/stores/audienceStore'
+import { Modal, Button } from '@/components/ui'
 
 interface ToolButtonProps {
   tool: ToolType
@@ -20,140 +22,91 @@ function ToolButton({ tool, icon, label, shortcut }: ToolButtonProps) {
   return (
     <button
       onClick={() => setCurrentTool(tool)}
-      className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-150 ${
+      className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
         isActive
           ? 'bg-accent text-accent-text shadow-md'
           : 'hover:bg-surface-sunken text-text-secondary hover:text-text-primary'
       }`}
       title={`${label}${shortcut ? ` (${shortcut})` : ''}`}
+      aria-label={label}
+      aria-pressed={isActive}
+      role="radio"
     >
       {icon}
     </button>
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function ToolGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="text-[10px] font-medium text-text-disabled uppercase tracking-wider px-1 mt-2 mb-1">
-      {children}
+    <div className="flex flex-col items-center gap-0" role="group" aria-label={label}>
+      <div className="flex items-center gap-0.5">
+        {children}
+      </div>
+      <span className="text-[9px] uppercase tracking-wider text-text-disabled leading-none select-none" aria-hidden="true">{label}</span>
     </div>
   )
 }
 
-function ToolbarDivider() {
-  return <div className="w-10 h-px bg-border-subtle my-2" />
+function VerticalDivider() {
+  return <div className="w-px h-8 bg-border-subtle mx-1.5 flex-shrink-0 self-center" />
 }
 
 const COLOR_NAMES: Record<string, string> = {
-  '#ff0000': 'Red',
-  '#ff9800': 'Orange',
-  '#ffeb3b': 'Yellow',
-  '#4caf50': 'Green',
-  '#2196f3': 'Blue',
-  '#9c27b0': 'Purple',
-  '#ffffff': 'White',
-  '#000000': 'Black',
+  '#FF3B30': 'Red (1)',
+  '#FF9500': 'Orange (2)',
+  '#FFCC00': 'Yellow (3)',
+  '#34C759': 'Green (4)',
+  '#00C7BE': 'Teal (5)',
+  '#007AFF': 'Blue (6)',
+  '#AF52DE': 'Purple (7)',
+  '#FF2D55': 'Pink (8)',
+  '#FFFFFF': 'White (9)',
+  '#1C1C1E': 'Black',
 }
 
 export default function DrawingToolbar() {
   const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth, currentTool, setCurrentTool } = useToolStore()
-  const { undo, redo, clearAnnotations, undoStack, redoStack } = useDrawingStore()
+  const { undo, redo, clearAnnotations, undoStack, redoStack, annotations } = useDrawingStore()
   const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   return (
-    <div className="w-14 bg-surface-elevated/95 border-r border-border-subtle flex flex-col items-center py-3 backdrop-blur-sm overflow-y-auto overflow-x-hidden min-h-0 scrollbar-narrow">
-      {/* Selection tool */}
-      <SectionLabel>Select</SectionLabel>
-      <ToolButton
-        tool="select"
-        label="Select"
-        shortcut="V"
-        icon={<MousePointer2 className="w-5 h-5" />}
-      />
+    <div role="toolbar" aria-label="Drawing tools" className="h-12 bg-surface-elevated/95 border-t border-border-subtle flex items-center px-3 gap-1 backdrop-blur-sm flex-shrink-0 overflow-x-auto">
+      {/* Select */}
+      <ToolGroup label="Select">
+        <ToolButton tool="select" label="Select" shortcut="V" icon={<MousePointer2 className="w-4 h-4" />} />
+      </ToolGroup>
 
-      <ToolbarDivider />
+      <VerticalDivider />
 
       {/* Drawing tools */}
-      <SectionLabel>Draw</SectionLabel>
-      <div className="flex flex-col gap-0.5">
-        <ToolButton
-          tool="pen"
-          label="Freehand"
-          shortcut="P"
-          icon={<Pen className="w-5 h-5" />}
-        />
-        <ToolButton
-          tool="line"
-          label="Line"
-          shortcut="L"
-          icon={<Minus className="w-5 h-5" />}
-        />
-        <ToolButton
-          tool="arrow"
-          label="Arrow"
-          shortcut="A"
-          icon={<ArrowUpRight className="w-5 h-5" />}
-        />
-      </div>
+      <ToolGroup label="Draw">
+        <ToolButton tool="pen" label="Freehand" shortcut="P" icon={<Pen className="w-4 h-4" />} />
+        <ToolButton tool="line" label="Line" shortcut="Shift+L" icon={<Minus className="w-4 h-4" />} />
+        <ToolButton tool="arrow" label="Arrow" shortcut="A" icon={<ArrowUpRight className="w-4 h-4" />} />
+        <ToolButton tool="arc-arrow" label="Arc Arrow" shortcut="Shift+A" icon={<Redo className="w-4 h-4" />} />
+      </ToolGroup>
 
-      <ToolbarDivider />
+      <VerticalDivider />
 
       {/* Shape tools */}
-      <SectionLabel>Shapes</SectionLabel>
-      <div className="flex flex-col gap-0.5">
-        <ToolButton
-          tool="rectangle"
-          label="Rectangle"
-          shortcut="R"
-          icon={<Square className="w-5 h-5" />}
-        />
-        <ToolButton
-          tool="circle"
-          label="Ellipse"
-          shortcut="C"
-          icon={<Circle className="w-5 h-5" />}
-        />
-        <ToolButton
-          tool="text"
-          label="Text"
-          shortcut="T"
-          icon={<Type className="w-5 h-5" />}
-        />
-      </div>
+      <ToolGroup label="Shapes">
+        <ToolButton tool="rectangle" label="Rectangle" shortcut="R" icon={<Square className="w-4 h-4" />} />
+        <ToolButton tool="circle" label="Ellipse" shortcut="C" icon={<Circle className="w-4 h-4" />} />
+        <ToolButton tool="text" label="Text" shortcut="T" icon={<Type className="w-4 h-4" />} />
+      </ToolGroup>
 
-      <ToolbarDivider />
+      <VerticalDivider />
 
-      {/* Advanced telestrator tools */}
-      <SectionLabel>Effects</SectionLabel>
-      <div className="flex flex-col gap-0.5">
-        <ToolButton
-          tool="spotlight"
-          label="Spotlight"
-          shortcut="S"
-          icon={<Sun className="w-5 h-5" />}
-        />
-        <ToolButton
-          tool="magnifier"
-          label="Zoom Lens"
-          shortcut="M"
-          icon={<ZoomIn className="w-5 h-5" />}
-        />
-        <ToolButton
-          tool="tracker"
-          label="Player Tracker"
-          shortcut="K"
-          icon={<Crosshair className="w-5 h-5" />}
-        />
-      </div>
-
-      <ToolbarDivider />
-
-      {/* Presentation tools */}
-      <SectionLabel>Present</SectionLabel>
-      <div className="flex flex-col gap-0.5">
+      {/* Effects */}
+      <ToolGroup label="Effects">
+        <ToolButton tool="spotlight" label="Spotlight" shortcut="S" icon={<Sun className="w-4 h-4" />} />
+        <ToolButton tool="magnifier" label="Zoom Lens" shortcut="Shift+M" icon={<ZoomIn className="w-4 h-4" />} />
+        <ToolButton tool="tracker" label="Player Tracker" shortcut="Shift+K" icon={<Crosshair className="w-4 h-4" />} />
         <button
           onClick={() => setCurrentTool('laser')}
-          className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-150 ${
+          className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
             currentTool === 'laser'
               ? 'bg-error text-white shadow-md'
               : isAudienceOpen
@@ -163,20 +116,19 @@ export default function DrawingToolbar() {
           disabled={!isAudienceOpen}
           title={`Laser Pointer (Shift+P)${!isAudienceOpen ? ' - Open Audience View first' : ''}`}
         >
-          <Radio className="w-5 h-5" />
+          <Radio className="w-4 h-4" />
         </button>
-      </div>
+      </ToolGroup>
 
-      <ToolbarDivider />
+      <VerticalDivider />
 
-      {/* Color picker */}
-      <SectionLabel>Color</SectionLabel>
-      <div className="grid grid-cols-2 gap-1.5">
+      {/* Color swatches */}
+      <ToolGroup label="Color">
         {PRESET_COLORS.slice(0, 6).map((color) => (
           <button
             key={color}
             onClick={() => setStrokeColor(color)}
-            className={`w-5 h-5 rounded-sm transition-all ${
+            className={`w-6 h-6 rounded transition-all flex-shrink-0 ${
               strokeColor === color
                 ? 'ring-2 ring-accent ring-offset-1 ring-offset-surface-elevated scale-110'
                 : 'hover:scale-110'
@@ -185,18 +137,17 @@ export default function DrawingToolbar() {
             title={COLOR_NAMES[color] || color}
           />
         ))}
-      </div>
+      </ToolGroup>
 
-      <ToolbarDivider />
+      <VerticalDivider />
 
-      {/* Stroke width */}
-      <SectionLabel>Size</SectionLabel>
-      <div className="flex flex-col gap-1">
+      {/* Stroke widths */}
+      <ToolGroup label="Size">
         {STROKE_WIDTHS.slice(0, 4).map((width) => (
           <button
             key={width}
             onClick={() => setStrokeWidth(width)}
-            className={`w-10 h-6 rounded flex items-center justify-center transition-all ${
+            className={`w-7 h-7 rounded flex items-center justify-center transition-all ${
               strokeWidth === width
                 ? 'bg-accent-subtle ring-1 ring-accent'
                 : 'hover:bg-surface-sunken'
@@ -206,45 +157,72 @@ export default function DrawingToolbar() {
             <div
               className="bg-text-secondary rounded-full"
               style={{
-                width: Math.max(Math.min(width * 1.5, 20), 4),
-                height: Math.min(width, 8),
+                width: Math.max(Math.min(width * 1.5, 16), 3),
+                height: Math.min(width, 6),
               }}
             />
           </button>
         ))}
-      </div>
+      </ToolGroup>
 
-      <div className="flex-1" />
+      <VerticalDivider />
 
       {/* Actions */}
-      <SectionLabel>Actions</SectionLabel>
-      <div className="flex flex-col gap-0.5">
+      <ToolGroup label="Actions">
         <button
           onClick={undo}
           disabled={undoStack.length === 0}
-          className="w-10 h-10 flex items-center justify-center hover:bg-surface-sunken rounded-lg text-text-secondary hover:text-text-primary transition-all disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          className="w-8 h-8 flex items-center justify-center hover:bg-surface-sunken rounded-md text-text-secondary hover:text-text-primary transition-all disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           title="Undo (Ctrl+Z)"
         >
-          <Undo2 className="w-5 h-5" />
+          <Undo2 className="w-4 h-4" />
         </button>
-
         <button
           onClick={redo}
           disabled={redoStack.length === 0}
-          className="w-10 h-10 flex items-center justify-center hover:bg-surface-sunken rounded-lg text-text-secondary hover:text-text-primary transition-all disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          className="w-8 h-8 flex items-center justify-center hover:bg-surface-sunken rounded-md text-text-secondary hover:text-text-primary transition-all disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           title="Redo (Ctrl+Y)"
         >
-          <Redo2 className="w-5 h-5" />
+          <Redo2 className="w-4 h-4" />
         </button>
-
         <button
-          onClick={clearAnnotations}
-          className="w-10 h-10 flex items-center justify-center hover:bg-error-subtle rounded-lg text-text-secondary hover:text-error transition-all"
+          onClick={() => {
+            if (annotations.length === 0) return
+            setShowClearConfirm(true)
+          }}
+          disabled={annotations.length === 0}
+          className="w-8 h-8 flex items-center justify-center hover:bg-error-subtle rounded-md text-text-secondary hover:text-error transition-all disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           title="Clear all annotations"
         >
-          <Trash2 className="w-5 h-5" />
+          <Trash2 className="w-4 h-4" />
         </button>
-      </div>
+      </ToolGroup>
+
+      {/* Clear confirmation dialog */}
+      {showClearConfirm && (
+        <Modal open={true} title="Clear All Annotations" onClose={() => setShowClearConfirm(false)}>
+          <div className="px-6 py-4">
+            <p className="text-text-secondary text-sm mb-4">
+              This will remove all {annotations.length} annotation{annotations.length !== 1 ? 's' : ''} from the canvas. You can undo this with Ctrl+Z.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setShowClearConfirm(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  clearAnnotations()
+                  setShowClearConfirm(false)
+                }}
+              >
+                Clear All
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

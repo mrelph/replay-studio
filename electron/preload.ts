@@ -81,6 +81,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return null
     }
   },
+  // Annotation export/import
+  saveAnnotations: async (defaultName: string) => {
+    try {
+      return await ipcRenderer.invoke('dialog:exportAnnotations', defaultName)
+    } catch (err) {
+      console.error('saveAnnotations error:', err)
+      return null
+    }
+  },
+  loadAnnotations: async () => {
+    try {
+      return await ipcRenderer.invoke('dialog:importAnnotations')
+    } catch (err) {
+      console.error('loadAnnotations error:', err)
+      return null
+    }
+  },
+
   writeFile: async (filePath: string, content: string) => {
     try {
       return await ipcRenderer.invoke('file:write', filePath, content)

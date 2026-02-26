@@ -8,6 +8,7 @@ export const TOOL_DEFAULTS: Record<string, ToolDefaults> = {
   pen: { duration: 1.5, fadeIn: 0.1, fadeOut: 0.15 },
   path: { duration: 1.5, fadeIn: 0.1, fadeOut: 0.15 },
   arrow: { duration: 2, fadeIn: 0.1, fadeOut: 0.1 },
+  'arc-arrow': { duration: 2, fadeIn: 0.1, fadeOut: 0.1 },
   rectangle: { duration: 2.5, fadeIn: 0, fadeOut: 0 },
   circle: { duration: 2.5, fadeIn: 0, fadeOut: 0 },
   spotlight: { duration: 1.5, fadeIn: 0.15, fadeOut: 0.25 },

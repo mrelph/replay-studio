@@ -13,6 +13,8 @@ export type ShortcutAction =
   | 'tool.spotlight'
   | 'tool.magnifier'
   | 'tool.tracker'
+  | 'tool.arcArrow'
+  | 'tool.laser'
   // Video
   | 'video.playPause'
   | 'video.stepForward'
@@ -74,6 +76,8 @@ const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'tool.spotlight', label: 'Spotlight tool', category: 'Tools', binding: { key: 's' } },
   { action: 'tool.magnifier', label: 'Magnifier tool', category: 'Tools', binding: { key: 'm', shift: true } },
   { action: 'tool.tracker', label: 'Player tracker', category: 'Tools', binding: { key: 'k', shift: true } },
+  { action: 'tool.arcArrow', label: 'Arc arrow tool', category: 'Tools', binding: { key: 'a', shift: true } },
+  { action: 'tool.laser', label: 'Laser pointer', category: 'Tools', binding: { key: 'p', shift: true } },
   // Video
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },
   { action: 'video.stepForward', label: 'Next frame', category: 'Video Playback', binding: { key: 'arrowright' } },
@@ -85,7 +89,7 @@ const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'video.goToEnd', label: 'Go to end', category: 'Video Playback', binding: { key: 'end' } },
   { action: 'video.toggleMute', label: 'Toggle mute', category: 'Video Playback', binding: { key: 'm' } },
   { action: 'video.toggleFullscreen', label: 'Toggle fullscreen', category: 'Video Playback', binding: { key: 'f' } },
-  { action: 'video.toggleLoop', label: 'Toggle loop', category: 'Video Playback', binding: { key: 'l', shift: true } },
+  { action: 'video.toggleLoop', label: 'Toggle loop', category: 'Video Playback', binding: { key: 'l', ctrl: true } },
   // In/Out points
   { action: 'inout.setIn', label: 'Set In point', category: 'In/Out Points', binding: { key: 'i' } },
   { action: 'inout.setOut', label: 'Set Out point', category: 'In/Out Points', binding: { key: 'o' } },

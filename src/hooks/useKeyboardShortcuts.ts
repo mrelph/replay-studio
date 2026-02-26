@@ -2,24 +2,31 @@ import { useEffect, useCallback } from 'react'
 import { useToolStore, PRESET_COLORS, type ToolType } from '@/stores/toolStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
 import fabricModule from 'fabric'
 
 // Handle CommonJS/ESM interop
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fabric: any = (fabricModule as any).fabric || fabricModule
 
-const TOOL_SHORTCUTS: Record<string, ToolType> = {
-  v: 'select',
-  p: 'pen',
-  a: 'arrow',
-  r: 'rectangle',
-  c: 'circle',
-  t: 'text',
-  s: 'spotlight',
+// Map shortcut actions to tool types
+const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
+  'tool.select': 'select',
+  'tool.pen': 'pen',
+  'tool.line': 'line',
+  'tool.arrow': 'arrow',
+  'tool.arcArrow': 'arc-arrow',
+  'tool.rectangle': 'rectangle',
+  'tool.circle': 'circle',
+  'tool.text': 'text',
+  'tool.spotlight': 'spotlight',
+  'tool.magnifier': 'magnifier',
+  'tool.tracker': 'tracker',
+  'tool.laser': 'laser',
 }
 
 export function useKeyboardShortcuts() {
-  const { setCurrentTool, currentTool } = useToolStore()
+  const { setCurrentTool } = useToolStore()
   const {
     togglePlay,
     stepFrame,
@@ -43,194 +50,160 @@ export function useKeyboardShortcuts() {
     }
 
     const key = e.key.toLowerCase()
-    const isCtrlOrCmd = e.ctrlKey || e.metaKey
+    const ctrl = e.ctrlKey || e.metaKey
+    const shift = e.shiftKey
+    const alt = e.altKey
 
-    // Ctrl/Cmd shortcuts
-    if (isCtrlOrCmd) {
-      switch (key) {
-        case 'z':
-          e.preventDefault()
-          if (e.shiftKey) {
-            redo()
-          } else {
-            undo()
-          }
-          return
-        case 'y':
-          e.preventDefault()
-          redo()
-          return
-        case 'a':
-          e.preventDefault()
-          // Select all objects on canvas
-          if (canvas) {
-            const objects = canvas.getObjects()
-            if (objects.length > 0) {
-              canvas.discardActiveObject()
-              const selection = new fabric.ActiveSelection(objects, { canvas })
-              canvas.setActiveObject(selection)
-              canvas.renderAll()
-            }
-          }
-          return
-        case 'delete':
-        case 'backspace':
-          e.preventDefault()
-          // Delete selected objects
-          if (canvas) {
-            const active = canvas.getActiveObjects()
-            active.forEach((obj) => canvas.remove(obj))
-            canvas.discardActiveObject()
-            canvas.renderAll()
-          }
-          return
-      }
+    // Look up the action from the shortcuts store
+    const action = useShortcutsStore.getState().getActionForKey(key, ctrl, shift, alt)
+
+    if (!action) return
+
+    // Tool actions
+    const toolType = TOOL_ACTION_MAP[action]
+    if (toolType) {
+      e.preventDefault()
+      setCurrentTool(toolType)
+      return
     }
 
-    // Tool shortcuts (single key)
-    if (!isCtrlOrCmd && !e.altKey) {
-      // Tool selection
-      if (TOOL_SHORTCUTS[key]) {
+    // Video actions
+    switch (action) {
+      case 'video.playPause':
         e.preventDefault()
-        setCurrentTool(TOOL_SHORTCUTS[key])
+        togglePlay()
+        return
+      case 'video.stepForward':
+        e.preventDefault()
+        stepFrame('forward')
+        return
+      case 'video.stepBackward':
+        e.preventDefault()
+        stepFrame('backward')
+        return
+      case 'video.skipForward':
+        e.preventDefault()
+        skip(10)
+        return
+      case 'video.skipBackward':
+        e.preventDefault()
+        skip(-10)
+        return
+      case 'video.pause':
+        e.preventDefault()
+        if (videoElement) {
+          videoElement.pause()
+        }
+        return
+      case 'video.goToStart':
+        e.preventDefault()
+        seek(0)
+        return
+      case 'video.goToEnd':
+        e.preventDefault()
+        seek(duration)
+        return
+      case 'video.toggleMute':
+        e.preventDefault()
+        toggleMute()
+        return
+      case 'video.toggleFullscreen':
+        e.preventDefault()
+        const videoContainer = document.querySelector('.video-container')
+        if (videoContainer) {
+          if (document.fullscreenElement) {
+            document.exitFullscreen()
+          } else {
+            videoContainer.requestFullscreen()
+          }
+        }
+        return
+      case 'video.toggleLoop':
+        e.preventDefault()
+        setIsLooping(!isLooping)
+        return
+
+      // In/Out points
+      case 'inout.setIn':
+        e.preventDefault()
+        if (videoElement) {
+          setInPoint(videoElement.currentTime)
+        }
+        return
+      case 'inout.setOut':
+        e.preventDefault()
+        if (videoElement) {
+          setOutPoint(videoElement.currentTime)
+        }
+        return
+      case 'inout.jumpToIn': {
+        e.preventDefault()
+        const inPoint = useVideoStore.getState().inPoint
+        if (inPoint !== null) {
+          seek(inPoint)
+        }
+        return
+      }
+      case 'inout.jumpToOut': {
+        e.preventDefault()
+        const outPoint = useVideoStore.getState().outPoint
+        if (outPoint !== null) {
+          seek(outPoint)
+        }
         return
       }
 
-      // Shift + key for tools that conflict with video controls
-      if (e.shiftKey) {
-        switch (key) {
-          case 'l':
-            e.preventDefault()
-            setCurrentTool('line')
-            return
-          case 'm':
-            e.preventDefault()
-            setCurrentTool('magnifier')
-            return
-          case 'k':
-            e.preventDefault()
-            setCurrentTool('tracker')
-            return
-          case 'p':
-            e.preventDefault()
-            setCurrentTool('laser')
-            return
+      // Editing
+      case 'edit.undo':
+        e.preventDefault()
+        undo()
+        return
+      case 'edit.redo':
+        e.preventDefault()
+        redo()
+        return
+      case 'edit.selectAll':
+        e.preventDefault()
+        if (canvas) {
+          const objects = canvas.getObjects()
+          if (objects.length > 0) {
+            canvas.discardActiveObject()
+            const selection = new fabric.ActiveSelection(objects, { canvas })
+            canvas.setActiveObject(selection)
+            canvas.renderAll()
+          }
         }
-      }
-
-      // Video control shortcuts
-      switch (key) {
-        case ' ':
-          e.preventDefault()
-          togglePlay()
-          return
-        case 'arrowleft':
-          e.preventDefault()
-          stepFrame('backward')
-          return
-        case 'arrowright':
-          e.preventDefault()
-          stepFrame('forward')
-          return
-        case 'j':
-          e.preventDefault()
-          skip(-10)
-          return
-        case 'k':
-          e.preventDefault()
-          if (videoElement) {
-            videoElement.pause()
-          }
-          return
-        case 'l':
-          e.preventDefault()
-          if (e.shiftKey) {
-            setIsLooping(!isLooping)
-          } else {
-            skip(10)
-          }
-          return
-        case 'm':
-          e.preventDefault()
-          toggleMute()
-          return
-        case 'f':
-          e.preventDefault()
-          const videoContainer = document.querySelector('.video-container')
-          if (videoContainer) {
-            if (document.fullscreenElement) {
-              document.exitFullscreen()
-            } else {
-              videoContainer.requestFullscreen()
-            }
-          }
-          return
-        case 'i':
-          e.preventDefault()
-          if (videoElement) {
-            setInPoint(videoElement.currentTime)
-          }
-          return
-        case 'o':
-          e.preventDefault()
-          if (videoElement) {
-            setOutPoint(videoElement.currentTime)
-          }
-          return
-        case '[':
-          e.preventDefault()
-          const inPoint = useVideoStore.getState().inPoint
-          if (inPoint !== null) {
-            seek(inPoint)
-          }
-          return
-        case ']':
-          e.preventDefault()
-          const outPoint = useVideoStore.getState().outPoint
-          if (outPoint !== null) {
-            seek(outPoint)
-          }
-          return
-        case 'home':
-          e.preventDefault()
-          seek(0)
-          return
-        case 'end':
-          e.preventDefault()
-          seek(duration)
-          return
-        case 'delete':
-        case 'backspace':
-          e.preventDefault()
-          if (canvas) {
-            const active = canvas.getActiveObjects()
-            if (active.length > 0) {
-              active.forEach((obj) => canvas.remove(obj))
-              canvas.discardActiveObject()
-              canvas.renderAll()
-            }
-          }
-          return
-        case 'escape':
-          e.preventDefault()
-          if (canvas) {
+        return
+      case 'edit.delete':
+        e.preventDefault()
+        if (canvas) {
+          const active = canvas.getActiveObjects()
+          if (active.length > 0) {
+            active.forEach((obj: fabric.Object) => canvas.remove(obj))
             canvas.discardActiveObject()
             canvas.renderAll()
           }
-          setCurrentTool('select')
-          return
-      }
+        }
+        return
+      case 'edit.deselect':
+        e.preventDefault()
+        if (canvas) {
+          canvas.discardActiveObject()
+          canvas.renderAll()
+        }
+        setCurrentTool('select')
+        return
     }
 
-    // Number keys for color presets (uses same PRESET_COLORS as toolbar)
-    if (!isCtrlOrCmd && !e.altKey && /^[1-9]$/.test(key)) {
-      const colorIndex = parseInt(key) - 1
-      if (colorIndex < PRESET_COLORS.length) {
+    // Color presets
+    if (action.startsWith('color.')) {
+      const colorIndex = parseInt(action.split('.')[1]) - 1
+      if (colorIndex >= 0 && colorIndex < PRESET_COLORS.length) {
         e.preventDefault()
         useToolStore.getState().setStrokeColor(PRESET_COLORS[colorIndex])
       }
     }
-  }, [setCurrentTool, currentTool, togglePlay, stepFrame, skip, seek, duration, setInPoint, setOutPoint, toggleMute, setIsLooping, isLooping, videoElement, undo, redo, canvas])
+  }, [setCurrentTool, togglePlay, stepFrame, skip, seek, duration, setInPoint, setOutPoint, toggleMute, setIsLooping, isLooping, videoElement, undo, redo, canvas])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)

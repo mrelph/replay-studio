@@ -1,4 +1,5 @@
 import fabricModule from 'fabric'
+import { ColorTracker, type TemplateData } from './ColorTracker'
 
 // Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,10 +29,23 @@ export interface TrackerState {
   trail: fabric.Line[]
 }
 
+interface AutoTrackingState {
+  template: TemplateData
+  videoElement: HTMLVideoElement
+  canvasW: number
+  canvasH: number
+  lastConfidence: number
+  paused: boolean
+  lastProcessedTime: number
+}
+
 export class PlayerTracker {
   private canvas: fabric.Canvas
   private trackers: Map<string, TrackerState> = new Map()
   private currentTime: number = 0
+  private colorTracker: ColorTracker = new ColorTracker()
+  private autoTracking: Map<string, AutoTrackingState> = new Map()
+  private frameCount: number = 0
 
   constructor(canvas: fabric.Canvas) {
     this.canvas = canvas
@@ -127,9 +141,10 @@ export class PlayerTracker {
     ;(marker as any).crossH = crossH
     ;(marker as any).crossV = crossV
 
-    // Handle marker movement to add keyframes
+    // Handle marker movement to add keyframes + re-sample for auto-tracking
     marker.on('modified', () => {
       this.addKeyframeFromMarker(id)
+      this.resampleTemplate(id)
     })
 
     this.trackers.set(id, {
@@ -169,6 +184,61 @@ export class PlayerTracker {
     state.keyframes.sort((a, b) => a.time - b.time)
   }
 
+  // Enable auto-tracking for a tracker using color template matching
+  enableAutoTracking(id: string, videoElement: HTMLVideoElement, canvasW: number, canvasH: number) {
+    const state = this.trackers.get(id)
+    if (!state) return false
+
+    // Sample template at current marker position
+    const center = state.marker.getCenterPoint()
+    const template = this.colorTracker.sampleTemplate(
+      videoElement, center.x, center.y, canvasW, canvasH
+    )
+    if (!template) return false
+
+    this.autoTracking.set(id, {
+      template,
+      videoElement,
+      canvasW,
+      canvasH,
+      lastConfidence: 1,
+      paused: false,
+      lastProcessedTime: this.currentTime,
+    })
+
+    return true
+  }
+
+  disableAutoTracking(id: string) {
+    this.autoTracking.delete(id)
+  }
+
+  isAutoTracking(id: string): boolean {
+    const at = this.autoTracking.get(id)
+    return !!at && !at.paused
+  }
+
+  getAutoTrackingConfidence(id: string): number {
+    return this.autoTracking.get(id)?.lastConfidence ?? 0
+  }
+
+  // Re-sample template after manual correction
+  resampleTemplate(id: string) {
+    const at = this.autoTracking.get(id)
+    const state = this.trackers.get(id)
+    if (!at || !state) return
+
+    const center = state.marker.getCenterPoint()
+    const template = this.colorTracker.sampleTemplate(
+      at.videoElement, center.x, center.y, at.canvasW, at.canvasH
+    )
+    if (template) {
+      at.template = template
+      at.paused = false
+      at.lastConfidence = 1
+    }
+  }
+
   // Get interpolated position at a given time
   getPositionAtTime(id: string, time: number): { x: number; y: number } | null {
     const state = this.trackers.get(id)
@@ -206,8 +276,35 @@ export class PlayerTracker {
   // Update all trackers based on current time
   update(currentTime: number) {
     this.currentTime = currentTime
+    this.frameCount++
 
     this.trackers.forEach((state) => {
+      // Auto-tracking: run every 2nd frame for performance
+      const at = this.autoTracking.get(state.id)
+      if (at && !at.paused && this.frameCount % 2 === 0) {
+        // Only process if time has changed (new frame)
+        if (Math.abs(currentTime - at.lastProcessedTime) > 0.01) {
+          const lastPos = this.getPositionAtTime(state.id, currentTime)
+          if (lastPos) {
+            const match = this.colorTracker.findBestMatch(
+              at.videoElement, lastPos.x, lastPos.y, at.template,
+              at.canvasW, at.canvasH
+            )
+            if (match) {
+              at.lastConfidence = match.confidence
+              if (match.confidence > 0.4) {
+                this.addKeyframe(state.id, { time: currentTime, x: match.x, y: match.y })
+              } else {
+                at.paused = true
+              }
+              // Update shadow color based on confidence
+              this.updateConfidenceIndicator(state, match.confidence)
+            }
+          }
+          at.lastProcessedTime = currentTime
+        }
+      }
+
       const pos = this.getPositionAtTime(state.id, currentTime)
       if (!pos) return
 
@@ -248,6 +345,31 @@ export class PlayerTracker {
     })
 
     this.canvas.renderAll()
+  }
+
+  // Update the tracker's glow color to indicate confidence
+  private updateConfidenceIndicator(state: TrackerState, confidence: number) {
+    const marker = state.marker
+    let shadowColor: string
+
+    if (confidence > 0.7) {
+      shadowColor = '#22c55e' // green
+    } else if (confidence > 0.4) {
+      shadowColor = '#eab308' // yellow
+    } else {
+      shadowColor = '#ef4444' // red
+    }
+
+    if (marker instanceof fabric.Group) {
+      const objects = (marker as any)._objects || []
+      for (const obj of objects) {
+        if (obj.shadow) {
+          obj.shadow.color = shadowColor
+        }
+      }
+    } else if ((marker as any).shadow) {
+      ;(marker as any).shadow.color = shadowColor
+    }
   }
 
   private updateTrail(state: TrackerState, currentTime: number) {

@@ -251,7 +251,7 @@ export default function LayerPanel({ isOpen, onToggle }: LayerPanelProps) {
   }
 
   return (
-    <div className="w-56 bg-surface-elevated border-l border-border-subtle flex flex-col">
+    <div className="w-56 bg-surface-elevated border-l border-border-subtle flex flex-col animate-slide-in-right">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
         <h3 className="text-sm font-medium text-text-secondary">Layers</h3>

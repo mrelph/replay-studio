@@ -1,8 +1,11 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Download, Upload } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
-import { Button, Select } from '@/components/ui'
+import { PRESET_COLORS } from '@/stores/toolStore'
+import { Button, IconButton, Select } from '@/components/ui'
+import WaveformDisplay from './WaveformDisplay'
+import { exportAnnotations, importAnnotations } from '@/utils/annotationSerializer'
 
 interface TimelineMarkerProps {
   annotation: Annotation
@@ -14,6 +17,7 @@ interface TimelineMarkerProps {
 
 function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTime }: TimelineMarkerProps) {
   const [isDragging, setIsDragging] = useState<'move' | 'start' | 'end' | null>(null)
+  const [isHovered, setIsHovered] = useState(false)
   const markerRef = useRef<HTMLDivElement>(null)
 
   const left = (annotation.startTime / duration) * 100
@@ -66,6 +70,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
   const getColor = () => {
     const id = annotation.id
     if (id.startsWith('path')) return 'bg-red-500/80'
+    if (id.startsWith('arc-arrow')) return 'bg-amber-500/80'
     if (id.startsWith('arrow')) return 'bg-orange-500/80'
     if (id.startsWith('line')) return 'bg-yellow-500/80'
     if (id.startsWith('rectangle')) return 'bg-green-500/80'
@@ -75,6 +80,12 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
     if (id.startsWith('magnifier')) return 'bg-cyan-400/80'
     if (id.startsWith('tracker')) return 'bg-purple-500/80'
     return 'bg-text-tertiary'
+  }
+
+  const formatMarkerTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = Math.floor(s % 60)
+    return `${m}:${sec.toString().padStart(2, '0')}`
   }
 
   return (
@@ -89,7 +100,16 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
         top: `${(annotation.layer % 3) * 28 + 4}px`,
       }}
       onMouseDown={(e) => handleMouseDown(e, 'move')}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
+      {/* Hover tooltip */}
+      {isHovered && !isDragging && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded shadow-lg border border-border-subtle pointer-events-none z-30 whitespace-nowrap">
+          <span className="font-medium capitalize">{annotation.toolType || annotation.id.split('-')[0]}</span>
+          <span className="text-text-disabled ml-1.5">{formatMarkerTime(annotation.startTime)}-{formatMarkerTime(annotation.endTime)}</span>
+        </div>
+      )}
       {/* Start handle */}
       <div
         className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-l"
@@ -112,6 +132,22 @@ export default function AnnotationTimeline() {
   const timelineRef = useRef<HTMLDivElement>(null)
   const { currentTime, duration, seek, inPoint, outPoint } = useVideoStore()
   const { annotations, selectedAnnotationId, selectAnnotation, updateAnnotation, removeAnnotation } = useDrawingStore()
+  const [trackHeight, setTrackHeight] = useState(96)
+  const [trackWidth, setTrackWidth] = useState(0)
+  const isResizingRef = useRef(false)
+
+  // Track the timeline div width for waveform rendering
+  useEffect(() => {
+    const el = timelineRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTrackWidth(entry.contentRect.width)
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [duration]) // re-attach when timeline appears (duration > 0)
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
@@ -147,10 +183,41 @@ export default function AnnotationTimeline() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedAnnotationId, handleDeleteSelected])
 
+  // Resize handle for timeline height
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizingRef.current = true
+    const startY = e.clientY
+    const startHeight = trackHeight
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return
+      const delta = startY - e.clientY
+      setTrackHeight(Math.max(48, Math.min(240, startHeight + delta)))
+    }
+
+    const handleMouseUp = () => {
+      isResizingRef.current = false
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }, [trackHeight])
+
   if (duration === 0) return null
 
   return (
     <div className="bg-surface-elevated border-t border-border-subtle px-4 py-2">
+      {/* Resize handle */}
+      <div
+        className="h-1.5 -mt-3 mb-1 cursor-ns-resize group flex items-center justify-center"
+        onMouseDown={handleResizeStart}
+      >
+        <div className="w-10 h-1 rounded-full bg-border-subtle group-hover:bg-text-disabled transition-colors" />
+      </div>
+
       {/* Timeline header */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-text-tertiary uppercase tracking-wide">Annotations Timeline</span>
@@ -161,6 +228,20 @@ export default function AnnotationTimeline() {
               Delete
             </Button>
           )}
+          {annotations.length > 0 && (
+            <IconButton
+              onClick={() => exportAnnotations(annotations)}
+              title="Export Annotations"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </IconButton>
+          )}
+          <IconButton
+            onClick={() => importAnnotations()}
+            title="Import Annotations"
+          >
+            <Upload className="w-3.5 h-3.5" />
+          </IconButton>
           <span className="text-xs text-text-disabled">{annotations.length} annotations</span>
         </div>
       </div>
@@ -168,9 +249,15 @@ export default function AnnotationTimeline() {
       {/* Timeline track */}
       <div
         ref={timelineRef}
-        className="relative h-24 bg-surface-sunken rounded-lg cursor-pointer overflow-hidden"
+        role="region"
+        aria-label="Annotation timeline"
+        className="relative bg-surface-sunken rounded-lg cursor-pointer overflow-hidden"
+        style={{ height: trackHeight }}
         onClick={handleTimelineClick}
       >
+        {/* Audio waveform background */}
+        <WaveformDisplay width={trackWidth} height={trackHeight} />
+
         {/* Time markers */}
         <div className="absolute inset-x-0 top-0 h-4 flex border-b border-border-subtle">
           {Array.from({ length: 11 }).map((_, i) => (
@@ -247,48 +334,134 @@ interface AnnotationDetailsProps {
 }
 
 function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetailsProps) {
+  const { layers } = useDrawingStore()
+  const fabricObj = annotation.object as any
+
+  const handleColorChange = (color: string) => {
+    if (!fabricObj) return
+    if (fabricObj.type === 'group') {
+      fabricObj.getObjects().forEach((obj: any) => {
+        if (obj.stroke) obj.set('stroke', color)
+        if (obj.fill && obj.fill !== 'transparent') obj.set('fill', color)
+        if (obj.shadow) obj.shadow.color = color
+      })
+    } else {
+      if (fabricObj.stroke) fabricObj.set('stroke', color)
+      if (fabricObj.fill && fabricObj.fill !== 'transparent' && fabricObj.type !== 'circle') fabricObj.set('fill', color)
+      if (fabricObj.shadow) fabricObj.shadow.color = color
+    }
+    fabricObj.canvas?.renderAll()
+  }
+
+  const handleOpacityChange = (opacity: number) => {
+    if (!fabricObj) return
+    fabricObj.set('opacity', opacity)
+    fabricObj.canvas?.renderAll()
+  }
+
+  const currentOpacity = fabricObj?.opacity ?? 1
+
   return (
-    <div className="mt-2 p-2 bg-surface-sunken rounded-lg flex items-center gap-4">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-text-tertiary">Type:</span>
-        <span className="text-xs text-text-primary font-medium">{annotation.id.split('-')[0]}</span>
+    <div className="mt-2 p-3 bg-surface-sunken rounded-lg space-y-2">
+      {/* Row 1: Type, timing, layer */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">Type:</span>
+          <span className="text-xs text-text-primary font-medium capitalize">{annotation.toolType || annotation.id.split('-')[0]}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">Start:</span>
+          <input
+            type="number"
+            step="0.1"
+            value={annotation.startTime.toFixed(2)}
+            onChange={(e) => onUpdate({ startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
+            className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">End:</span>
+          <input
+            type="number"
+            step="0.1"
+            value={annotation.endTime.toFixed(2)}
+            onChange={(e) => onUpdate({ endTime: Math.max(annotation.startTime + 0.1, parseFloat(e.target.value) || 0) })}
+            className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">Layer:</span>
+          <Select
+            value={annotation.layer}
+            onChange={(e) => onUpdate({ layer: parseInt(e.target.value) })}
+            className="text-xs py-1"
+          >
+            {layers.map((layer) => (
+              <option key={layer.id} value={layer.id}>{layer.name}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex-1" />
+        <Button onClick={onDelete} variant="danger" size="sm">
+          Delete
+        </Button>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-text-tertiary">Start:</span>
-        <input
-          type="number"
-          step="0.1"
-          value={annotation.startTime.toFixed(2)}
-          onChange={(e) => onUpdate({ startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
-          className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
-        />
+
+      {/* Row 2: Color, opacity, fade */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">Color:</span>
+          <div className="flex items-center gap-1">
+            {PRESET_COLORS.slice(0, 8).map((color) => (
+              <button
+                key={color}
+                onClick={() => handleColorChange(color)}
+                className="w-4 h-4 rounded-sm transition-all hover:scale-125 flex-shrink-0"
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">Opacity:</span>
+          <input
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.05"
+            value={currentOpacity}
+            onChange={(e) => handleOpacityChange(parseFloat(e.target.value))}
+            className="w-20 h-1 accent-[var(--color-accent)]"
+          />
+          <span className="text-xs text-text-disabled w-8">{Math.round(currentOpacity * 100)}%</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">Fade In:</span>
+          <input
+            type="number"
+            step="0.05"
+            min="0"
+            max="2"
+            value={(annotation.fadeIn ?? 0).toFixed(2)}
+            onChange={(e) => onUpdate({ fadeIn: Math.max(0, parseFloat(e.target.value) || 0) })}
+            className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">Fade Out:</span>
+          <input
+            type="number"
+            step="0.05"
+            min="0"
+            max="2"
+            value={(annotation.fadeOut ?? 0).toFixed(2)}
+            onChange={(e) => onUpdate({ fadeOut: Math.max(0, parseFloat(e.target.value) || 0) })}
+            className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
+          />
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-text-tertiary">End:</span>
-        <input
-          type="number"
-          step="0.1"
-          value={annotation.endTime.toFixed(2)}
-          onChange={(e) => onUpdate({ endTime: Math.max(annotation.startTime + 0.1, parseFloat(e.target.value) || 0) })}
-          className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-text-tertiary">Layer:</span>
-        <Select
-          value={annotation.layer}
-          onChange={(e) => onUpdate({ layer: parseInt(e.target.value) })}
-          className="text-xs py-1"
-        >
-          {[0, 1, 2].map((layer) => (
-            <option key={layer} value={layer}>Layer {layer + 1}</option>
-          ))}
-        </Select>
-      </div>
-      <div className="flex-1" />
-      <Button onClick={onDelete} variant="danger" size="sm">
-        Delete
-      </Button>
     </div>
   )
 }

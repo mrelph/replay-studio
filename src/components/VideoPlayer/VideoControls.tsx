@@ -45,7 +45,9 @@ export default function VideoControls() {
 
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [hoverTime, setHoverTime] = useState<{ time: number; x: number } | null>(null)
   const volumeRef = useRef<HTMLDivElement>(null)
+  const volumeHideTimer = useRef<number>(0)
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
@@ -92,7 +94,24 @@ export default function VideoControls() {
   return (
     <div className="bg-surface-elevated px-4 py-3 border-t border-border-subtle shadow-sm relative z-50">
       {/* Timeline */}
-      <div className="relative mb-3 group">
+      <div
+        className="relative mb-3 group"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect()
+          const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+          setHoverTime({ time: x * duration, x: e.clientX - rect.left })
+        }}
+        onMouseLeave={() => setHoverTime(null)}
+      >
+        {/* Hover time tooltip */}
+        {hoverTime && (
+          <div
+            className="absolute -top-8 px-2 py-1 bg-surface-elevated text-text-primary text-xs font-mono rounded shadow-lg border border-border-subtle pointer-events-none z-20 whitespace-nowrap"
+            style={{ left: hoverTime.x, transform: 'translateX(-50%)' }}
+          >
+            {formatTime(hoverTime.time)}
+          </div>
+        )}
         {/* In/Out point markers */}
         {inPoint !== null && (
           <div
@@ -126,6 +145,11 @@ export default function VideoControls() {
           step={0.01}
           value={progress}
           onChange={handleSeek}
+          aria-label="Video timeline"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
+          aria-valuetext={formatTime(currentTime)}
         />
       </div>
 
@@ -262,10 +286,19 @@ export default function VideoControls() {
           <div className="w-px h-5 bg-border-subtle mx-1.5" />
 
           {/* Volume control */}
-          <div ref={volumeRef} className="relative">
+          <div
+            ref={volumeRef}
+            className="relative"
+            onMouseEnter={() => {
+              clearTimeout(volumeHideTimer.current)
+              setShowVolumeSlider(true)
+            }}
+            onMouseLeave={() => {
+              volumeHideTimer.current = window.setTimeout(() => setShowVolumeSlider(false), 200)
+            }}
+          >
             <IconButton
               onClick={toggleMute}
-              onMouseEnter={() => setShowVolumeSlider(true)}
               title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
               size="sm"
             >
@@ -278,20 +311,19 @@ export default function VideoControls() {
               )}
             </IconButton>
             {showVolumeSlider && (
-              <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-surface-elevated rounded-lg shadow-lg border border-border-subtle"
-                onMouseLeave={() => setShowVolumeSlider(false)}
-              >
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={isMuted ? 0 : volume}
-                  onChange={handleVolumeChange}
-                  className="w-24 h-1 accent-[var(--color-accent)]"
-                  style={{ writingMode: 'horizontal-tb' }}
-                />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-1">
+                <div className="p-2 bg-surface-elevated rounded-lg shadow-lg border border-border-subtle">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={isMuted ? 0 : volume}
+                    onChange={handleVolumeChange}
+                    className="w-24 h-1 accent-[var(--color-accent)]"
+                    style={{ writingMode: 'horizontal-tb' }}
+                  />
+                </div>
               </div>
             )}
           </div>

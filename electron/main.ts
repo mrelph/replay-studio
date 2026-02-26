@@ -283,6 +283,34 @@ ipcMain.handle('dialog:loadProject', async () => {
   return null
 })
 
+// Annotation export/import
+ipcMain.handle('dialog:exportAnnotations', async (_, defaultName: string) => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    defaultPath: defaultName || 'annotations.rsann',
+    filters: [
+      { name: 'Replay Studio Annotations', extensions: ['rsann'] },
+      { name: 'JSON', extensions: ['json'] },
+    ],
+  })
+  if (!result.canceled && result.filePath) {
+    return result.filePath
+  }
+  return null
+})
+
+ipcMain.handle('dialog:importAnnotations', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Replay Studio Annotations', extensions: ['rsann', 'json'] },
+    ],
+  })
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0]
+  }
+  return null
+})
+
 // File read/write for projects
 ipcMain.handle('file:write', async (_, filePath: string, content: string) => {
   try {
