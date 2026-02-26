@@ -1,12 +1,17 @@
 import { useState } from 'react'
+import fabricModule from 'fabric'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
-  Sun, ZoomIn, Crosshair, Radio, Undo2, Redo2, Trash2
+  Sun, ZoomIn, Crosshair, Radio, Undo2, Redo2, Trash2, Eraser, Snowflake
 } from 'lucide-react'
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useVideoStore } from '@/stores/videoStore'
 import { useAudienceStore } from '@/stores/audienceStore'
 import { Modal, Button } from '@/components/ui'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fabric: any = (fabricModule as any).fabric || fabricModule
 
 interface ToolButtonProps {
   tool: ToolType
@@ -67,9 +72,12 @@ const COLOR_NAMES: Record<string, string> = {
 
 export default function DrawingToolbar() {
   const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth, currentTool, setCurrentTool } = useToolStore()
-  const { undo, redo, clearAnnotations, undoStack, redoStack, annotations } = useDrawingStore()
+  const { undo, redo, clearAnnotations, undoStack, redoStack, annotations, selectedAnnotationId, updateAnnotation } = useDrawingStore()
+  const { currentTime, duration } = useVideoStore()
   const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [showFreezePopover, setShowFreezePopover] = useState(false)
+  const [freezeSeconds, setFreezeSeconds] = useState(3)
 
   return (
     <div role="toolbar" aria-label="Drawing tools" className="h-12 bg-surface-elevated/95 border-t border-border-subtle flex items-center px-3 gap-1 backdrop-blur-sm flex-shrink-0 overflow-x-auto">
@@ -86,6 +94,7 @@ export default function DrawingToolbar() {
         <ToolButton tool="line" label="Line" shortcut="Shift+L" icon={<Minus className="w-4 h-4" />} />
         <ToolButton tool="arrow" label="Arrow" shortcut="A" icon={<ArrowUpRight className="w-4 h-4" />} />
         <ToolButton tool="arc-arrow" label="Arc Arrow" shortcut="Shift+A" icon={<Redo className="w-4 h-4" />} />
+        <ToolButton tool="erase" label="Eraser" shortcut="E" icon={<Eraser className="w-4 h-4" />} />
       </ToolGroup>
 
       <VerticalDivider />
@@ -185,6 +194,75 @@ export default function DrawingToolbar() {
         >
           <Redo2 className="w-4 h-4" />
         </button>
+        <div className="relative">
+          <button
+            onClick={() => setShowFreezePopover(!showFreezePopover)}
+            disabled={duration === 0}
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-all ${
+              showFreezePopover
+                ? 'bg-accent text-accent-text shadow-md'
+                : 'hover:bg-surface-sunken text-text-secondary hover:text-text-primary'
+            } disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent`}
+            title="Mark Freeze Frame"
+          >
+            <Snowflake className="w-4 h-4" />
+          </button>
+          {showFreezePopover && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-surface-elevated rounded-lg shadow-xl border border-border-subtle p-3 z-50">
+              <p className="text-xs text-text-secondary mb-2">Freeze video at current time for:</p>
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="0.5"
+                  value={freezeSeconds}
+                  onChange={(e) => setFreezeSeconds(parseFloat(e.target.value))}
+                  className="flex-1 h-1 accent-[var(--color-accent)]"
+                />
+                <span className="text-xs text-text-primary font-medium w-8 text-right">{freezeSeconds}s</span>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (selectedAnnotationId) {
+                    // Apply freeze to selected annotation
+                    updateAnnotation(selectedAnnotationId, { freezeDuration: freezeSeconds })
+                  } else {
+                    // Create an invisible freeze-frame marker annotation
+                    const { addAnnotation, canvas: canvasInst } = useDrawingStore.getState()
+                    if (canvasInst) {
+                      const marker = new fabric.Rect({
+                        left: 0,
+                        top: 0,
+                        width: 1,
+                        height: 1,
+                        fill: 'transparent',
+                        stroke: 'transparent',
+                        selectable: false,
+                        evented: false,
+                        visible: false,
+                      })
+                      canvasInst.add(marker)
+                      addAnnotation({
+                        id: `freeze-${Date.now()}`,
+                        object: marker,
+                        startTime: currentTime,
+                        endTime: currentTime + 0.1,
+                        layer: 1,
+                        toolType: 'freeze',
+                        freezeDuration: freezeSeconds,
+                      })
+                    }
+                  }
+                  setShowFreezePopover(false)
+                }}
+              >
+                {selectedAnnotationId ? 'Apply to Selected' : 'Mark Freeze'}
+              </Button>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => {
             if (annotations.length === 0) return

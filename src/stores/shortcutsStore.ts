@@ -15,6 +15,7 @@ export type ShortcutAction =
   | 'tool.tracker'
   | 'tool.arcArrow'
   | 'tool.laser'
+  | 'tool.erase'
   // Video
   | 'video.playPause'
   | 'video.stepForward'
@@ -78,6 +79,7 @@ const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'tool.tracker', label: 'Player tracker', category: 'Tools', binding: { key: 'k', shift: true } },
   { action: 'tool.arcArrow', label: 'Arc arrow tool', category: 'Tools', binding: { key: 'a', shift: true } },
   { action: 'tool.laser', label: 'Laser pointer', category: 'Tools', binding: { key: 'p', shift: true } },
+  { action: 'tool.erase', label: 'Eraser tool', category: 'Tools', binding: { key: 'e' } },
   // Video
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },
   { action: 'video.stepForward', label: 'Next frame', category: 'Video Playback', binding: { key: 'arrowright' } },

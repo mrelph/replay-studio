@@ -1,5 +1,6 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { useVideoStore } from '@/stores/videoStore'
+import { useDrawingStore } from '@/stores/drawingStore'
 import VideoControls from './VideoControls'
 
 interface VideoPlayerProps {
@@ -21,6 +22,19 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     setVideoElement,
   } = useVideoStore()
 
+  // Freeze frame tracking: which freeze annotations have fired this playback session
+  const triggeredFreezesRef = useRef<Set<string>>(new Set())
+  const freezeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Reset triggered freezes when user seeks or pauses
+  const resetFreezes = useCallback(() => {
+    triggeredFreezesRef.current.clear()
+    if (freezeTimeoutRef.current) {
+      clearTimeout(freezeTimeoutRef.current)
+      freezeTimeoutRef.current = null
+    }
+  }, [])
+
   // Initialize video element in store
   useEffect(() => {
     if (videoRef.current) {
@@ -30,8 +44,9 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     return () => {
       setVideoElement(null)
       onVideoRef?.(null)
+      resetFreezes()
     }
-  }, [setVideoElement, onVideoRef])
+  }, [setVideoElement, onVideoRef, resetFreezes])
 
   // Handle video events
   useEffect(() => {
@@ -44,7 +59,31 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
 
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime)
+
+      // Freeze frame logic: check if we've crossed a freeze-frame annotation
+      if (!video.paused) {
+        const annotations = useDrawingStore.getState().annotations
+        for (const ann of annotations) {
+          if (!ann.freezeDuration || ann.freezeDuration <= 0) continue
+          if (triggeredFreezesRef.current.has(ann.id)) continue
+
+          // Check if current time is within a small window around the annotation's startTime
+          const dt = video.currentTime - ann.startTime
+          if (dt >= 0 && dt < 0.15) {
+            triggeredFreezesRef.current.add(ann.id)
+            video.pause()
+            freezeTimeoutRef.current = setTimeout(() => {
+              freezeTimeoutRef.current = null
+              video.play()
+            }, ann.freezeDuration * 1000)
+            break  // Only trigger one freeze per timeupdate
+          }
+        }
+      }
     }
+
+    // Reset freeze tracking on seek
+    const handleSeeking = () => resetFreezes()
 
     const handlePlay = () => setIsPlaying(true)
     const handlePause = () => setIsPlaying(false)
@@ -66,6 +105,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     video.addEventListener('ended', handleEnded)
     video.addEventListener('error', handleError)
     video.addEventListener('canplay', handleCanPlay)
+    video.addEventListener('seeking', handleSeeking)
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata)
@@ -75,8 +115,9 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       video.removeEventListener('ended', handleEnded)
       video.removeEventListener('error', handleError)
       video.removeEventListener('canplay', handleCanPlay)
+      video.removeEventListener('seeking', handleSeeking)
     }
-  }, [setCurrentTime, setDuration, setIsPlaying])
+  }, [setCurrentTime, setDuration, setIsPlaying, resetFreezes])
 
   // Sync playback rate
   useEffect(() => {

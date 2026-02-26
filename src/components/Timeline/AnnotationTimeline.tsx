@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { Trash2, Download, Upload } from 'lucide-react'
+import { Trash2, Download, Upload, Snowflake } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
 import { PRESET_COLORS } from '@/stores/toolStore'
@@ -79,6 +79,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
     if (id.startsWith('spotlight')) return 'bg-yellow-400/80'
     if (id.startsWith('magnifier')) return 'bg-cyan-400/80'
     if (id.startsWith('tracker')) return 'bg-purple-500/80'
+    if (id.startsWith('freeze')) return 'bg-sky-400/80'
     return 'bg-text-tertiary'
   }
 
@@ -121,8 +122,15 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
         onMouseDown={(e) => handleMouseDown(e, 'end')}
       />
       {/* Label */}
-      <div className="px-2 text-xs text-white truncate leading-6">
-        {annotation.id.split('-')[0]}
+      <div className="px-2 text-xs text-white truncate leading-6 flex items-center gap-1">
+        {annotation.freezeDuration ? (
+          <>
+            <Snowflake className="w-3 h-3 flex-shrink-0" />
+            <span>{annotation.freezeDuration}s</span>
+          </>
+        ) : (
+          annotation.id.split('-')[0]
+        )}
       </div>
     </div>
   )
@@ -460,6 +468,24 @@ function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetails
             onChange={(e) => onUpdate({ fadeOut: Math.max(0, parseFloat(e.target.value) || 0) })}
             className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Snowflake className="w-3 h-3 text-text-tertiary" />
+          <span className="text-xs text-text-tertiary">Freeze:</span>
+          <input
+            type="number"
+            step="0.5"
+            min="0"
+            max="10"
+            value={(annotation.freezeDuration ?? 0).toFixed(1)}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value) || 0
+              onUpdate({ freezeDuration: val > 0 ? val : undefined })
+            }}
+            className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
+          />
+          <span className="text-xs text-text-disabled">sec</span>
         </div>
       </div>
     </div>

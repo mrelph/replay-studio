@@ -13,6 +13,7 @@ export interface Annotation {
   fadeIn?: number
   fadeOut?: number
   name?: string
+  freezeDuration?: number  // seconds to hold video at this annotation's startTime
 }
 
 export interface Layer {
@@ -33,6 +34,7 @@ interface AnnotationSnapshot {
   fadeIn?: number
   fadeOut?: number
   name?: string
+  freezeDuration?: number
 }
 
 // A full undo/redo snapshot: annotation metadata + fabric canvas JSON
@@ -257,6 +259,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
         fadeIn: a.fadeIn,
         fadeOut: a.fadeOut,
         name: a.name,
+        freezeDuration: a.freezeDuration,
       })),
       canvasJSON: JSON.stringify(canvas.toJSON()),
     }
@@ -281,6 +284,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
         fadeIn: a.fadeIn,
         fadeOut: a.fadeOut,
         name: a.name,
+        freezeDuration: a.freezeDuration,
       })),
       canvasJSON: JSON.stringify(canvas.toJSON()),
     }
@@ -321,6 +325,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
         fadeIn: a.fadeIn,
         fadeOut: a.fadeOut,
         name: a.name,
+        freezeDuration: a.freezeDuration,
       })),
       canvasJSON: JSON.stringify(canvas.toJSON()),
     }

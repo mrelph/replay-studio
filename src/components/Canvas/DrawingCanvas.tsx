@@ -181,6 +181,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       magnifier: 'zoom-in',
       tracker: 'crosshair',
       laser: 'none',
+      erase: 'crosshair',
     }
     const cursor = cursorMap[currentTool] || 'default'
     canvas.defaultCursor = cursor
@@ -205,33 +206,41 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   }, [currentTime])
 
   // Update magnifier content from video frame
-  const updateMagnifierContent = useCallback((magnifierId: string, circle: any, centerX: number, centerY: number, radius: number) => {
+  const updateMagnifierContent = useCallback((magnifierId: string, circle: any) => {
     if (!videoElement || !fabricRef.current) return
 
     const zoomLevel = 2.5
     const canvas = fabricRef.current
+    const radius = circle.radius || 60
 
-    // Create off-screen canvas for zoomed content (HiDPI-aware)
-    const dpr = window.devicePixelRatio || 1
+    // Get current center from the fabric object (in video-native coords)
+    const centerX = (circle.left || 0) + radius
+    const centerY = (circle.top || 0) + radius
+
+    // Create off-screen canvas for zoomed content
     const tempCanvas = document.createElement('canvas')
     const size = radius * 2
-    tempCanvas.width = size * dpr
-    tempCanvas.height = size * dpr
+    tempCanvas.width = size
+    tempCanvas.height = size
     const ctx = tempCanvas.getContext('2d')
     if (!ctx) return
-    ctx.scale(dpr, dpr)
 
-    // Calculate source region from video
-    const videoScaleX = videoElement.videoWidth / dimensions.width
-    const videoScaleY = videoElement.videoHeight / dimensions.height
+    // Coordinates are in video-native space, so map directly to video pixels
+    const vw = videoElement.videoWidth
+    const vh = videoElement.videoHeight
+    const ref = refDimsRef.current
+    if (!ref || !vw || !vh) return
+
+    const scaleX = vw / ref.width
+    const scaleY = vh / ref.height
 
     const sourceSize = (radius * 2) / zoomLevel
-    const sourceX = (centerX - sourceSize / 2) * videoScaleX
-    const sourceY = (centerY - sourceSize / 2) * videoScaleY
-    const sourceWidth = sourceSize * videoScaleX
-    const sourceHeight = sourceSize * videoScaleY
+    const sourceX = (centerX - sourceSize / 2) * scaleX
+    const sourceY = (centerY - sourceSize / 2) * scaleY
+    const sourceWidth = sourceSize * scaleX
+    const sourceHeight = sourceSize * scaleY
 
-    // Draw zoomed video portion
+    // Draw zoomed video portion clipped to circle
     ctx.save()
     ctx.beginPath()
     ctx.arc(radius, radius, radius - 4, 0, Math.PI * 2)
@@ -242,17 +251,17 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
         videoElement,
         Math.max(0, sourceX),
         Math.max(0, sourceY),
-        Math.min(sourceWidth, videoElement.videoWidth - sourceX),
-        Math.min(sourceHeight, videoElement.videoHeight - sourceY),
+        Math.min(sourceWidth, vw - Math.max(0, sourceX)),
+        Math.min(sourceHeight, vh - Math.max(0, sourceY)),
         0, 0, size, size
       )
-    } catch (e) {
+    } catch {
       // Video might not be ready
     }
 
     ctx.restore()
 
-    // Draw border inside
+    // Draw border
     ctx.strokeStyle = '#00d4ff'
     ctx.lineWidth = 4
     ctx.beginPath()
@@ -269,24 +278,20 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     ctx.lineTo(radius, radius + 15)
     ctx.stroke()
 
-    // Create pattern from temp canvas and apply to circle
+    // Apply as pattern fill
     const pattern = new fabric.Pattern({
       source: tempCanvas,
       repeat: 'no-repeat',
     })
 
-    circle.set({
-      fill: pattern,
-      dirty: true
-    })
-
+    circle.set({ fill: pattern, dirty: true })
     canvas.renderAll()
-  }, [videoElement, dimensions])
+  }, [videoElement])
 
   // Update all magnifiers when video time changes
   useEffect(() => {
     magnifiersRef.current.forEach((mag, id) => {
-      updateMagnifierContent(id, mag.circle, mag.centerX, mag.centerY, mag.radius)
+      updateMagnifierContent(id, mag.circle)
     })
   }, [currentTime, updateMagnifierContent])
 
@@ -405,8 +410,21 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       }
     }
 
+    // Erase tool state
+    let erasePoints: { x: number; y: number }[] = []
+    let erasePreview: fabric.Line[] = []
+    let isErasing = false
+
     const handleMouseDown = (e: any) => {
       if (currentTool === 'pen' || currentTool === 'select' || currentTool === 'laser') return
+
+      // Erase tool: start collecting path
+      if (currentTool === 'erase') {
+        const pointer = canvas.getPointer(e.e)
+        isErasing = true
+        erasePoints = [{ x: pointer.x, y: pointer.y }]
+        return
+      }
 
       const pointer = canvas.getPointer(e.e)
       isDrawingRef.current = true
@@ -566,7 +584,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           })
 
           // Initialize with current video frame
-          updateMagnifierContent(magId, magnifierCircle, pointer.x, pointer.y, magRadius)
+          updateMagnifierContent(magId, magnifierCircle)
 
           // Store magId on the object for cleanup
           ;(magnifierCircle as any).magnifierId = magId
@@ -644,17 +662,17 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           canvas.add(trackerGroup)
           createAnnotation(trackerGroup, 'tracker')
 
-          // Enable auto-tracking via color template matching
-          if (playerTrackerRef.current) {
+          // Register this annotation group for auto-tracking
+          if (playerTrackerRef.current && refDimsRef.current) {
             const trackerId = `tracker-${Date.now()}`
-            playerTrackerRef.current.create(trackerId, {
+            playerTrackerRef.current.track(trackerId, trackerGroup, {
               time: currentTime,
               x: pointer.x,
               y: pointer.y,
             }, { color: strokeColor, radius: trackerRadius })
             playerTrackerRef.current.enableAutoTracking(
               trackerId, videoElement,
-              dimensions.width, dimensions.height
+              refDimsRef.current.width, refDimsRef.current.height
             )
           }
 
@@ -689,6 +707,27 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
 
     const handleMouseMove = (e: any) => {
+      // Erase tool: extend preview path
+      if (currentTool === 'erase' && isErasing) {
+        const pointer = canvas.getPointer(e.e)
+        const prev = erasePoints[erasePoints.length - 1]
+        erasePoints.push({ x: pointer.x, y: pointer.y })
+
+        // Draw red dashed preview segment
+        const seg = new fabric.Line([prev.x, prev.y, pointer.x, pointer.y], {
+          stroke: '#ff4444',
+          strokeWidth: 3,
+          strokeDashArray: [6, 4],
+          selectable: false,
+          evented: false,
+          opacity: 0.8,
+        })
+        canvas.add(seg)
+        erasePreview.push(seg)
+        canvas.renderAll()
+        return
+      }
+
       if (!isDrawingRef.current || !currentShapeRef.current) return
 
       const pointer = canvas.getPointer(e.e)
@@ -760,6 +799,64 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
 
     const handleMouseUp = () => {
+      // Erase tool: find intersecting annotations and remove them
+      if (currentTool === 'erase' && isErasing) {
+        isErasing = false
+
+        // Remove preview lines
+        erasePreview.forEach((seg) => canvas.remove(seg))
+        erasePreview = []
+
+        if (erasePoints.length >= 2) {
+          // Build a temporary path from erase points
+          const pathData = erasePoints.map((pt, i) =>
+            i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`
+          ).join(' ')
+
+          const erasePath = new fabric.Path(pathData, {
+            stroke: '#ff0000',
+            strokeWidth: 8,
+            fill: 'transparent',
+            selectable: false,
+            evented: false,
+          })
+          canvas.add(erasePath)
+
+          // Save state once before batch removal
+          const { saveState, annotations: currentAnnotations, removeAnnotation } = useDrawingStore.getState()
+          saveState()
+
+          // Find annotations that intersect the erase path
+          const toRemove: string[] = []
+          for (const ann of currentAnnotations) {
+            if (ann.object && erasePath.intersectsWithObject(ann.object)) {
+              toRemove.push(ann.id)
+            }
+          }
+
+          // Remove erase path
+          canvas.remove(erasePath)
+
+          // Remove intersecting annotations (skip saveState in removeAnnotation since we already saved)
+          for (const id of toRemove) {
+            const ann = useDrawingStore.getState().annotations.find(a => a.id === id)
+            if (ann) {
+              canvas.remove(ann.object)
+              canvas.renderAll()
+            }
+            useDrawingStore.setState((state) => ({
+              annotations: state.annotations.filter((a) => a.id !== id),
+              selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
+            }))
+          }
+
+          canvas.renderAll()
+        }
+
+        erasePoints = []
+        return
+      }
+
       if (!isDrawingRef.current || !currentShapeRef.current) return
 
       const shape = currentShapeRef.current

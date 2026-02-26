@@ -23,6 +23,7 @@ const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
   'tool.magnifier': 'magnifier',
   'tool.tracker': 'tracker',
   'tool.laser': 'laser',
+  'tool.erase': 'erase',
 }
 
 export function useKeyboardShortcuts() {
