@@ -18,8 +18,6 @@ import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore } from './stores/themeStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
 import { useWaveformStore } from './stores/waveformStore'
-// Plugin infrastructure — registry is initialized as a singleton on import.
-// Future tools can be registered via: ToolRegistry.register(myPlugin)
 import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
 export const toolRegistry = _ToolRegistry
 import fabricModule from 'fabric'
@@ -73,7 +71,7 @@ function App() {
     setVideoSrc(videoUrl)
     addRecentFile(filePath)
     resetVideo()
-    // Decode audio for waveform display
+    // Decode audio for waveform display (uses streaming, not full file load)
     useWaveformStore.getState().decodeAudio(videoUrl)
   }, [addRecentFile, resetVideo])
 

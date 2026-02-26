@@ -37,6 +37,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const { setCanvas, addAnnotation, annotations } = useDrawingStore()
   const { currentTime, duration } = useVideoStore()
 
+  // Reference dimensions for zoom-based scaling (set once on init)
+  const refDimsRef = useRef<{ width: number; height: number } | null>(null)
+
   // Track drawing state for shapes
   const isDrawingRef = useRef(false)
   const startPointRef = useRef({ x: 0, y: 0 })
@@ -58,12 +61,27 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
   }, [videoElement])
 
+  // Helper: apply zoom so that video-native coordinates map to display pixels
+  const applyZoom = useCallback((canvas: fabric.Canvas, displayW: number, displayH: number) => {
+    const ref = refDimsRef.current
+    if (!ref) return
+    const zoom = Math.min(displayW / ref.width, displayH / ref.height)
+    canvas.setZoom(zoom)
+    canvas.setDimensions({ width: displayW, height: displayH })
+  }, [])
+
   // Initialize Fabric canvas once when video element is ready
   useEffect(() => {
     if (!canvasRef.current || !videoElement) return
 
     const dims = calcDimensions()
     if (dims.width === 0) return
+
+    // Use video native resolution as the fixed logical coordinate space.
+    // All annotations are placed in these coordinates — just like video pixels.
+    const nativeW = videoElement.videoWidth || dims.width
+    const nativeH = videoElement.videoHeight || dims.height
+    refDimsRef.current = { width: nativeW, height: nativeH }
 
     const canvas = new fabric.Canvas(canvasRef.current, {
       width: dims.width,
@@ -72,6 +90,10 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       isDrawingMode: currentTool === 'pen',
       enableRetinaScaling: true,
     })
+
+    // Set initial zoom so native coords map to display size
+    const zoom = Math.min(dims.width / nativeW, dims.height / nativeH)
+    canvas.setZoom(zoom)
 
     fabricRef.current = canvas
     setCanvas(canvas)
@@ -94,7 +116,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoElement, setCanvas])
 
-  // Update canvas dimensions on resize/metadata load (without recreating)
+  // Update canvas display dimensions on resize/layout changes.
+  // Only the zoom changes — object coordinates stay in video-native space.
   useEffect(() => {
     if (!videoElement) return
 
@@ -104,26 +127,37 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       clearTimeout(resizeTimer)
       resizeTimer = setTimeout(() => {
         const canvas = fabricRef.current
-        if (!canvas) return
+        if (!canvas || !refDimsRef.current) return
 
         const dims = calcDimensions()
         if (dims.width === 0) return
 
-        canvas.setDimensions({ width: dims.width, height: dims.height })
+        // Update ref dims if video metadata arrived after init
+        if (videoElement.videoWidth && videoElement.videoHeight) {
+          refDimsRef.current = {
+            width: videoElement.videoWidth,
+            height: videoElement.videoHeight,
+          }
+        }
+
+        applyZoom(canvas, dims.width, dims.height)
         setDimensions(dims)
         canvas.renderAll()
       }, 50) // Debounce resize
     }
 
+    // Use ResizeObserver to detect all layout changes (panel toggle, window resize, etc.)
+    const ro = new ResizeObserver(updateDimensions)
+    ro.observe(videoElement)
+
     videoElement.addEventListener('loadedmetadata', updateDimensions)
-    window.addEventListener('resize', updateDimensions)
 
     return () => {
       clearTimeout(resizeTimer)
+      ro.disconnect()
       videoElement.removeEventListener('loadedmetadata', updateDimensions)
-      window.removeEventListener('resize', updateDimensions)
     }
-  }, [videoElement, calcDimensions])
+  }, [videoElement, calcDimensions, applyZoom])
 
   // Update canvas settings when tool changes
   useEffect(() => {
