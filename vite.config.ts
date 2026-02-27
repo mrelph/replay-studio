@@ -39,9 +39,23 @@ export default defineConfig({
     ]),
     renderer(),
   ],
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'onnx-runtime': ['onnxruntime-web'],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'],
+  },
+  assetsInclude: ['**/*.onnx'],
 })

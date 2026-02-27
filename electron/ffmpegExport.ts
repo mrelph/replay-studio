@@ -1,6 +1,9 @@
 import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
+import { createRequire } from 'module'
+
+const require = createRequire(import.meta.url)
 
 // Get ffmpeg path - handles both dev and production (asar unpacked)
 function getFFmpegPath(): string {

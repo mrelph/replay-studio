@@ -1,5 +1,6 @@
 import fabricModule from 'fabric'
 import { ColorTracker, type TemplateData } from './ColorTracker'
+import { YoloDetector, type Detection } from './YoloDetector'
 
 // Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -9,11 +10,15 @@ export interface TrackPoint {
   time: number
   x: number
   y: number
+  width?: number
+  height?: number
 }
 
 export interface PlayerTrackerOptions {
   color?: string
   radius?: number
+  width?: number   // initial bbox width (default 60)
+  height?: number  // initial bbox height (default 60)
 }
 
 interface TrackerEntry {
@@ -22,6 +27,8 @@ interface TrackerEntry {
   keyframes: TrackPoint[]
   options: PlayerTrackerOptions
   statusLabel: fabric.Text | null
+  currentWidth: number         // smoothed current bbox width
+  currentHeight: number        // smoothed current bbox height
 }
 
 interface AutoTrackingState {
@@ -39,10 +46,15 @@ export class PlayerTracker {
   private trackers: Map<string, TrackerEntry> = new Map()
   private currentTime: number = 0
   private colorTracker: ColorTracker = new ColorTracker()
+  private yoloDetector: YoloDetector = new YoloDetector()
   private autoTracking: Map<string, AutoTrackingState> = new Map()
+  private pendingDetection: Promise<Detection[]> | null = null
+  private cachedDetections: Detection[] = []
 
   constructor(canvas: fabric.Canvas) {
     this.canvas = canvas
+    // Load YOLO model in background — silent fallback to ColorTracker if it fails
+    this.yoloDetector.initialize()
   }
 
   /**
@@ -56,7 +68,8 @@ export class PlayerTracker {
     options: PlayerTrackerOptions = {}
   ) {
     // Add a small status label below the tracker
-    const radius = options.radius || 30
+    const initW = options.width || 60
+    const initH = options.height || 60
     const label = new fabric.Text('Tracking', {
       fontSize: 10,
       fill: options.color || '#ff0000',
@@ -64,7 +77,7 @@ export class PlayerTracker {
       fontWeight: 'bold',
       originX: 'center',
       originY: 'top',
-      top: radius + 4,
+      top: initH / 2 + 4,
       left: 0,
       shadow: new fabric.Shadow({
         color: 'rgba(0,0,0,0.8)',
@@ -87,11 +100,13 @@ export class PlayerTracker {
       keyframes: [initialPosition],
       options,
       statusLabel: label,
+      currentWidth: initW,
+      currentHeight: initH,
     })
   }
 
   /**
-   * Enable auto-tracking using color template matching.
+   * Enable auto-tracking using YOLO detection (preferred) or color template matching (fallback).
    * nativeW/nativeH should be the video-native coordinate dimensions (refDims).
    */
   enableAutoTracking(
@@ -104,6 +119,8 @@ export class PlayerTracker {
     if (!entry) return false
 
     const center = this.getGroupCenter(entry)
+
+    // Always sample a color template as fallback
     const template = this.colorTracker.sampleTemplate(
       videoElement, center.x, center.y, nativeW, nativeH
     )
@@ -118,6 +135,24 @@ export class PlayerTracker {
       paused: false,
       lastProcessedTime: this.currentTime,
     })
+
+    // If YOLO is ready, run an initial detection to snap to the closest person bbox
+    if (this.yoloDetector.modelLoaded) {
+      this.updateStatusLabel(entry, 1, 'AI Ready')
+      this.yoloDetector.detectAll(videoElement, nativeW, nativeH).then((dets) => {
+        this.cachedDetections = dets
+        const closest = this.yoloDetector.findClosestDetection(dets, center.x, center.y)
+        if (closest && closest.distance < Math.max(nativeW, nativeH) * 0.15) {
+          this.addKeyframe(id, {
+            time: this.currentTime,
+            x: closest.x,
+            y: closest.y,
+            width: closest.width,
+            height: closest.height,
+          })
+        }
+      })
+    }
 
     return true
   }
@@ -147,34 +182,102 @@ export class PlayerTracker {
       // Auto-tracking: process when time has changed by at least one frame (~30fps)
       if (at && !at.paused) {
         if (Math.abs(currentTime - at.lastProcessedTime) > 0.03) {
-          const lastPos = this.getPositionAtTime(entry.id, currentTime)
-          if (lastPos) {
-            const match = this.colorTracker.findBestMatch(
-              at.videoElement, lastPos.x, lastPos.y, at.template,
-              at.nativeW, at.nativeH
-            )
-            if (match) {
-              at.lastConfidence = match.confidence
-              if (match.confidence > 0.4) {
-                this.addKeyframe(entry.id, { time: currentTime, x: match.x, y: match.y })
-              } else {
-                at.paused = true
+          const lastState = this.getStateAtTime(entry.id, currentTime)
+          if (lastState) {
+            if (this.yoloDetector.modelLoaded) {
+              // YOLO path: fire-and-forget async detection, use cached results
+              this.runYoloDetection(at)
+              if (this.cachedDetections.length > 0) {
+                const closest = this.yoloDetector.findClosestDetection(
+                  this.cachedDetections, lastState.x, lastState.y
+                )
+                if (closest) {
+                  // Use a distance-based confidence: close match = high confidence
+                  const maxDist = Math.max(at.nativeW, at.nativeH) * 0.15
+                  const distConf = Math.max(0, 1 - closest.distance / maxDist)
+                  const confidence = Math.min(closest.confidence, distConf > 0.3 ? closest.confidence : distConf)
+                  at.lastConfidence = confidence
+                  if (confidence > 0.4) {
+                    this.addKeyframe(entry.id, {
+                      time: currentTime,
+                      x: closest.x,
+                      y: closest.y,
+                      width: closest.width,
+                      height: closest.height,
+                    })
+                  } else {
+                    at.paused = true
+                  }
+                  this.updateStatusLabel(entry, confidence)
+                }
               }
-              this.updateStatusLabel(entry, match.confidence)
+            } else {
+              // Fallback: ColorTracker (no bbox dimensions available)
+              const match = this.colorTracker.findBestMatch(
+                at.videoElement, lastState.x, lastState.y, at.template,
+                at.nativeW, at.nativeH
+              )
+              if (match) {
+                at.lastConfidence = match.confidence
+                if (match.confidence > 0.4) {
+                  this.addKeyframe(entry.id, { time: currentTime, x: match.x, y: match.y })
+                } else {
+                  at.paused = true
+                }
+                this.updateStatusLabel(entry, match.confidence)
+              }
             }
           }
           at.lastProcessedTime = currentTime
         }
       }
 
-      // Interpolate position and move the group
-      const pos = this.getPositionAtTime(entry.id, currentTime)
-      if (!pos) return
+      // Interpolate position and size, then move/resize the group
+      const state = this.getStateAtTime(entry.id, currentTime)
+      if (!state) return
 
-      const radius = entry.options.radius || 30
+      // Determine target size (from interpolated state or defaults)
+      const targetW = Math.max(30, state.width ?? entry.currentWidth)
+      const targetH = Math.max(30, state.height ?? entry.currentHeight)
+
+      // Smooth resize with lerp to prevent jitter
+      entry.currentWidth += (targetW - entry.currentWidth) * 0.3
+      entry.currentHeight += (targetH - entry.currentHeight) * 0.3
+
+      const w = entry.currentWidth
+      const h = entry.currentHeight
+
+      // Update the outer rect (first object in group)
+      const objects = (entry.group as any)._objects || []
+      const outerRect = objects[0]
+      if (outerRect) {
+        outerRect.set({
+          width: w,
+          height: h,
+          left: -w / 2,
+          top: -h / 2,
+        })
+      }
+
+      // Update crosshairs to match new size
+      const crossH = objects[1]
+      const crossV = objects[2]
+      const crossSize = Math.min(w, h) * 0.25
+      if (crossH) {
+        crossH.set({ x1: -crossSize, y1: 0, x2: crossSize, y2: 0 })
+      }
+      if (crossV) {
+        crossV.set({ x1: 0, y1: -crossSize, x2: 0, y2: crossSize })
+      }
+
+      // Reposition status label below the rect
+      if (entry.statusLabel) {
+        entry.statusLabel.set({ top: h / 2 + 4, left: 0 })
+      }
+
       entry.group.set({
-        left: pos.x - radius,
-        top: pos.y - radius,
+        left: state.x - w / 2,
+        top: state.y - h / 2,
       })
       entry.group.setCoords()
     })
@@ -182,11 +285,28 @@ export class PlayerTracker {
     this.canvas.renderAll()
   }
 
+  /**
+   * Fire-and-forget async YOLO detection. Caches results for use in the next sync update cycle.
+   */
+  private runYoloDetection(at: AutoTrackingState) {
+    if (this.pendingDetection) return
+    this.pendingDetection = this.yoloDetector
+      .detectAll(at.videoElement, at.nativeW, at.nativeH)
+      .then((dets) => {
+        this.cachedDetections = dets
+        this.pendingDetection = null
+        return dets
+      })
+      .catch(() => {
+        this.pendingDetection = null
+        return []
+      })
+  }
+
   private getGroupCenter(entry: TrackerEntry): { x: number; y: number } {
-    const radius = entry.options.radius || 30
     return {
-      x: (entry.group.left || 0) + radius,
-      y: (entry.group.top || 0) + radius,
+      x: (entry.group.left || 0) + entry.currentWidth / 2,
+      y: (entry.group.top || 0) + entry.currentHeight / 2,
     }
   }
 
@@ -212,36 +332,54 @@ export class PlayerTracker {
     entry.keyframes.sort((a, b) => a.time - b.time)
   }
 
-  getPositionAtTime(id: string, time: number): { x: number; y: number } | null {
+  getStateAtTime(id: string, time: number): { x: number; y: number; width?: number; height?: number } | null {
     const entry = this.trackers.get(id)
     if (!entry || entry.keyframes.length === 0) return null
 
     const kf = entry.keyframes
 
-    if (time <= kf[0].time) return { x: kf[0].x, y: kf[0].y }
+    if (time <= kf[0].time) return { x: kf[0].x, y: kf[0].y, width: kf[0].width, height: kf[0].height }
     if (time >= kf[kf.length - 1].time) {
       const last = kf[kf.length - 1]
-      return { x: last.x, y: last.y }
+      return { x: last.x, y: last.y, width: last.width, height: last.height }
     }
 
     // Interpolate between surrounding keyframes
     for (let i = 0; i < kf.length - 1; i++) {
       if (time >= kf[i].time && time <= kf[i + 1].time) {
         const t = (time - kf[i].time) / (kf[i + 1].time - kf[i].time)
-        return {
+        const result: { x: number; y: number; width?: number; height?: number } = {
           x: kf[i].x + (kf[i + 1].x - kf[i].x) * t,
           y: kf[i].y + (kf[i + 1].y - kf[i].y) * t,
         }
+        // Interpolate size when both keyframes have dimensions
+        const w0 = kf[i].width
+        const w1 = kf[i + 1].width
+        const h0 = kf[i].height
+        const h1 = kf[i + 1].height
+        if (w0 != null && w1 != null) {
+          result.width = w0 + (w1 - w0) * t
+        } else {
+          result.width = w1 ?? w0  // carry forward last known size
+        }
+        if (h0 != null && h1 != null) {
+          result.height = h0 + (h1 - h0) * t
+        } else {
+          result.height = h1 ?? h0
+        }
+        return result
       }
     }
 
     return null
   }
 
-  private updateStatusLabel(entry: TrackerEntry, confidence: number) {
+  private updateStatusLabel(entry: TrackerEntry, confidence: number, overrideText?: string) {
     if (!entry.statusLabel) return
 
-    if (confidence > 0.7) {
+    if (overrideText) {
+      entry.statusLabel.set({ text: overrideText, fill: '#3b82f6' })
+    } else if (confidence > 0.7) {
       entry.statusLabel.set({ text: 'Tracking', fill: '#22c55e' })
     } else if (confidence > 0.4) {
       entry.statusLabel.set({ text: 'Tracking', fill: '#eab308' })
@@ -283,6 +421,13 @@ export class PlayerTracker {
   removeAll() {
     this.trackers.clear()
     this.autoTracking.clear()
+    this.cachedDetections = []
+    this.pendingDetection = null
+  }
+
+  dispose() {
+    this.removeAll()
+    this.yoloDetector.dispose()
   }
 
   getTracker(id: string) {

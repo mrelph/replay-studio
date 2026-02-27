@@ -596,13 +596,17 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           return
 
         case 'tracker': {
-          // Broadcast-style player tracker with glowing ring
+          // Broadcast-style player tracker with dynamic rounded rect
           // All parts grouped so they move/delete/serialize as one annotation
-          const trackerRadius = 30
-          const outerRing = new fabric.Circle({
-            left: -trackerRadius,
-            top: -trackerRadius,
-            radius: trackerRadius,
+          const trackerW = 60
+          const trackerH = 60
+          const outerRect = new fabric.Rect({
+            left: -trackerW / 2,
+            top: -trackerH / 2,
+            width: trackerW,
+            height: trackerH,
+            rx: 8,
+            ry: 8,
             fill: 'transparent',
             stroke: strokeColor,
             strokeWidth: 4,
@@ -614,17 +618,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             }),
           })
 
-          const innerRing = new fabric.Circle({
-            left: -trackerRadius * 0.7,
-            top: -trackerRadius * 0.7,
-            radius: trackerRadius * 0.7,
-            fill: 'transparent',
-            stroke: strokeColor,
-            strokeWidth: 2,
-            opacity: 0.5,
-          })
-
-          const crossSize = trackerRadius * 0.5
+          const crossSize = Math.min(trackerW, trackerH) * 0.25
           const crossH = new fabric.Line([
             -crossSize, 0,
             crossSize, 0,
@@ -652,9 +646,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             }),
           })
 
-          const trackerGroup = new fabric.Group([outerRing, innerRing, crossH, crossV], {
-            left: pointer.x - trackerRadius,
-            top: pointer.y - trackerRadius,
+          const trackerGroup = new fabric.Group([outerRect, crossH, crossV], {
+            left: pointer.x - trackerW / 2,
+            top: pointer.y - trackerH / 2,
             selectable: true,
             evented: true,
           })
@@ -669,7 +663,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
               time: currentTime,
               x: pointer.x,
               y: pointer.y,
-            }, { color: strokeColor, radius: trackerRadius })
+            }, { color: strokeColor, width: trackerW, height: trackerH })
             playerTrackerRef.current.enableAutoTracking(
               trackerId, videoElement,
               refDimsRef.current.width, refDimsRef.current.height

@@ -222,6 +222,9 @@ function createWindow() {
   })
 
   mainWindow.on('closed', () => {
+    if (audienceWindow && !audienceWindow.isDestroyed()) {
+      audienceWindow.close()
+    }
     mainWindow = null
   })
 }

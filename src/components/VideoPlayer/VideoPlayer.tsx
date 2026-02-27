@@ -25,10 +25,12 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   // Freeze frame tracking: which freeze annotations have fired this playback session
   const triggeredFreezesRef = useRef<Set<string>>(new Set())
   const freezeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTimeRef = useRef<number>(0)
 
   // Reset triggered freezes when user seeks or pauses
   const resetFreezes = useCallback(() => {
     triggeredFreezesRef.current.clear()
+    lastTimeRef.current = 0
     if (freezeTimeoutRef.current) {
       clearTimeout(freezeTimeoutRef.current)
       freezeTimeoutRef.current = null
@@ -58,27 +60,51 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     }
 
     const handleTimeUpdate = () => {
+      const { inPoint, outPoint, isLooping } = useVideoStore.getState()
+
+      // Enforce out point: when playback reaches the out point, loop or pause
+      if (outPoint !== null && video.currentTime >= outPoint) {
+        if (isLooping) {
+          video.currentTime = inPoint ?? 0
+        } else {
+          video.currentTime = outPoint
+          video.pause()
+        }
+      }
+
       setCurrentTime(video.currentTime)
 
-      // Freeze frame logic: check if we've crossed a freeze-frame annotation
+      // Freeze frame logic: detect when playback crosses a freeze annotation's startTime
       if (!video.paused) {
+        const prevTime = lastTimeRef.current
+        const curTime = video.currentTime
         const annotations = useDrawingStore.getState().annotations
         for (const ann of annotations) {
           if (!ann.freezeDuration || ann.freezeDuration <= 0) continue
           if (triggeredFreezesRef.current.has(ann.id)) continue
 
-          // Check if current time is within a small window around the annotation's startTime
-          const dt = video.currentTime - ann.startTime
-          if (dt >= 0 && dt < 0.15) {
+          // Trigger if we crossed the startTime between the last update and now
+          if (prevTime <= ann.startTime && curTime >= ann.startTime) {
             triggeredFreezesRef.current.add(ann.id)
+            video.currentTime = ann.startTime
             video.pause()
             freezeTimeoutRef.current = setTimeout(() => {
               freezeTimeoutRef.current = null
               video.play()
             }, ann.freezeDuration * 1000)
-            break  // Only trigger one freeze per timeupdate
+            break
           }
         }
+      }
+      lastTimeRef.current = video.currentTime
+    }
+
+    // Enforce looping when no out point is set — loop from start on video end
+    const handleEnding = () => {
+      const { isLooping, inPoint } = useVideoStore.getState()
+      if (isLooping) {
+        video.currentTime = inPoint ?? 0
+        video.play()
       }
     }
 
@@ -87,7 +113,12 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
 
     const handlePlay = () => setIsPlaying(true)
     const handlePause = () => setIsPlaying(false)
-    const handleEnded = () => setIsPlaying(false)
+    const handleEnded = () => {
+      handleEnding()
+      if (!useVideoStore.getState().isLooping) {
+        setIsPlaying(false)
+      }
+    }
     const handleError = (e: Event) => {
       const video = e.target as HTMLVideoElement
       const errorMsg = `Video error: ${video.error?.message || 'Unknown'} (code: ${video.error?.code})`

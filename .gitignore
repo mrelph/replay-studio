@@ -28,3 +28,6 @@ npm-debug.log*
 
 # TypeScript cache
 *.tsbuildinfo
+
+# ML models (large binary files — download/export separately)
+public/models/*.onnx
