@@ -20,6 +20,7 @@ interface SerializedExportAnnotation {
   toolType: string
   fadeIn?: number
   fadeOut?: number
+  freezeDuration?: number
   fabricData: any
 }
 
@@ -163,6 +164,7 @@ export async function exportAnnotations(annotations: Annotation[]) {
         toolType: ann.toolType,
         fadeIn: ann.fadeIn,
         fadeOut: ann.fadeOut,
+        freezeDuration: ann.freezeDuration,
         fabricData: serializeFabricObject(ann.object),
       })),
     }
@@ -232,6 +234,7 @@ export async function importAnnotations() {
         toolType: ann.toolType,
         fadeIn: ann.fadeIn,
         fadeOut: ann.fadeOut,
+        freezeDuration: ann.freezeDuration,
       })
       count++
     }
