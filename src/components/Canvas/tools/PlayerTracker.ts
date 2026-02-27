@@ -86,7 +86,7 @@ export class PlayerTracker {
         offsetY: 0,
       }),
     })
-    group.addWithUpdate(label)
+    group.add(label)
 
     // Listen for manual moves to record keyframes + resample
     group.on('modified', () => {

@@ -1,31 +1,28 @@
 import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
-import { createRequire } from 'module'
+import { fileURLToPath } from 'url'
 
-const require = createRequire(import.meta.url)
-
-// Get ffmpeg path - handles both dev and production (asar unpacked)
+// Resolve ffmpeg binary path directly — avoids ESM/CJS module interop issues
 function getFFmpegPath(): string {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    let ffmpegPath = require('ffmpeg-static')
+  const __dirname = path.dirname(fileURLToPath(import.meta.url))
+  const binaryName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
 
-    // In production, ffmpeg-static is unpacked from asar
-    // The path needs to be adjusted from app.asar to app.asar.unpacked
-    if (ffmpegPath && ffmpegPath.includes('app.asar')) {
-      ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked')
-    }
+  // In production (asar), ffmpeg-static is unpacked
+  const asarUnpackedPath = path.join(
+    __dirname, '..', 'node_modules', 'ffmpeg-static', binaryName
+  ).replace('app.asar', 'app.asar.unpacked')
 
-    // Verify the binary exists
-    if (ffmpegPath && fs.existsSync(ffmpegPath)) {
-      console.log('Using ffmpeg-static at:', ffmpegPath)
-      return ffmpegPath
-    }
+  if (fs.existsSync(asarUnpackedPath)) {
+    console.log('Using ffmpeg-static at:', asarUnpackedPath)
+    return asarUnpackedPath
+  }
 
-    console.warn('ffmpeg-static binary not found at:', ffmpegPath)
-  } catch (e) {
-    console.error('Failed to load ffmpeg-static:', e)
+  // Dev mode: binary is directly in node_modules
+  const devPath = path.join(__dirname, '..', 'node_modules', 'ffmpeg-static', binaryName)
+  if (fs.existsSync(devPath)) {
+    console.log('Using ffmpeg-static at:', devPath)
+    return devPath
   }
 
   // Fallback to system ffmpeg
