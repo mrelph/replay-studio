@@ -143,7 +143,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
           </Button>
           <Button
             onClick={handleExport}
-            disabled={isExporting || !ffmpegVersion}
+            disabled={isExporting}
           >
             {isExporting ? 'Exporting...' : 'Export'}
           </Button>

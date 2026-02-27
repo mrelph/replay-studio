@@ -232,52 +232,23 @@ export class PlayerTracker {
         }
       }
 
-      // Interpolate position and size, then move/resize the group
+      // Interpolate position and move the group
       const state = this.getStateAtTime(entry.id, currentTime)
       if (!state) return
 
-      // Determine target size (from interpolated state or defaults)
-      const targetW = Math.max(30, state.width ?? entry.currentWidth)
-      const targetH = Math.max(30, state.height ?? entry.currentHeight)
-
-      // Smooth resize with lerp to prevent jitter
-      entry.currentWidth += (targetW - entry.currentWidth) * 0.3
-      entry.currentHeight += (targetH - entry.currentHeight) * 0.3
-
-      const w = entry.currentWidth
-      const h = entry.currentHeight
-
-      // Update the outer rect (first object in group)
-      const objects = (entry.group as any)._objects || []
-      const outerRect = objects[0]
-      if (outerRect) {
-        outerRect.set({
-          width: w,
-          height: h,
-          left: -w / 2,
-          top: -h / 2,
-        })
+      // Track target size from YOLO data for future use
+      if (state.width != null) {
+        entry.currentWidth += (Math.max(30, state.width) - entry.currentWidth) * 0.3
+      }
+      if (state.height != null) {
+        entry.currentHeight += (Math.max(30, state.height) - entry.currentHeight) * 0.3
       }
 
-      // Update crosshairs to match new size
-      const crossH = objects[1]
-      const crossV = objects[2]
-      const crossSize = Math.min(w, h) * 0.25
-      if (crossH) {
-        crossH.set({ x1: -crossSize, y1: 0, x2: crossSize, y2: 0 })
-      }
-      if (crossV) {
-        crossV.set({ x1: 0, y1: -crossSize, x2: 0, y2: crossSize })
-      }
-
-      // Reposition status label below the rect
-      if (entry.statusLabel) {
-        entry.statusLabel.set({ top: h / 2 + 4, left: 0 })
-      }
-
+      const halfW = entry.currentWidth / 2
+      const halfH = entry.currentHeight / 2
       entry.group.set({
-        left: state.x - w / 2,
-        top: state.y - h / 2,
+        left: state.x - halfW,
+        top: state.y - halfH,
       })
       entry.group.setCoords()
     })
