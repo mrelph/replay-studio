@@ -757,11 +757,11 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       }
 
       if (shape instanceof fabric.Line) {
-        shape.set({ x2: pointer.x, y2: pointer.y })
+        (shape as fabric.Line).set({ x2: pointer.x, y2: pointer.y })
       } else if (shape instanceof fabric.Rect) {
         const width = pointer.x - start.x
         const height = pointer.y - start.y
-        shape.set({
+        ;(shape as fabric.Rect).set({
           left: width > 0 ? start.x : pointer.x,
           top: height > 0 ? start.y : pointer.y,
           width: Math.abs(width),
@@ -770,7 +770,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       } else if (shape instanceof fabric.Ellipse) {
         const rx = Math.abs(pointer.x - start.x) / 2
         const ry = Math.abs(pointer.y - start.y) / 2
-        shape.set({
+        ;(shape as fabric.Ellipse).set({
           left: Math.min(start.x, pointer.x),
           top: Math.min(start.y, pointer.y),
           rx,
@@ -782,7 +782,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           Math.abs(pointer.x - start.x),
           Math.abs(pointer.y - start.y)
         ) / 2
-        shape.set({
+        ;(shape as fabric.Circle).set({
           left: start.x - radius,
           top: start.y - radius,
           radius,
@@ -854,7 +854,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       if (!isDrawingRef.current || !currentShapeRef.current) return
 
       const shape = currentShapeRef.current
-      shape.set({ selectable: true, evented: true })
+      ;(shape as fabric.Object).set({ selectable: true, evented: true })
 
       // Arc arrow: finalize with arrowhead
       if (currentTool === 'arc-arrow' && shape instanceof fabric.Path) {
@@ -923,10 +923,10 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
       // Add broadcast-style arrowhead and group with line
       if (currentTool === 'arrow' && shape instanceof fabric.Line) {
-        const x1 = shape.x1 || 0
-        const y1 = shape.y1 || 0
-        const x2 = shape.x2 || 0
-        const y2 = shape.y2 || 0
+        const x1 = (shape as fabric.Line).x1 || 0
+        const y1 = (shape as fabric.Line).y1 || 0
+        const x2 = (shape as fabric.Line).x2 || 0
+        const y2 = (shape as fabric.Line).y2 || 0
 
         const angle = Math.atan2(y2 - y1, x2 - x1)
         const headLength = 25  // Larger arrowhead

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Video markup application with telestrator-style drawing tools",
+  "author": "Mark Relph <mrelph@outlook.com>",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
