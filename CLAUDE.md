@@ -5,12 +5,15 @@ Replay Studio: an Electron + React desktop app for video markup — telestrator-
 ## Commands
 
 - `npm run dev` — Vite dev server; vite-plugin-electron builds `electron/main.ts` and launches Electron with HMR
-- `npm run typecheck` — `tsc --noEmit` (only type check; there is no lint or test setup)
+- `npm run typecheck` — `tsc --noEmit`
+- `npm run lint` — `eslint .` (flat config in `eslint.config.js`; TS recommended rules + react-hooks; `@typescript-eslint/no-explicit-any` is a warning, not an error — the codebase has many pre-existing `any`s not yet cleaned up)
+- `npm run test` — `vitest run` (jsdom environment; tests live alongside source as `*.test.ts`)
+- `npm run test:watch` — `vitest` in watch mode
 - `npm run build` — `vite build && electron-builder` → installers in `release/`
 - `npm run electron:dev` — `vite build && electron .` (runs the production bundle locally)
 - `npm run preview` — Vite preview of the renderer only
 
-There are no tests and no linter configured. Verify changes with `npm run typecheck` and by running the app.
+Verify changes with `npm run typecheck`, `npm run lint`, `npm run test`, and by running the app.
 
 ## Architecture
 
