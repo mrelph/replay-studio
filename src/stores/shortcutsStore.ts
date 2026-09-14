@@ -103,16 +103,17 @@ const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'edit.selectAll', label: 'Select all', category: 'Editing', binding: { key: 'a', ctrl: true } },
   { action: 'edit.delete', label: 'Delete selected', category: 'Editing', binding: { key: 'delete' } },
   { action: 'edit.deselect', label: 'Deselect / Select tool', category: 'Editing', binding: { key: 'escape' } },
-  // Colors
+  // Colors (order matches PRESET_COLORS in toolStore.ts, slots 1-9; the 10th
+  // preset color, near-black, has no default shortcut)
   { action: 'color.1', label: 'Red', category: 'Colors', binding: { key: '1' } },
-  { action: 'color.2', label: 'Green', category: 'Colors', binding: { key: '2' } },
-  { action: 'color.3', label: 'Blue', category: 'Colors', binding: { key: '3' } },
-  { action: 'color.4', label: 'Yellow', category: 'Colors', binding: { key: '4' } },
-  { action: 'color.5', label: 'Magenta', category: 'Colors', binding: { key: '5' } },
-  { action: 'color.6', label: 'Cyan', category: 'Colors', binding: { key: '6' } },
-  { action: 'color.7', label: 'White', category: 'Colors', binding: { key: '7' } },
-  { action: 'color.8', label: 'Black', category: 'Colors', binding: { key: '8' } },
-  { action: 'color.9', label: 'Orange', category: 'Colors', binding: { key: '9' } },
+  { action: 'color.2', label: 'Orange', category: 'Colors', binding: { key: '2' } },
+  { action: 'color.3', label: 'Yellow', category: 'Colors', binding: { key: '3' } },
+  { action: 'color.4', label: 'Green', category: 'Colors', binding: { key: '4' } },
+  { action: 'color.5', label: 'Teal', category: 'Colors', binding: { key: '5' } },
+  { action: 'color.6', label: 'Blue', category: 'Colors', binding: { key: '6' } },
+  { action: 'color.7', label: 'Purple', category: 'Colors', binding: { key: '7' } },
+  { action: 'color.8', label: 'Pink', category: 'Colors', binding: { key: '8' } },
+  { action: 'color.9', label: 'White', category: 'Colors', binding: { key: '9' } },
 ]
 
 interface ShortcutsState {
@@ -152,6 +153,17 @@ export function eventToBinding(e: KeyboardEvent): ShortcutBinding {
     shift: e.shiftKey,
     alt: e.altKey,
   }
+}
+
+// Look up the current key combo for an action, formatted for display
+// (e.g. in a tooltip), so tooltip text can't drift from the real binding.
+export function useShortcutKeyLabel(action: ShortcutAction): string {
+  return useShortcutsStore(
+    (state) => {
+      const binding = state.shortcuts.find(s => s.action === action)?.binding
+      return binding ? bindingToString(binding) : ''
+    }
+  )
 }
 
 export const useShortcutsStore = create<ShortcutsState>()(
