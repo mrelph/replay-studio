@@ -56,7 +56,7 @@ export interface ProjectData {
 }
 
 // Serialize a Fabric.js object to plain JSON
-function serializeFabricObject(obj: any): SerializedAnnotation['fabricData'] {
+export function serializeFabricObject(obj: any): SerializedAnnotation['fabricData'] {
   const base = {
     type: obj.type || 'object',
     left: obj.left || 0,
