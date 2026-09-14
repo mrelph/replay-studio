@@ -18,8 +18,24 @@ function copyPreload() {
   }
 }
 
+// Vite's dev server injects an inline module preamble (React refresh) and an
+// HMR websocket, neither of which the production CSP allows. Relax exactly
+// those two directives, and only while serving.
+function relaxCspForDev() {
+  return {
+    name: 'relax-csp-for-dev',
+    apply: 'serve' as const,
+    transformIndexHtml(html: string) {
+      return html
+        .replace("script-src 'self' 'wasm-unsafe-eval'", "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'")
+        .replace("connect-src 'self' blob: data:", "connect-src 'self' blob: data: ws: wss: http://localhost:* http://127.0.0.1:*")
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
+    relaxCspForDev(),
     react(),
     electron([
       {

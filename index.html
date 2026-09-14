@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: local-video:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src 'self' file: blob: local-video:; img-src 'self' file: data: blob: local-video:">
+    <!-- Production CSP. `npm run dev` relaxes script-src/connect-src for Vite
+         HMR via the relaxCspForDev plugin in vite.config.ts. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' local-video: blob:; connect-src 'self' blob: data:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
     <title>Replay Studio</title>
   </head>
   <body class="bg-surface-base text-text-primary">
