@@ -20,6 +20,11 @@ export interface ExportResult {
   error?: string
 }
 
+export interface RegisterVideoResult {
+  success: boolean
+  error?: string
+}
+
 export interface FileResult {
   success: boolean
   content?: string
@@ -41,16 +46,19 @@ export interface ElectronAPI {
   getFFmpegVersion: () => Promise<string | null>
   exportVideo: (options: ExportOptions) => Promise<ExportResult>
   resolveVideoPath: (videoUrl: string) => Promise<string>
+  /**
+   * Authorize a video file for the local-video:// protocol. Must succeed before
+   * a `local-video://<encodeURIComponent(path)>` URL will load: required for
+   * drag-and-drop, recent files, and a project's stored videoPath. Paths coming
+   * from openFile()/the File menu are registered by the main process already.
+   */
+  registerVideo: (filePath: string) => Promise<RegisterVideoResult>
 
   // Project save/load
   saveProject: (defaultName: string) => Promise<string | null>
   loadProject: () => Promise<string | null>
   writeFile: (filePath: string, content: string) => Promise<ExportResult>
   readFile: (filePath: string) => Promise<FileResult>
-
-  // Annotation export/import
-  saveAnnotations: (defaultName: string) => Promise<string | null>
-  loadAnnotations: () => Promise<string | null>
 
   // Audience view
   openAudienceView: () => Promise<void>

@@ -38,6 +38,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return { success: false, error: err instanceof Error ? err.message : 'Export failed' };
     }
   },
+  registerVideo: async (filePath) => {
+    try {
+      return await ipcRenderer.invoke('video:register', filePath);
+    } catch (err) {
+      console.error('registerVideo error:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Register failed' };
+    }
+  },
   resolveVideoPath: async (videoUrl) => {
     try {
       return await ipcRenderer.invoke('video:resolvePath', videoUrl);
@@ -64,9 +72,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return null;
     }
   },
-  writeFile: async (filePath, content, encoding) => {
+  writeFile: async (filePath, content) => {
     try {
-      return await ipcRenderer.invoke('file:write', filePath, content, encoding);
+      return await ipcRenderer.invoke('file:write', filePath, content);
     } catch (err) {
       console.error('writeFile error:', err);
       return { success: false, error: err instanceof Error ? err.message : 'Write failed' };
