@@ -816,9 +816,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           })
           canvas.add(erasePath)
 
-          // Save state once before batch removal
-          const { saveState, annotations: currentAnnotations, removeAnnotation } = useDrawingStore.getState()
-          saveState()
+          const { annotations: currentAnnotations, removeAnnotations } = useDrawingStore.getState()
 
           // Find annotations that intersect the erase path
           const toRemove: string[] = []
@@ -831,20 +829,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           // Remove erase path
           canvas.remove(erasePath)
 
-          // Remove intersecting annotations (skip saveState in removeAnnotation since we already saved)
-          for (const id of toRemove) {
-            const ann = useDrawingStore.getState().annotations.find(a => a.id === id)
-            if (ann) {
-              canvas.remove(ann.object)
-              canvas.renderAll()
-            }
-            useDrawingStore.setState((state) => ({
-              annotations: state.annotations.filter((a) => a.id !== id),
-              selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
-            }))
-          }
-
-          canvas.renderAll()
+          // One store transaction keeps Fabric, metadata, and history in sync.
+          removeAnnotations(toRemove)
         }
 
         erasePoints = []

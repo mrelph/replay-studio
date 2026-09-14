@@ -9,6 +9,7 @@ export interface SerializedAnnotation {
   toolType: string
   fadeIn?: number
   fadeOut?: number
+  name?: string
   freezeDuration?: number
   // Fabric.js object properties
   fabricData: {
@@ -122,6 +123,7 @@ export function serializeProject(
       toolType: ann.toolType,
       fadeIn: ann.fadeIn,
       fadeOut: ann.fadeOut,
+      name: ann.name,
       freezeDuration: ann.freezeDuration,
       fabricData: serializeFabricObject(ann.object)
     }))
@@ -139,7 +141,7 @@ export function importProjectFromJSON(json: string): ProjectData {
     const data = JSON.parse(json)
 
     // Validate required fields
-    if (!data.version || !data.annotations) {
+    if (!data.version || !Array.isArray(data.annotations)) {
       throw new Error('Invalid project file format')
     }
 

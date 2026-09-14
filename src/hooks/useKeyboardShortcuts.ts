@@ -41,7 +41,7 @@ export function useKeyboardShortcuts() {
     isLooping,
     videoElement
   } = useVideoStore()
-  const { undo, redo, canvas } = useDrawingStore()
+  const { undo, redo, canvas, removeAnnotations } = useDrawingStore()
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't handle shortcuts when typing in inputs
@@ -179,11 +179,18 @@ export function useKeyboardShortcuts() {
         e.preventDefault()
         if (canvas) {
           const active = canvas.getActiveObjects()
-          if (active.length > 0) {
-            active.forEach((obj: fabric.Object) => canvas.remove(obj))
-            canvas.discardActiveObject()
-            canvas.renderAll()
+          const drawingState = useDrawingStore.getState()
+          const activeObjects = new Set(active)
+          const annotationIds = drawingState.annotations
+            .filter((annotation) => activeObjects.has(annotation.object))
+            .map((annotation) => annotation.id)
+
+          // Timeline/layer selection may exist without a Fabric active object.
+          if (annotationIds.length === 0 && drawingState.selectedAnnotationId) {
+            annotationIds.push(drawingState.selectedAnnotationId)
           }
+
+          removeAnnotations(annotationIds)
         }
         return
       case 'edit.deselect':
@@ -204,7 +211,7 @@ export function useKeyboardShortcuts() {
         useToolStore.getState().setStrokeColor(PRESET_COLORS[colorIndex])
       }
     }
-  }, [setCurrentTool, togglePlay, stepFrame, skip, seek, duration, setInPoint, setOutPoint, toggleMute, setIsLooping, isLooping, videoElement, undo, redo, canvas])
+  }, [setCurrentTool, togglePlay, stepFrame, skip, seek, duration, setInPoint, setOutPoint, toggleMute, setIsLooping, isLooping, videoElement, undo, redo, canvas, removeAnnotations])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)

@@ -17,6 +17,8 @@ import { useDrawingStore } from './stores/drawingStore'
 import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore } from './stores/themeStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
+import type { ProjectData } from './utils/projectSerializer'
+import type { Annotation } from './stores/drawingStore'
 import { useWaveformStore } from './stores/waveformStore'
 import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
 export const toolRegistry = _ToolRegistry
@@ -24,6 +26,18 @@ import fabricModule from 'fabric'
 
 // Handle CommonJS/ESM interop
 const fabric: any = (fabricModule as any).fabric || fabricModule
+
+interface PendingProjectLoad {
+  requestId: number
+  filePath: string
+  project: ProjectData
+  annotations: Annotation[]
+  targetVideoSrc: string
+}
+
+function videoUrlForPath(filePath: string) {
+  return `local-video://${encodeURIComponent(filePath)}`
+}
 
 function ThemeToggle() {
   const { theme, setTheme } = useThemeStore()
@@ -46,6 +60,8 @@ function ThemeToggle() {
 function App() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
+  const [isVideoMetadataReady, setIsVideoMetadataReady] = useState(false)
+  const [pendingProjectLoad, setPendingProjectLoad] = useState<PendingProjectLoad | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showShortcutsEditor, setShowShortcutsEditor] = useState(false)
   const [showExport, setShowExport] = useState(false)
@@ -54,9 +70,13 @@ function App() {
 
   const { recentFiles, addRecentFile, removeRecentFile } = useAppStore()
   const { reset: resetVideo, inPoint, outPoint, setInPoint, setOutPoint } = useVideoStore()
-  const { annotations, canvas, addAnnotation, clearAnnotations } = useDrawingStore()
+  const { annotations, canvas, replaceAnnotations, isRestoring } = useDrawingStore()
   const { isAudienceOpen, openAudienceView, closeAudienceView, setAudienceOpen } = useAudienceStore()
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
+  const videoSrcRef = useRef<string | null>(null)
+  const nextProjectRequestIdRef = useRef(0)
+  const activeProjectRequestIdRef = useRef<number | null>(null)
+  const consumedProjectRequestIdRef = useRef<number | null>(null)
 
   // Enable global keyboard shortcuts
   useKeyboardShortcuts()
@@ -64,15 +84,24 @@ function App() {
   // Stream composited frames to audience window when open
   useAudienceStream({ videoElement, fabricCanvas: canvas })
 
-  const loadVideo = useCallback((filePath: string) => {
+  const loadVideo = useCallback((filePath: string, projectRequestId?: number) => {
+    // Opening media outside project loading supersedes any staged project.
+    if (projectRequestId === undefined) {
+      activeProjectRequestIdRef.current = null
+      setPendingProjectLoad(null)
+    } else if (activeProjectRequestIdRef.current !== projectRequestId) {
+      return null
+    }
+
     // Use custom protocol to serve local video files
-    const encodedPath = encodeURIComponent(filePath)
-    const videoUrl = `local-video://${encodedPath}`
+    const videoUrl = videoUrlForPath(filePath)
+    videoSrcRef.current = videoUrl
     setVideoSrc(videoUrl)
     addRecentFile(filePath)
     resetVideo()
     // Decode audio for waveform display (uses streaming, not full file load)
     useWaveformStore.getState().decodeAudio(videoUrl)
+    return videoUrl
   }, [addRecentFile, resetVideo])
 
   const handleOpenFile = useCallback(async () => {
@@ -91,6 +120,25 @@ function App() {
   const handleVideoRef = useCallback((video: HTMLVideoElement | null) => {
     setVideoElement(video)
   }, [])
+
+  // A Fabric canvas must not be created until the current media element has
+  // metadata. Otherwise it can inherit the previous video's dimensions (or a
+  // zero-sized pre-metadata element) and project objects are scaled incorrectly.
+  useEffect(() => {
+    setIsVideoMetadataReady(false)
+    if (!videoElement || !videoSrc) return
+
+    const markReady = () => {
+      if (videoElement.getAttribute('src') === videoSrc && videoElement.readyState >= 1) {
+        setIsVideoMetadataReady(true)
+      }
+    }
+
+    videoElement.addEventListener('loadedmetadata', markReady)
+    markReady()
+
+    return () => videoElement.removeEventListener('loadedmetadata', markReady)
+  }, [videoElement, videoSrc])
 
   // Save project
   const handleSaveProject = useCallback(async () => {
@@ -124,57 +172,115 @@ function App() {
 
   // Load project
   const handleLoadProject = useCallback(async () => {
-    if (!window.electronAPI || !canvas) return
+    if (!window.electronAPI) return
+
+    const requestId = ++nextProjectRequestIdRef.current
+    activeProjectRequestIdRef.current = requestId
+    // Supersede an older staged load without changing the current document.
+    setPendingProjectLoad(null)
 
     try {
       const filePath = await window.electronAPI.loadProject()
-      if (!filePath) return
+      if (activeProjectRequestIdRef.current !== requestId) return
+      if (!filePath) {
+        activeProjectRequestIdRef.current = null
+        return
+      }
 
       const result = await window.electronAPI.readFile(filePath)
+      if (activeProjectRequestIdRef.current !== requestId) return
       if (!result.success || !result.content) {
+        activeProjectRequestIdRef.current = null
         toast('error', `Failed to read project file: ${result.error}`)
         return
       }
 
       const project = importProjectFromJSON(result.content)
+      // Build every detached object before switching media. A malformed
+      // annotation therefore cannot leave the user on a half-loaded project.
+      const restoredAnnotations: Annotation[] = project.annotations.map((serializedAnn) => ({
+        id: serializedAnn.id,
+        object: deserializeFabricObject(fabric, serializedAnn.fabricData),
+        startTime: serializedAnn.startTime,
+        endTime: serializedAnn.endTime,
+        layer: serializedAnn.layer,
+        toolType: serializedAnn.toolType,
+        fadeIn: serializedAnn.fadeIn,
+        fadeOut: serializedAnn.fadeOut,
+        freezeDuration: serializedAnn.freezeDuration,
+        name: serializedAnn.name,
+      }))
 
-      // Load the video if specified
-      if (project.videoPath) {
-        loadVideo(project.videoPath)
+      // Projects without a media path continue to use the current video, which
+      // preserves compatibility with existing project files.
+      const targetVideoSrc = project.videoPath
+        ? loadVideo(project.videoPath, requestId)
+        : videoSrcRef.current
+
+      if (activeProjectRequestIdRef.current !== requestId) return
+      if (!targetVideoSrc) {
+        activeProjectRequestIdRef.current = null
+        toast('error', 'This project does not reference a video')
+        return
       }
 
-      // Set in/out points
-      if (project.inPoint !== null) setInPoint(project.inPoint)
-      if (project.outPoint !== null) setOutPoint(project.outPoint)
-
-      // Clear existing annotations
-      clearAnnotations()
-      canvas.clear()
-
-      // Recreate annotations from project
-      for (const serializedAnn of project.annotations) {
-        const fabricObj = deserializeFabricObject(fabric, serializedAnn.fabricData)
-        canvas.add(fabricObj)
-
-        addAnnotation({
-          id: serializedAnn.id,
-          object: fabricObj,
-          startTime: serializedAnn.startTime,
-          endTime: serializedAnn.endTime,
-          layer: serializedAnn.layer,
-          toolType: serializedAnn.toolType,
-          fadeIn: serializedAnn.fadeIn,
-          fadeOut: serializedAnn.fadeOut,
-        })
+      // Commit only after the target video's metadata and its own Fabric canvas
+      // are ready. Until then the existing document remains untouched.
+      setPendingProjectLoad({
+        requestId,
+        filePath,
+        project,
+        annotations: restoredAnnotations,
+        targetVideoSrc,
+      })
+    } catch (err) {
+      if (activeProjectRequestIdRef.current === requestId) {
+        activeProjectRequestIdRef.current = null
+        toast('error', 'Error loading project')
       }
+    }
+  }, [loadVideo])
 
-      canvas.renderAll()
+  // Consume a staged project exactly once. Source checks and the live-canvas
+  // identity check prevent a late metadata event from hydrating an old video.
+  useEffect(() => {
+    if (!pendingProjectLoad) return
+
+    const { requestId, filePath, project, annotations: restoredAnnotations, targetVideoSrc } = pendingProjectLoad
+    if (activeProjectRequestIdRef.current !== requestId) return
+    if (consumedProjectRequestIdRef.current === requestId) return
+    if (videoSrc !== targetVideoSrc) return
+    if (!videoElement || videoElement.getAttribute('src') !== targetVideoSrc) return
+    if (!isVideoMetadataReady || videoElement.readyState < 1) return
+    if (!canvas || useDrawingStore.getState().canvas !== canvas || isRestoring) return
+
+    consumedProjectRequestIdRef.current = requestId
+
+    try {
+      replaceAnnotations(restoredAnnotations)
+      setInPoint(project.inPoint ?? null)
+      setOutPoint(project.outPoint ?? null)
       setCurrentProjectPath(filePath)
+      activeProjectRequestIdRef.current = null
+      setPendingProjectLoad((pending) => pending?.requestId === requestId ? null : pending)
       toast('success', 'Project loaded')
     } catch (err) {
+      console.error('Error hydrating project:', err)
+      activeProjectRequestIdRef.current = null
+      setPendingProjectLoad((pending) => pending?.requestId === requestId ? null : pending)
       toast('error', 'Error loading project')
     }
-  }, [canvas, loadVideo, setInPoint, setOutPoint, clearAnnotations, addAnnotation])
+  }, [
+    pendingProjectLoad,
+    videoSrc,
+    videoElement,
+    isVideoMetadataReady,
+    canvas,
+    isRestoring,
+    replaceAnnotations,
+    setInPoint,
+    setOutPoint,
+  ])
 
   // Handle drag and drop (works without electronAPI)
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -208,6 +314,9 @@ function App() {
         } else {
           // Fallback: create object URL
           const url = URL.createObjectURL(file)
+          activeProjectRequestIdRef.current = null
+          setPendingProjectLoad(null)
+          videoSrcRef.current = url
           setVideoSrc(url)
           resetVideo()
         }
@@ -282,6 +391,14 @@ function App() {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [showShortcuts, showShortcutsEditor, showExport])
+
+  const isCurrentVideoReady = Boolean(
+    videoElement &&
+    videoSrc &&
+    videoElement.getAttribute('src') === videoSrc &&
+    isVideoMetadataReady &&
+    videoElement.readyState >= 1
+  )
 
   return (
     <div
@@ -365,8 +482,10 @@ function App() {
             <div className="flex-1 flex min-h-0 relative">
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="video-container flex-1 flex flex-col min-h-0 relative">
-                  <VideoPlayer src={videoSrc} onVideoRef={handleVideoRef} />
-                  {videoElement && <DrawingCanvas videoElement={videoElement} />}
+                  <VideoPlayer key={videoSrc} src={videoSrc} onVideoRef={handleVideoRef} />
+                  {videoElement && isCurrentVideoReady && (
+                    <DrawingCanvas key={videoSrc} videoElement={videoElement} />
+                  )}
                 </div>
               </div>
               <LayerPanel isOpen={showLayerPanel} onToggle={() => setShowLayerPanel(!showLayerPanel)} />
