@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import fabricModule from 'fabric'
+import { fabric } from '@/lib/fabric'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
   Sun, ZoomIn, Crosshair, Radio, Undo2, Redo2, Trash2, Eraser, Snowflake
@@ -9,9 +9,6 @@ import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useAudienceStore } from '@/stores/audienceStore'
 import { Modal, Button } from '@/components/ui'
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fabric: any = (fabricModule as any).fabric || fabricModule
 
 interface ToolButtonProps {
   tool: ToolType

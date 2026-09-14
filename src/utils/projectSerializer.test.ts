@@ -9,10 +9,7 @@ import {
 } from './projectSerializer'
 
 // Import fabric the same way the app does (see src/components/Canvas/DrawingCanvas.tsx).
-import fabricModule from 'fabric'
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fabric = (fabricModule as any).fabric || fabricModule
-
+import { fabric } from '@/lib/fabric'
 // jsdom ships no real <canvas> 2D rendering (the optional native `canvas`
 // package isn't built in this environment), so HTMLCanvasElement#getContext
 // returns null. Fabric's text objects (IText, and Group when it contains
@@ -207,7 +204,11 @@ describe('serializeFabricObject / deserializeFabricObject round-trip (real fabri
     expect(restored.type).toBe('path')
     // fabric normalizes the path command array; just verify it constructed
     // something with a comparable number of path commands.
-    expect(restored.path.length).toBe(path.path.length)
+    const originalCommands = path.path
+    const restoredCommands = (restored as fabric.Path).path
+    expect(originalCommands).toBeDefined()
+    expect(restoredCommands).toBeDefined()
+    expect(restoredCommands?.length).toBe(originalCommands?.length)
   })
 
   it('round-trips an i-text', () => {

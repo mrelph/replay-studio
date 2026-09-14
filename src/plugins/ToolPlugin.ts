@@ -1,11 +1,11 @@
-import type fabricModule from 'fabric'
+import type { fabric } from 'fabric'
 
 /**
  * Context passed to tool plugin lifecycle methods.
  * Provides access to the fabric canvas, video state, and drawing store actions.
  */
 export interface ToolPluginContext {
-  canvas: fabricModule.Canvas
+  canvas: fabric.Canvas
   videoElement: HTMLVideoElement | null
   currentTime: number
   duration: number
@@ -13,7 +13,7 @@ export interface ToolPluginContext {
   canvasHeight: number
   strokeColor: string
   strokeWidth: number
-  addAnnotation: (object: fabricModule.Object, toolType: string) => void
+  addAnnotation: (object: fabric.Object, toolType: string) => void
 }
 
 export interface ToolPluginPointer {

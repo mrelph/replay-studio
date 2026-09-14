@@ -1,10 +1,6 @@
-import fabricModule from 'fabric'
+import { fabric } from '@/lib/fabric'
 import { ColorTracker, type TemplateData } from './ColorTracker'
 import { YoloDetector, type Detection } from './YoloDetector'
-
-// Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fabric: any = (fabricModule as any).fabric || fabricModule
 
 export interface TrackPoint {
   time: number
@@ -362,11 +358,14 @@ export class PlayerTracker {
     }
 
     // Also update glow color on the group's children
-    const objects = (entry.group as any)._objects || []
+    const objects: fabric.Object[] = (entry.group as fabric.Group & { _objects?: fabric.Object[] })._objects || []
     const shadowColor = confidence > 0.7 ? '#22c55e' : confidence > 0.4 ? '#eab308' : '#ef4444'
     for (const obj of objects) {
-      if (obj.shadow && obj !== entry.statusLabel) {
-        obj.shadow.color = shadowColor
+      const shadow = obj.shadow
+      // fabric types `shadow` as `Shadow | string | null`; only the object
+      // form carries a mutable `color`.
+      if (shadow && typeof shadow !== 'string' && obj !== entry.statusLabel) {
+        shadow.color = shadowColor
       }
     }
   }

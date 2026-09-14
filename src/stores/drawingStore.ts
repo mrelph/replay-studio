@@ -1,7 +1,5 @@
 import { create } from 'zustand'
-import type fabricModule from 'fabric'
-
-type fabric = typeof fabricModule
+import type { fabric } from 'fabric'
 
 export interface Annotation {
   id: string
@@ -402,7 +400,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
   },
 
   removeLayer: (id) => {
-    const { layers, annotations, activeLayerId, saveState, isRestoring } = get()
+    const { layers, activeLayerId, saveState, isRestoring } = get()
     if (isRestoring) return
     if (layers.length <= 1) return // Keep at least one layer
 

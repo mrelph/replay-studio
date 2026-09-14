@@ -21,10 +21,8 @@ import type { ProjectData } from './utils/projectSerializer'
 import type { Annotation } from './stores/drawingStore'
 import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
 export const toolRegistry = _ToolRegistry
-import fabricModule from 'fabric'
+import { fabric } from './lib/fabric'
 
-// Handle CommonJS/ESM interop
-const fabric: any = (fabricModule as any).fabric || fabricModule
 
 interface PendingProjectLoad {
   requestId: number
@@ -70,7 +68,7 @@ function App() {
   const { recentFiles, addRecentFile, removeRecentFile } = useAppStore()
   const { reset: resetVideo, inPoint, outPoint, setInPoint, setOutPoint } = useVideoStore()
   const { annotations, canvas, replaceAnnotations, isRestoring } = useDrawingStore()
-  const { isAudienceOpen, openAudienceView, closeAudienceView, setAudienceOpen } = useAudienceStore()
+  const { isAudienceOpen, openAudienceView, closeAudienceView } = useAudienceStore()
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
   const videoSrcRef = useRef<string | null>(null)
   const nextProjectRequestIdRef = useRef(0)
@@ -174,7 +172,7 @@ function App() {
       } else {
         toast('error', `Failed to save project: ${result.error}`)
       }
-    } catch (err) {
+    } catch {
       toast('error', 'Error saving project')
     }
   }, [annotations, videoSrc, inPoint, outPoint, currentProjectPath])
@@ -242,7 +240,7 @@ function App() {
         annotations: restoredAnnotations,
         targetVideoSrc,
       })
-    } catch (err) {
+    } catch {
       if (activeProjectRequestIdRef.current === requestId) {
         activeProjectRequestIdRef.current = null
         toast('error', 'Error loading project')
@@ -382,7 +380,6 @@ function App() {
         window.electronAPI.removeAudienceClosedListener()
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Toggle shortcuts help with ? key

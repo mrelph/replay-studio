@@ -3,11 +3,7 @@ import { useToolStore, PRESET_COLORS, type ToolType } from '@/stores/toolStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
-import fabricModule from 'fabric'
-
-// Handle CommonJS/ESM interop
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fabric: any = (fabricModule as any).fabric || fabricModule
+import { fabric } from '@/lib/fabric'
 
 // Map shortcut actions to tool types
 const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
@@ -108,7 +104,7 @@ export function useKeyboardShortcuts() {
         e.preventDefault()
         toggleMute()
         return
-      case 'video.toggleFullscreen':
+      case 'video.toggleFullscreen': {
         e.preventDefault()
         const videoContainer = document.querySelector('.video-container')
         if (videoContainer) {
@@ -119,6 +115,7 @@ export function useKeyboardShortcuts() {
           }
         }
         return
+      }
       case 'video.toggleLoop':
         e.preventDefault()
         setIsLooping(!isLooping)

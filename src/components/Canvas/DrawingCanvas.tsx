@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import fabricModule from 'fabric'
+import { fabric } from '@/lib/fabric'
 import { useToolStore } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
@@ -7,9 +7,8 @@ import { useAudienceStore } from '@/stores/audienceStore'
 import { PlayerTracker } from './tools/PlayerTracker'
 import { getToolDefaults } from '@/utils/annotationDefaults'
 
-// Handle CommonJS/ESM interop - fabric exports { fabric: ... } structure
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fabric: any = (fabricModule as any).fabric || fabricModule
+/** Fabric object carrying the magnifier id this component stamps on it. */
+type MagnifierTaggedObject = fabric.Object & { magnifierId?: string }
 
 interface DrawingCanvasProps {
   videoElement: HTMLVideoElement
@@ -25,7 +24,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const playerTrackerRef = useRef<PlayerTracker | null>(null)
 
   // Track magnifiers for live video zoom updates
-  const magnifiersRef = useRef<Map<string, { circle: any, centerX: number, centerY: number, radius: number }>>(new Map())
+  const magnifiersRef = useRef<Map<string, { circle: fabric.Circle, centerX: number, centerY: number, radius: number }>>(new Map())
 
   const { currentTool, strokeColor, strokeWidth, setIsDrawing } = useToolStore()
   const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
@@ -195,7 +194,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   }, [currentTime])
 
   // Update magnifier content from video frame
-  const updateMagnifierContent = useCallback((magnifierId: string, circle: any) => {
+  const updateMagnifierContent = useCallback((circle: fabric.Circle) => {
     if (!videoElement || !fabricRef.current) return
 
     const zoomLevel = 2.5
@@ -268,8 +267,11 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     ctx.stroke()
 
     // Apply as pattern fill
+    // Fabric 5 accepts a canvas element as a pattern source at runtime, but
+    // @types/fabric only declares `string | HTMLImageElement` for it.
+    const patternSource = tempCanvas as unknown as fabric.IPatternOptions['source']
     const pattern = new fabric.Pattern({
-      source: tempCanvas,
+      source: patternSource,
       repeat: 'no-repeat',
     })
 
@@ -279,8 +281,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
   // Update all magnifiers when video time changes
   useEffect(() => {
-    magnifiersRef.current.forEach((mag, id) => {
-      updateMagnifierContent(id, mag.circle)
+    magnifiersRef.current.forEach((mag) => {
+      updateMagnifierContent(mag.circle)
     })
   }, [currentTime, updateMagnifierContent])
 
@@ -324,7 +326,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
   // Clean up magnifier refs when annotations are removed
   useEffect(() => {
-    const annotationIds = new Set(annotations.map(a => a.id))
     magnifiersRef.current.forEach((_, magId) => {
       // magnifier IDs match annotation IDs via the createAnnotation call
       // Find if any annotation still references this magnifier object
@@ -356,7 +357,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // Create annotation with proper time range. Returns the annotation id used,
   // so callers that need to correlate side-effects (e.g. player trackers) with
   // the annotation can register under the same id.
-  const createAnnotation = useCallback((object: any, toolType: string, id?: string) => {
+  const createAnnotation = useCallback((object: fabric.Object, toolType: string, id?: string) => {
     const defaults = getToolDefaults(toolType)
     const endTime = duration > 0
       ? Math.min(currentTime + defaults.duration, duration)
@@ -424,7 +425,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     let erasePreview: fabric.Line[] = []
     let isErasing = false
 
-    const handleMouseDown = (e: any) => {
+    const handleMouseDown = (e: fabric.IEvent) => {
       if (currentTool === 'pen' || currentTool === 'select' || currentTool === 'laser') return
 
       // Erase tool: start collecting path
@@ -440,7 +441,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       startPointRef.current = { x: pointer.x, y: pointer.y }
       setIsDrawing(true)
 
-      let shape: fabric.Line | fabric.Circle | fabric.Rect | fabric.Ellipse | fabric.Group | null = null
+      let shape: fabric.Line | fabric.Circle | fabric.Rect | fabric.Ellipse | fabric.Group | fabric.Path | null = null
 
       switch (currentTool) {
         case 'line':
@@ -561,7 +562,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           })
           break
 
-        case 'magnifier':
+        case 'magnifier': {
           // Create working magnifier with live video zoom
           const magRadius = 60
           const magId = `magnifier-${Date.now()}`
@@ -593,16 +594,17 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           })
 
           // Initialize with current video frame
-          updateMagnifierContent(magId, magnifierCircle)
+          updateMagnifierContent(magnifierCircle)
 
           // Store magId on the object for cleanup
-          ;(magnifierCircle as any).magnifierId = magId
+          ;(magnifierCircle as MagnifierTaggedObject).magnifierId = magId
 
           createAnnotation(magnifierCircle, 'magnifier')
 
           isDrawingRef.current = false
           setIsDrawing(false)
           return
+        }
 
         case 'tracker': {
           // Broadcast-style player tracker with dynamic rounded rect
@@ -720,7 +722,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       }
     }
 
-    const handleMouseMove = (e: any) => {
+    const handleMouseMove = (e: fabric.IEvent) => {
       // Erase tool: extend preview path
       if (currentTool === 'erase' && isErasing) {
         const pointer = canvas.getPointer(e.e)
@@ -991,7 +993,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const canvas = fabricRef.current
     if (!canvas) return
 
-    const handlePathCreated = (e: any) => {
+    const handlePathCreated = (e: fabric.IEvent & { path?: fabric.Path }) => {
       if (e.path) {
         createAnnotation(e.path, 'path')
       }
@@ -1021,7 +1023,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     canvas.isDrawingMode = false
     canvas.selection = false
 
-    const handleLaserMove = (e: any) => {
+    const handleLaserMove = (e: fabric.IEvent) => {
       // canvas.getPointer() returns coordinates in the canvas's logical
       // (zoomed-out) space, which is video-native pixels — not display
       // pixels — because the canvas has a zoom applied (see applyZoom).
