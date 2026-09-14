@@ -328,20 +328,27 @@ interface AnnotationDetailsProps {
 
 function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetailsProps) {
   const { layers } = useDrawingStore()
-  const fabricObj = annotation.object as any
+  const fabricObj = annotation.object as fabric.Object | undefined
+
+  // fabric types `shadow` as `Shadow | string | null`; only the object form
+  // carries a mutable `color`.
+  const recolorShadow = (obj: fabric.Object, color: string) => {
+    const shadow = obj.shadow
+    if (shadow && typeof shadow !== 'string') shadow.color = color
+  }
 
   const handleColorChange = (color: string) => {
     if (!fabricObj) return
     if (fabricObj.type === 'group') {
-      fabricObj.getObjects().forEach((obj: any) => {
+      ;(fabricObj as fabric.Group).getObjects().forEach((obj) => {
         if (obj.stroke) obj.set('stroke', color)
         if (obj.fill && obj.fill !== 'transparent') obj.set('fill', color)
-        if (obj.shadow) obj.shadow.color = color
+        recolorShadow(obj, color)
       })
     } else {
       if (fabricObj.stroke) fabricObj.set('stroke', color)
       if (fabricObj.fill && fabricObj.fill !== 'transparent' && fabricObj.type !== 'circle') fabricObj.set('fill', color)
-      if (fabricObj.shadow) fabricObj.shadow.color = color
+      recolorShadow(fabricObj, color)
     }
     fabricObj.canvas?.renderAll()
   }

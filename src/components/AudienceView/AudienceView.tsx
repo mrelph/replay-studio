@@ -4,7 +4,6 @@ export default function AudienceView() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const laserRef = useRef<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false })
   const frameImageRef = useRef<HTMLImageElement | null>(null)
-  const rafRef = useRef<number>(0)
   const imageDimsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 })
 
   const drawFrame = useCallback(() => {

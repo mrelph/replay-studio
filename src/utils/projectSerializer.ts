@@ -34,15 +34,18 @@ export interface SerializedAnnotation {
     x2?: number
     y2?: number
     // For paths (pen tool)
-    path?: any[]
+    path?: unknown[]
     // For text
     text?: string
     fontSize?: number
     fontFamily?: string
     // For groups
-    objects?: any[]
+    objects?: SerializedFabricData[]
   }
 }
+
+/** Plain-JSON shape of a single serialized Fabric object. */
+export type SerializedFabricData = SerializedAnnotation['fabricData']
 
 export interface ProjectData {
   version: string
@@ -55,8 +58,30 @@ export interface ProjectData {
   annotations: SerializedAnnotation[]
 }
 
+/**
+ * A Fabric object viewed through every subclass field this module reads.
+ * Fabric's own types put these on separate subclasses, but serialization
+ * dispatches on `type` at runtime, so widen once here instead of casting
+ * at each access.
+ */
+type SerializableFabricObject = fabric.Object & {
+  radius?: number
+  rx?: number
+  ry?: number
+  x1?: number
+  y1?: number
+  x2?: number
+  y2?: number
+  path?: unknown[]
+  text?: string
+  fontSize?: number
+  fontFamily?: string
+  _objects?: SerializableFabricObject[]
+}
+
 // Serialize a Fabric.js object to plain JSON
-export function serializeFabricObject(obj: any): SerializedAnnotation['fabricData'] {
+export function serializeFabricObject(input: fabric.Object): SerializedAnnotation['fabricData'] {
+  const obj = input as SerializableFabricObject
   const base = {
     type: obj.type || 'object',
     left: obj.left || 0,
@@ -89,7 +114,7 @@ export function serializeFabricObject(obj: any): SerializedAnnotation['fabricDat
     case 'group':
       return {
         ...base,
-        objects: obj._objects?.map((o: any) => serializeFabricObject(o)) || []
+        objects: obj._objects?.map((o) => serializeFabricObject(o)) || []
       }
     default:
       return base
@@ -227,9 +252,10 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
         shadow,
       })
 
-    case 'group':
-      const objects = data.objects?.map((o: any) => deserializeFabricObject(fabric, o)) || []
+    case 'group': {
+      const objects = data.objects?.map((o: SerializedAnnotation['fabricData']) => deserializeFabricObject(fabric, o)) || []
       return new fabric.Group(objects, commonProps)
+    }
 
     default:
       // Return a basic rect as fallback

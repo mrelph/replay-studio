@@ -551,7 +551,7 @@ ipcMain.handle('ffmpeg:getVersion', async () => {
   }
 })
 
-ipcMain.handle('ffmpeg:export', async (event, options: ExportOptions) => {
+ipcMain.handle('ffmpeg:export', async (_event, options: ExportOptions) => {
   // Same capability gate as file:*: read a registered video, write only where a
   // save dialog pointed.
   const input = await canonicalize(options?.inputPath)
