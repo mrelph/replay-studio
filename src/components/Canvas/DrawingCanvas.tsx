@@ -4,7 +4,6 @@ import { useToolStore } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useAudienceStore } from '@/stores/audienceStore'
-import { SpotlightTool } from './tools/SpotlightTool'
 import { AnimatedArrow } from './tools/AnimatedArrow'
 import { PlayerTracker } from './tools/PlayerTracker'
 import { getToolDefaults } from '@/utils/annotationDefaults'
@@ -24,7 +23,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const [dimensions, setDimensions] = useState({ width: 0, height: 0, offsetX: 0, offsetY: 0 })
 
   // Tool instances
-  const spotlightToolRef = useRef<SpotlightTool | null>(null)
   const animatedArrowRef = useRef<AnimatedArrow | null>(null)
   const playerTrackerRef = useRef<PlayerTracker | null>(null)
 
@@ -100,7 +98,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     setDimensions(dims)
 
     // Initialize tool instances
-    spotlightToolRef.current = new SpotlightTool(canvas)
     animatedArrowRef.current = new AnimatedArrow(canvas)
     playerTrackerRef.current = new PlayerTracker(canvas)
 
@@ -108,7 +105,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       canvas.dispose()
       fabricRef.current = null
       setCanvas(null)
-      spotlightToolRef.current = null
       animatedArrowRef.current = null
       playerTrackerRef.current = null
     }
@@ -349,15 +345,33 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     })
   }, [annotations])
 
-  // Create annotation with proper time range
-  const createAnnotation = useCallback((object: any, toolType: string) => {
+  // Stop tracking any tracker whose annotation was removed (delete, erase,
+  // clear, undo, or project load) so trackers don't keep running orphaned.
+  const knownTrackerIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const currentTrackerIds = new Set(
+      annotations.filter((a) => a.toolType === 'tracker').map((a) => a.id)
+    )
+    knownTrackerIdsRef.current.forEach((id) => {
+      if (!currentTrackerIds.has(id)) {
+        playerTrackerRef.current?.remove(id)
+      }
+    })
+    knownTrackerIdsRef.current = currentTrackerIds
+  }, [annotations])
+
+  // Create annotation with proper time range. Returns the annotation id used,
+  // so callers that need to correlate side-effects (e.g. player trackers) with
+  // the annotation can register under the same id.
+  const createAnnotation = useCallback((object: any, toolType: string, id?: string) => {
     const defaults = getToolDefaults(toolType)
     const endTime = duration > 0
       ? Math.min(currentTime + defaults.duration, duration)
       : currentTime + defaults.duration
+    const annotationId = id || `${toolType}-${Date.now()}`
 
     addAnnotation({
-      id: `${toolType}-${Date.now()}`,
+      id: annotationId,
       object,
       startTime: currentTime,
       endTime,
@@ -366,6 +380,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       fadeIn: defaults.fadeIn,
       fadeOut: defaults.fadeOut,
     })
+
+    return annotationId
   }, [addAnnotation, currentTime, duration])
 
   // Handle mouse events for drawing shapes
@@ -654,11 +670,12 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           })
 
           canvas.add(trackerGroup)
-          createAnnotation(trackerGroup, 'tracker')
+          const trackerId = `tracker-${Date.now()}`
+          createAnnotation(trackerGroup, 'tracker', trackerId)
 
-          // Register this annotation group for auto-tracking
+          // Register this annotation group for auto-tracking under the same id
+          // as the annotation, so removing the annotation can stop its tracker.
           if (playerTrackerRef.current && refDimsRef.current) {
-            const trackerId = `tracker-${Date.now()}`
             playerTrackerRef.current.track(trackerId, trackerGroup, {
               time: currentTime,
               x: pointer.x,
@@ -675,8 +692,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           return
         }
 
-        case 'text':
-          const text = new fabric.IText('Type here', {
+        case 'text': {
+          const textId = `text-${Date.now()}`
+          const text = new fabric.IText('', {
             left: pointer.x,
             top: pointer.y,
             fontSize: 24,
@@ -687,11 +705,20 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           canvas.setActiveObject(text)
           text.enterEditing()
 
-          createAnnotation(text, 'text')
+          createAnnotation(text, 'text', textId)
+
+          // Drop the annotation if the user leaves it empty instead of
+          // persisting an invisible placeholder.
+          text.on('editing:exited', () => {
+            if (!text.text || text.text.trim() === '') {
+              useDrawingStore.getState().removeAnnotations([textId])
+            }
+          })
 
           isDrawingRef.current = false
           setIsDrawing(false)
           return
+        }
       }
 
       if (shape) {
@@ -1002,19 +1029,35 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     canvas.selection = false
 
     const handleLaserMove = (e: any) => {
+      // canvas.getPointer() returns coordinates in the canvas's logical
+      // (zoomed-out) space, which is video-native pixels — not display
+      // pixels — because the canvas has a zoom applied (see applyZoom).
       const pointer = canvas.getPointer(e.e)
+      const ref = refDimsRef.current
+
+      // Position the HTML overlay dot in display space by scaling the
+      // native-space pointer back up using the current display dimensions.
       const dot = laserDotRef.current
-      if (dot) {
+      if (dot && ref && ref.width > 0 && ref.height > 0) {
+        const displayX = pointer.x * (dimensions.width / ref.width)
+        const displayY = pointer.y * (dimensions.height / ref.height)
         dot.style.display = 'block'
-        dot.style.left = `${pointer.x - 10}px`
-        dot.style.top = `${pointer.y - 10}px`
+        dot.style.left = `${displayX - 10}px`
+        dot.style.top = `${displayY - 10}px`
       }
-      if (isAudienceOpen && window.electronAPI && dimensions.width > 0) {
-        window.electronAPI.sendLaserPosition({
-          x: pointer.x / dimensions.width,
-          y: pointer.y / dimensions.height,
-          visible: true,
-        })
+
+      // Broadcast to the audience view normalized by the video's native
+      // resolution, matching the coordinate space the pointer is already in.
+      if (isAudienceOpen && window.electronAPI) {
+        const nativeW = videoElement.videoWidth || ref?.width || 0
+        const nativeH = videoElement.videoHeight || ref?.height || 0
+        if (nativeW > 0 && nativeH > 0) {
+          window.electronAPI.sendLaserPosition({
+            x: pointer.x / nativeW,
+            y: pointer.y / nativeH,
+            visible: true,
+          })
+        }
       }
     }
 

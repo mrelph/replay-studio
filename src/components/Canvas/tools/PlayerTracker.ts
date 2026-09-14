@@ -86,7 +86,10 @@ export class PlayerTracker {
         offsetY: 0,
       }),
     })
-    group.add(label)
+    // addWithUpdate recalculates the group's bounding box after insertion so
+    // adding the label doesn't shift the group's visual position (plain
+    // add() leaves stale bounds until the next explicit recalculation).
+    group.addWithUpdate(label)
 
     // Listen for manual moves to record keyframes + resample
     group.on('modified', () => {

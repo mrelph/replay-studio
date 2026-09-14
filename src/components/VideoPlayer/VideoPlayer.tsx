@@ -26,6 +26,9 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   const triggeredFreezesRef = useRef<Set<string>>(new Set())
   const freezeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastTimeRef = useRef<number>(0)
+  // True only while a freeze-triggered video.pause() is in flight, so the
+  // 'pause' event handler can tell that apart from a user-initiated pause.
+  const isFreezePauseRef = useRef(false)
 
   // Reset triggered freezes when user seeks or pauses
   const resetFreezes = useCallback(() => {
@@ -86,10 +89,20 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           // Trigger if we crossed the startTime between the last update and now
           if (prevTime <= ann.startTime && curTime >= ann.startTime) {
             triggeredFreezesRef.current.add(ann.id)
+            isFreezePauseRef.current = true
             video.currentTime = ann.startTime
             video.pause()
             freezeTimeoutRef.current = setTimeout(() => {
               freezeTimeoutRef.current = null
+              // Don't auto-resume past the out point; respect looping instead.
+              const { outPoint, isLooping, inPoint } = useVideoStore.getState()
+              if (outPoint !== null && video.currentTime >= outPoint) {
+                if (isLooping) {
+                  video.currentTime = inPoint ?? 0
+                  video.play()
+                }
+                return
+              }
               video.play()
             }, ann.freezeDuration * 1000)
             break
@@ -112,7 +125,19 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     const handleSeeking = () => resetFreezes()
 
     const handlePlay = () => setIsPlaying(true)
-    const handlePause = () => setIsPlaying(false)
+    const handlePause = () => {
+      setIsPlaying(false)
+      if (isFreezePauseRef.current) {
+        // This pause was triggered by the freeze-frame logic itself — leave
+        // the pending resume timer alone.
+        isFreezePauseRef.current = false
+      } else if (freezeTimeoutRef.current) {
+        // A real user/manual pause during a freeze hold — cancel the
+        // scheduled auto-resume so playback stays paused.
+        clearTimeout(freezeTimeoutRef.current)
+        freezeTimeoutRef.current = null
+      }
+    }
     const handleEnded = () => {
       handleEnding()
       if (!useVideoStore.getState().isLooping) {
