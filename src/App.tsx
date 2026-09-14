@@ -83,13 +83,25 @@ function App() {
   // Stream composited frames to audience window when open
   useAudienceStream({ videoElement, fabricCanvas: canvas })
 
-  const loadVideo = useCallback((filePath: string, projectRequestId?: number) => {
+  const loadVideo = useCallback(async (filePath: string, projectRequestId?: number): Promise<string | null> => {
     // Opening media outside project loading supersedes any staged project.
     if (projectRequestId === undefined) {
       activeProjectRequestIdRef.current = null
       setPendingProjectLoad(null)
     } else if (activeProjectRequestIdRef.current !== projectRequestId) {
       return null
+    }
+
+    if (window.electronAPI) {
+      const registerResult = await window.electronAPI.registerVideo(filePath)
+      // A project load may have been superseded while we awaited registration.
+      if (projectRequestId !== undefined && activeProjectRequestIdRef.current !== projectRequestId) {
+        return null
+      }
+      if (!registerResult.success) {
+        toast('error', `Cannot open video: ${registerResult.error}`)
+        return null
+      }
     }
 
     // Use custom protocol to serve local video files
@@ -106,7 +118,7 @@ function App() {
       try {
         const filePath = await window.electronAPI.openFile()
         if (filePath) {
-          loadVideo(filePath)
+          void loadVideo(filePath)
         }
       } catch (err) {
         console.error('Error opening file:', err)
@@ -211,7 +223,7 @@ function App() {
       // Projects without a media path continue to use the current video, which
       // preserves compatibility with existing project files.
       const targetVideoSrc = project.videoPath
-        ? loadVideo(project.videoPath, requestId)
+        ? await loadVideo(project.videoPath, requestId)
         : videoSrcRef.current
 
       if (activeProjectRequestIdRef.current !== requestId) return
@@ -307,7 +319,7 @@ function App() {
       if (file.type.startsWith('video/') || /\.(mp4|avi|mov|mkv|webm)$/i.test(file.name)) {
         // In Electron, files have a path property
         if (filePath) {
-          loadVideo(filePath)
+          void loadVideo(filePath)
         } else {
           // Fallback: create object URL
           const url = URL.createObjectURL(file)
@@ -333,7 +345,7 @@ function App() {
   useEffect(() => {
     if (window.electronAPI) {
       window.electronAPI.onFileOpened((filePath) => {
-        loadVideoRef.current(filePath)
+        void loadVideoRef.current(filePath)
       })
 
       window.electronAPI.onExportClip(() => {
@@ -538,7 +550,11 @@ function App() {
                         <div
                           key={file.path}
                           className="flex items-center gap-2 px-3 py-2 bg-surface-elevated hover:bg-surface-sunken border border-border-subtle rounded-lg cursor-pointer group transition-colors"
-                          onClick={() => loadVideo(file.path)}
+                          onClick={() => {
+                            void loadVideo(file.path).then((result) => {
+                              if (!result) removeRecentFile(file.path)
+                            })
+                          }}
                         >
                           <Film className="w-4 h-4 text-text-disabled flex-shrink-0" />
                           <span className="text-sm text-text-secondary truncate flex-1 text-left">{file.name}</span>
