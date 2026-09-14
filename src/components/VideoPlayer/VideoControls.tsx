@@ -6,6 +6,7 @@ import {
 import { useVideoStore } from '@/stores/videoStore'
 import { useState, useRef, useEffect } from 'react'
 import { IconButton, Select, Slider } from '@/components/ui'
+import { useShortcutKeyLabel } from '@/stores/shortcutsStore'
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
@@ -50,6 +51,23 @@ export default function VideoControls() {
   const volumeHideTimer = useRef<number>(0)
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+
+  // Tooltip key labels, read from the shortcuts store so they can't drift
+  // from the actual bindings if they're ever rebound.
+  const loopKeyLabel = useShortcutKeyLabel('video.toggleLoop')
+  const muteKeyLabel = useShortcutKeyLabel('video.toggleMute')
+  const fullscreenKeyLabel = useShortcutKeyLabel('video.toggleFullscreen')
+  const playPauseKeyLabel = useShortcutKeyLabel('video.playPause')
+  const skipBackKeyLabel = useShortcutKeyLabel('video.skipBackward')
+  const skipForwardKeyLabel = useShortcutKeyLabel('video.skipForward')
+  const stepBackKeyLabel = useShortcutKeyLabel('video.stepBackward')
+  const stepForwardKeyLabel = useShortcutKeyLabel('video.stepForward')
+  const goToStartKeyLabel = useShortcutKeyLabel('video.goToStart')
+  const goToEndKeyLabel = useShortcutKeyLabel('video.goToEnd')
+  const jumpToInKeyLabel = useShortcutKeyLabel('inout.jumpToIn')
+  const jumpToOutKeyLabel = useShortcutKeyLabel('inout.jumpToOut')
+  const setInKeyLabel = useShortcutKeyLabel('inout.setIn')
+  const setOutKeyLabel = useShortcutKeyLabel('inout.setOut')
 
   // Handle fullscreen changes
   useEffect(() => {
@@ -156,15 +174,15 @@ export default function VideoControls() {
       <div className="flex items-center justify-between gap-4">
         {/* Left controls - Transport */}
         <div className="flex items-center gap-0.5">
-          <IconButton onClick={jumpToStart} title="Jump to Start (Home)" size="sm">
+          <IconButton onClick={jumpToStart} title={`Jump to Start (${goToStartKeyLabel})`} size="sm">
             <SkipBack className="w-4 h-4" />
           </IconButton>
 
-          <IconButton onClick={() => skip(-10)} title="Skip Back 10s (J)" size="sm">
+          <IconButton onClick={() => skip(-10)} title={`Skip Back 10s (${skipBackKeyLabel})`} size="sm">
             <RotateCcw className="w-4 h-4" />
           </IconButton>
 
-          <IconButton onClick={() => stepFrame('backward')} title="Previous Frame (Left Arrow)" size="sm">
+          <IconButton onClick={() => stepFrame('backward')} title={`Previous Frame (${stepBackKeyLabel})`} size="sm">
             <ChevronLeft className="w-4 h-4" />
           </IconButton>
 
@@ -172,20 +190,20 @@ export default function VideoControls() {
           <button
             onClick={togglePlay}
             className="p-2.5 bg-accent hover:bg-accent-hover rounded-full text-accent-text transition-colors mx-1 shadow-md"
-            title="Play/Pause (Space)"
+            title={`Play/Pause (${playPauseKeyLabel})`}
           >
             {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
           </button>
 
-          <IconButton onClick={() => stepFrame('forward')} title="Next Frame (Right Arrow)" size="sm">
+          <IconButton onClick={() => stepFrame('forward')} title={`Next Frame (${stepForwardKeyLabel})`} size="sm">
             <ChevronRight className="w-4 h-4" />
           </IconButton>
 
-          <IconButton onClick={() => skip(10)} title="Skip Forward 10s (L)" size="sm">
+          <IconButton onClick={() => skip(10)} title={`Skip Forward 10s (${skipForwardKeyLabel})`} size="sm">
             <RotateCw className="w-4 h-4" />
           </IconButton>
 
-          <IconButton onClick={jumpToEnd} title="Jump to End (End)" size="sm">
+          <IconButton onClick={jumpToEnd} title={`Jump to End (${goToEndKeyLabel})`} size="sm">
             <SkipForward className="w-4 h-4" />
           </IconButton>
 
@@ -218,7 +236,7 @@ export default function VideoControls() {
           <IconButton
             onClick={goToInPoint}
             disabled={inPoint === null}
-            title="Go to In Point ([)"
+            title={`Go to In Point (${jumpToInKeyLabel})`}
             size="sm"
             className={inPoint !== null ? 'text-success hover:text-green-300' : ''}
           >
@@ -231,7 +249,7 @@ export default function VideoControls() {
             className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
               inPoint !== null ? 'bg-success/15 text-success' : 'bg-surface-sunken text-text-secondary hover:bg-surface-elevated'
             }`}
-            title="Set In Point (I)"
+            title={`Set In Point (${setInKeyLabel})`}
           >
             I
           </button>
@@ -242,7 +260,7 @@ export default function VideoControls() {
             className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
               outPoint !== null ? 'bg-error/15 text-error' : 'bg-surface-sunken text-text-secondary hover:bg-surface-elevated'
             }`}
-            title="Set Out Point (O)"
+            title={`Set Out Point (${setOutKeyLabel})`}
           >
             O
           </button>
@@ -251,7 +269,7 @@ export default function VideoControls() {
           <IconButton
             onClick={goToOutPoint}
             disabled={outPoint === null}
-            title="Go to Out Point (])"
+            title={`Go to Out Point (${jumpToOutKeyLabel})`}
             size="sm"
             className={outPoint !== null ? 'text-error hover:text-red-300' : ''}
           >
@@ -275,7 +293,7 @@ export default function VideoControls() {
           {/* Loop toggle */}
           <IconButton
             onClick={() => setIsLooping(!isLooping)}
-            title="Toggle Loop (Shift+L)"
+            title={`Toggle Loop (${loopKeyLabel})`}
             size="sm"
             variant={isLooping ? 'active' : 'ghost'}
           >
@@ -299,7 +317,7 @@ export default function VideoControls() {
           >
             <IconButton
               onClick={toggleMute}
-              title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
+              title={isMuted ? `Unmute (${muteKeyLabel})` : `Mute (${muteKeyLabel})`}
               size="sm"
             >
               {isMuted || volume === 0 ? (
@@ -329,7 +347,7 @@ export default function VideoControls() {
           </div>
 
           {/* Fullscreen toggle */}
-          <IconButton onClick={toggleFullscreen} title="Fullscreen (F)" size="sm">
+          <IconButton onClick={toggleFullscreen} title={`Fullscreen (${fullscreenKeyLabel})`} size="sm">
             {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
           </IconButton>
         </div>

@@ -578,6 +578,9 @@ function App() {
           }}
         />
       )}
+      {showShortcutsEditor && (
+        <ShortcutsEditor onClose={() => setShowShortcutsEditor(false)} />
+      )}
       {showExport && videoSrc && (
         <ExportDialog onClose={() => setShowExport(false)} videoSrc={videoSrc} />
       )}
