@@ -5,7 +5,6 @@ import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useAudienceStore } from '@/stores/audienceStore'
 import { SpotlightTool } from './tools/SpotlightTool'
-import { AnimatedArrow } from './tools/AnimatedArrow'
 import { PlayerTracker } from './tools/PlayerTracker'
 import { getToolDefaults } from '@/utils/annotationDefaults'
 
@@ -25,7 +24,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
   // Tool instances
   const spotlightToolRef = useRef<SpotlightTool | null>(null)
-  const animatedArrowRef = useRef<AnimatedArrow | null>(null)
   const playerTrackerRef = useRef<PlayerTracker | null>(null)
 
   // Track magnifiers for live video zoom updates
@@ -101,7 +99,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
     // Initialize tool instances
     spotlightToolRef.current = new SpotlightTool(canvas)
-    animatedArrowRef.current = new AnimatedArrow(canvas)
     playerTrackerRef.current = new PlayerTracker(canvas)
 
     return () => {
@@ -109,7 +106,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       fabricRef.current = null
       setCanvas(null)
       spotlightToolRef.current = null
-      animatedArrowRef.current = null
       playerTrackerRef.current = null
     }
   // Only re-init when the video element itself changes, not on resize
@@ -195,11 +191,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
   }, [currentTool, strokeColor, strokeWidth])
 
-  // Update animated arrows and trackers when video time changes
+  // Update trackers when video time changes
   useEffect(() => {
-    if (animatedArrowRef.current) {
-      animatedArrowRef.current.update(currentTime)
-    }
     if (playerTrackerRef.current) {
       playerTrackerRef.current.update(currentTime)
     }

@@ -17,7 +17,7 @@ There are no tests and no linter configured. Verify changes with `npm run typech
 Electron two-process app:
 
 - `electron/main.ts` — main process (ESM): window creation, all `ipcMain.handle` channels (`dialog:*`, `file:*`, `ffmpeg:*`, `audience:*`, `video:resolvePath`), custom `local-video://` protocol for serving local video files
-- `electron/ffmpegExport.ts` — export pipeline using `fluent-ffmpeg` + `ffmpeg-static`
+- `electron/ffmpegExport.ts` — export pipeline using `child_process.spawn` + `ffmpeg-static`
 - `electron/preload.cjs` — THE live preload script (CommonJS), exposes `window.electronAPI` via contextBridge
 - `src/` — React renderer
   - `src/stores/` — Zustand stores: `videoStore` (playback, in/out points), `toolStore` (active tool, color, stroke), `drawingStore` (annotations, undo/redo), `appStore`, plus `shortcutsStore`, `audienceStore`, `themeStore`, `waveformStore`

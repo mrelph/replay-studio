@@ -1,11 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { Trash2, Download, Upload, Snowflake } from 'lucide-react'
+import { Trash2, Snowflake } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
 import { PRESET_COLORS } from '@/stores/toolStore'
-import { Button, IconButton, Select } from '@/components/ui'
+import { Button, Select } from '@/components/ui'
 import WaveformDisplay from './WaveformDisplay'
-import { exportAnnotations, importAnnotations } from '@/utils/annotationSerializer'
 
 interface TimelineMarkerProps {
   annotation: Annotation
@@ -236,20 +235,6 @@ export default function AnnotationTimeline() {
               Delete
             </Button>
           )}
-          {annotations.length > 0 && (
-            <IconButton
-              onClick={() => exportAnnotations(annotations)}
-              title="Export Annotations"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </IconButton>
-          )}
-          <IconButton
-            onClick={() => importAnnotations()}
-            title="Import Annotations"
-          >
-            <Upload className="w-3.5 h-3.5" />
-          </IconButton>
           <span className="text-xs text-text-disabled">{annotations.length} annotations</span>
         </div>
       </div>
