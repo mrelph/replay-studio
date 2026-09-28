@@ -1,4 +1,5 @@
 import type { Annotation } from '@/stores/drawingStore'
+import type { Clip } from '@/types/clip'
 
 export interface SerializedAnnotation {
   id: string
@@ -56,6 +57,8 @@ export interface ProjectData {
   inPoint: number | null
   outPoint: number | null
   annotations: SerializedAnnotation[]
+  /** Added in project version 1.1; absent in older files. */
+  clips?: Clip[]
 }
 
 /**

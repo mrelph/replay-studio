@@ -1,3 +1,5 @@
+import type { VideoProbe, ClipEncodeStartOptions, ClipEncodeStartResult } from './clip'
+
 export interface ExportOptions {
   inputPath: string
   outputPath: string
@@ -55,6 +57,17 @@ export interface ElectronAPI {
    * from openFile()/the File menu are registered by the main process already.
    */
   registerVideo: (filePath: string) => Promise<RegisterVideoResult>
+
+  // Multi-clip export (see docs/CLIPS_PLAN.md)
+  /** Width/height/fps/duration/audio of a registered video path. */
+  probeVideo: (filePath: string) => Promise<VideoProbe | { error: string }>
+  /** Folder picker; the returned folder is authorized for export writes. */
+  chooseExportFolder: () => Promise<string | null>
+  clipEncodeStart: (options: ClipEncodeStartOptions) => Promise<ClipEncodeStartResult>
+  /** Resolves once ffmpeg has accepted the frame (backpressure); false if the job is gone. */
+  clipEncodeFrame: (jobId: string, jpeg: Uint8Array) => Promise<boolean>
+  clipEncodeFinish: (jobId: string) => Promise<ExportResult>
+  clipEncodeCancel: (jobId: string) => Promise<void>
 
   // Project save/load
   saveProject: (defaultName: string) => Promise<string | null>
