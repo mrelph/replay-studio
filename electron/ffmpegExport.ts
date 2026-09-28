@@ -39,6 +39,11 @@ function getFfmpeg(): string {
   return _ffmpegPath
 }
 
+/** Shared ffmpeg binary path resolution, reused by the clip export encoder. */
+export function getFfmpegBinaryPath(): string {
+  return getFfmpeg()
+}
+
 export interface ExportOptions {
   inputPath: string
   outputPath: string
