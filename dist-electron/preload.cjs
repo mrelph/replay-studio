@@ -1,8 +1,17 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
+  // File.path was removed in Electron 32; this is the supported replacement.
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || null;
+    } catch (err) {
+      console.error('getPathForFile error:', err);
+      return null;
+    }
+  },
   openFile: async () => {
     try {
       return await ipcRenderer.invoke('dialog:openFile');
