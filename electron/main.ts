@@ -4,7 +4,16 @@ import fs from 'fs'
 import fsp from 'fs/promises'
 import { Readable } from 'stream'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { exportVideo, getFFmpegVersion, type ExportOptions, type ExportProgress } from './ffmpegExport'
+import { exportVideo, getFFmpegVersion, getFfmpegBinaryPath, type ExportOptions, type ExportProgress } from './ffmpegExport'
+import {
+  probeVideo,
+  startClipEncodeJob,
+  clipEncodeFrame as encodeFrame,
+  finishClipEncodeJob,
+  cancelClipEncodeJob,
+  cancelAllClipEncodeJobs,
+} from './clipExport'
+import type { ClipEncodeStartOptions, ClipEncodeStartResult } from '../src/types/clip'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -50,6 +59,11 @@ const VIDEO_EXTENSIONS = new Set(Object.keys(VIDEO_MIME_TYPES))
 const registeredVideoPaths = new Set<string>()
 const dialogApprovedWritePaths = new Set<string>()
 const dialogApprovedReadPaths = new Set<string>()
+/** Folders chosen via chooseExportFolder(); writes are authorized under these. */
+const authorizedExportFolders = new Set<string>()
+
+/** Extensions clip export is allowed to write: burned-in/clean video, GIF, project + metadata. */
+const EXPORT_WRITE_EXTENSIONS = new Set(['mp4', 'gif', 'rsproj', 'json'])
 
 /**
  * The single place local-video URLs are decoded. Accepts the current
@@ -92,6 +106,34 @@ async function canonicalizeTarget(filePath: string): Promise<string | null> {
   const dir = await canonicalize(path.dirname(filePath))
   if (!dir) return null
   return path.join(dir, path.basename(filePath))
+}
+
+/**
+ * Write authorization for the multi-clip export feature: a target path is
+ * allowed if its parent directory canonicalizes to (or under) a folder the
+ * user picked via chooseExportFolder(), and its extension is one export
+ * actually produces. Canonicalizing the parent with realpath resolves any
+ * symlink so a folder can't be used to escape outside itself, and requiring
+ * the target to be a direct or nested child (by canonical path prefix)
+ * rejects `..`-style traversal the same way.
+ */
+async function isInsideAuthorizedExportFolder(targetPath: string): Promise<boolean> {
+  if (typeof targetPath !== 'string' || targetPath.length === 0) return false
+  if (!path.isAbsolute(targetPath)) return false
+
+  const ext = path.extname(targetPath).slice(1).toLowerCase()
+  if (!EXPORT_WRITE_EXTENSIONS.has(ext)) return false
+
+  const basename = path.basename(targetPath)
+  if (!basename || basename === '.' || basename === '..') return false
+
+  const parentDir = await canonicalize(path.dirname(targetPath))
+  if (!parentDir) return false
+
+  // Array.from avoids relying on downlevel Set iteration support.
+  return Array.from(authorizedExportFolders).some(
+    (folder) => parentDir === folder || parentDir.startsWith(folder + path.sep)
+  )
 }
 
 /**
@@ -456,6 +498,7 @@ function createWindow() {
     if (audienceWindow && !audienceWindow.isDestroyed()) {
       audienceWindow.close()
     }
+    void cancelAllClipEncodeJobs()
     mainWindow = null
   })
 }
@@ -525,11 +568,16 @@ ipcMain.handle('dialog:loadProject', async () => {
 })
 
 // File read/write for projects. Both are capability-gated: the renderer can
-// only touch paths the user picked in a dialog during this session.
+// only touch paths the user picked in a dialog during this session, or (for
+// write) a path under a folder authorized by chooseExportFolder().
 ipcMain.handle('file:write', async (_, filePath: string, content: string) => {
   const target = await canonicalizeTarget(filePath)
-  if (!target || !dialogApprovedWritePaths.has(target)) {
-    return { success: false, error: 'Write denied: path was not chosen in a save dialog' }
+  if (!target) {
+    return { success: false, error: 'Write denied: invalid path' }
+  }
+  const authorized = dialogApprovedWritePaths.has(target) || (await isInsideAuthorizedExportFolder(target))
+  if (!authorized) {
+    return { success: false, error: 'Write denied: path was not chosen in a save dialog or an authorized export folder' }
   }
   if (typeof content !== 'string') {
     return { success: false, error: 'Write denied: content must be a string' }
@@ -566,14 +614,15 @@ ipcMain.handle('ffmpeg:getVersion', async () => {
 
 ipcMain.handle('ffmpeg:export', async (_event, options: ExportOptions) => {
   // Same capability gate as file:*: read a registered video, write only where a
-  // save dialog pointed.
+  // save dialog pointed or an authorized export folder allows.
   const input = await canonicalize(options?.inputPath)
   if (!input || !registeredVideoPaths.has(input)) {
     return { success: false, error: 'Export denied: source video is not a registered file' }
   }
   const output = await canonicalizeTarget(options?.outputPath)
-  if (!output || !dialogApprovedWritePaths.has(output)) {
-    return { success: false, error: 'Export denied: destination was not chosen in a save dialog' }
+  const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
+  if (!output || !outputAuthorized) {
+    return { success: false, error: 'Export denied: destination was not chosen in a save dialog or an authorized export folder' }
   }
   try {
     await exportVideo(options, (progress: ExportProgress) => {
@@ -621,6 +670,84 @@ ipcMain.handle('video:register', async (_, filePath: string) => {
   return registerVideoPath(filePath)
 })
 
+// Multi-clip export (see docs/CLIPS_PLAN.md).
+
+ipcMain.handle('video:probe', async (_, filePath: string) => {
+  const real = await canonicalize(filePath)
+  if (!real || !registeredVideoPaths.has(real)) {
+    return { error: 'Probe denied: source video is not a registered file' }
+  }
+  return probeVideo(real, getFfmpegBinaryPath())
+})
+
+ipcMain.handle('dialog:chooseExportFolder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  const real = await canonicalize(result.filePaths[0])
+  if (!real) return null
+  authorizedExportFolders.add(real)
+  return real
+})
+
+/** True only for calls made from the main window (not the audience window). */
+function isFromMainWindow(sender: WebContents): boolean {
+  return mainWindow !== null && !mainWindow.isDestroyed() && sender === mainWindow.webContents
+}
+
+ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions): Promise<ClipEncodeStartResult> => {
+  if (!isFromMainWindow(event.sender)) {
+    return { ok: false, error: 'Encode denied: caller is not the main window' }
+  }
+  if (!options || typeof options !== 'object') {
+    return { ok: false, error: 'Invalid options' }
+  }
+
+  const source = await canonicalize(options.sourcePath)
+  if (!source || !registeredVideoPaths.has(source)) {
+    return { ok: false, error: 'Encode denied: source video is not a registered file' }
+  }
+  const output = await canonicalizeTarget(options.outputPath)
+  const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
+  if (!output || !outputAuthorized) {
+    return { ok: false, error: 'Encode denied: destination was not chosen in a save dialog or an authorized export folder' }
+  }
+
+  const probe = await probeVideo(source, getFfmpegBinaryPath())
+  if ('error' in probe) {
+    return { ok: false, error: `Encode denied: could not probe source audio: ${probe.error}` }
+  }
+
+  return startClipEncodeJob(
+    { ...options, sourcePath: source, outputPath: output },
+    probe.hasAudio,
+    getFfmpegBinaryPath()
+  )
+})
+
+ipcMain.handle('clip:encodeFrame', async (event, jobId: string, jpeg: Uint8Array): Promise<boolean> => {
+  if (!isFromMainWindow(event.sender)) return false
+  if (typeof jobId !== 'string' || !(jpeg instanceof Uint8Array)) return false
+  return encodeFrame(jobId, Buffer.from(jpeg))
+})
+
+ipcMain.handle('clip:encodeFinish', async (event, jobId: string) => {
+  if (!isFromMainWindow(event.sender)) {
+    return { success: false, error: 'Encode denied: caller is not the main window' }
+  }
+  if (typeof jobId !== 'string') {
+    return { success: false, error: 'Invalid job id' }
+  }
+  return finishClipEncodeJob(jobId)
+})
+
+ipcMain.handle('clip:encodeCancel', async (event, jobId: string) => {
+  if (!isFromMainWindow(event.sender)) return
+  if (typeof jobId !== 'string') return
+  await cancelClipEncodeJob(jobId)
+})
+
 app.whenReady().then(() => {
   // Serve local video files (modern replacement for registerFileProtocol),
   // allowlist-checked and with Range support so <video> can seek.
@@ -639,4 +766,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  void cancelAllClipEncodeJobs()
 })
