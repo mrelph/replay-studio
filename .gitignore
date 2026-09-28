@@ -31,3 +31,6 @@ npm-debug.log*
 
 # ML models (large binary files — download/export separately)
 public/models/*.onnx
+
+# Claude Code agent worktrees
+.claude/worktrees/

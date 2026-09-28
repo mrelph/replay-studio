@@ -166,16 +166,19 @@ function paintMagnifier(
 }
 
 /**
- * Detached clone of a live annotation's Fabric object, via the same
- * serialize/deserialize round-trip project save/load uses. This is
- * deliberately lossy in the same ways a saved project already is (e.g.
- * shadow blur amounts collapse to a generic reconstruction) — see the
- * worker report for the specific gap. The point is isolation: the live
- * canvas's objects are never touched by the export.
+ * Detached clone of a live annotation's Fabric object, so the export never
+ * touches the live canvas. Fabric's own clone() keeps every property
+ * (shadow blur, dash arrays, groups). Magnifiers go through the project
+ * serializer instead: their pattern fill wraps the live <video> element,
+ * which clone() would try to reload as an image; the export repaints that
+ * fill every frame anyway (paintMagnifier).
  */
-function cloneAnnotationObject(object: fabric.Object): fabric.Object {
-  const data = serializeFabricObject(object)
-  return deserializeFabricObject(fabric, data) as fabric.Object
+function cloneAnnotationObject(object: fabric.Object, isMagnifier: boolean): Promise<fabric.Object> {
+  if (isMagnifier) {
+    const data = serializeFabricObject(object)
+    return Promise.resolve(deserializeFabricObject(fabric, data) as fabric.Object)
+  }
+  return new Promise((resolve) => object.clone((copy: fabric.Object) => resolve(copy)))
 }
 
 function once(target: EventTarget, successEvent: string): Promise<void> {
@@ -322,9 +325,10 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
   if (includeDrawings) {
     staticCanvas = new fabric.StaticCanvas(null, { width: probe.width, height: probe.height })
     for (const annotation of annotations) {
-      const clone = cloneAnnotationObject(annotation.object)
+      const isMagnifier = annotation.toolType === 'magnifier'
+      const clone = await cloneAnnotationObject(annotation.object, isMagnifier)
       staticCanvas.add(clone)
-      cloned.push({ source: annotation, clone, isMagnifier: annotation.toolType === 'magnifier' })
+      cloned.push({ source: annotation, clone, isMagnifier })
     }
   }
 

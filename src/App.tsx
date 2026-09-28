@@ -403,12 +403,12 @@ function App() {
         if (showShortcutsEditor) setShowShortcutsEditor(false)
         else if (showShortcuts) setShowShortcuts(false)
         if (showExport) setShowExport(false)
-        if (showExportClips) setShowExportClips(false)
+        // ExportClipsDialog's Modal handles its own Escape and blocks it mid-export.
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [showShortcuts, showShortcutsEditor, showExport, showExportClips])
+  }, [showShortcuts, showShortcutsEditor, showExport])
 
   const isCurrentVideoReady = Boolean(
     videoElement &&

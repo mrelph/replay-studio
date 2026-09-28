@@ -207,6 +207,10 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
   const canExport = hasElectron && !!probe && !probeError && !!folder && selectedCount > 0 && !exporting
 
+  // If the dialog unmounts mid-export (e.g. a different video is opened),
+  // stop the render so the hidden video and ffmpeg job don't keep running.
+  useEffect(() => () => abortControllerRef.current?.abort(), [])
+
   const handleCancel = useCallback(() => {
     abortControllerRef.current?.abort()
   }, [])
