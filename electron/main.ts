@@ -620,6 +620,9 @@ ipcMain.handle('ffmpeg:export', async (_event, options: ExportOptions) => {
     return { success: false, error: 'Export denied: source video is not a registered file' }
   }
   const output = await canonicalizeTarget(options?.outputPath)
+  if (output === input) {
+    return { success: false, error: 'Export denied: output would overwrite the source video' }
+  }
   const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
   if (!output || !outputAuthorized) {
     return { success: false, error: 'Export denied: destination was not chosen in a save dialog or an authorized export folder' }
@@ -709,6 +712,9 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
     return { ok: false, error: 'Encode denied: source video is not a registered file' }
   }
   const output = await canonicalizeTarget(options.outputPath)
+  if (output === source) {
+    return { ok: false, error: 'Encode denied: output would overwrite the source video' }
+  }
   const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
   if (!output || !outputAuthorized) {
     return { ok: false, error: 'Encode denied: destination was not chosen in a save dialog or an authorized export folder' }
