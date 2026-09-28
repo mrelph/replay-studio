@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fabric } from '@/lib/fabric'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
-  Sun, ZoomIn, Crosshair, Radio, Undo2, Redo2, Trash2, Eraser, Snowflake
+  Sun, ZoomIn, Radio, Undo2, Redo2, Trash2, Eraser, Snowflake
 } from 'lucide-react'
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
@@ -109,7 +109,7 @@ export default function DrawingToolbar() {
       <ToolGroup label="Effects">
         <ToolButton tool="spotlight" label="Spotlight" shortcut="S" icon={<Sun className="w-4 h-4" />} />
         <ToolButton tool="magnifier" label="Zoom Lens" shortcut="Shift+M" icon={<ZoomIn className="w-4 h-4" />} />
-        <ToolButton tool="tracker" label="Player Tracker" shortcut="Shift+K" icon={<Crosshair className="w-4 h-4" />} />
+        {/* Player tracker hidden until tracking is reliable (tool code kept in Canvas/tools). */}
         <button
           onClick={() => setCurrentTool('laser')}
           className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
