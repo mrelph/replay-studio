@@ -1,5 +1,6 @@
 import type { Annotation } from '@/stores/drawingStore'
 import type { Clip } from '@/types/clip'
+import { CLIP_COLORS } from '@/stores/clipStore'
 
 export interface SerializedAnnotation {
   id: string
@@ -130,12 +131,13 @@ export function serializeProject(
   videoPath?: string,
   inPoint?: number | null,
   outPoint?: number | null,
-  projectName?: string
+  projectName?: string,
+  clips?: Clip[]
 ): ProjectData {
   const now = new Date().toISOString()
 
   return {
-    version: '1.0.0',
+    version: '1.1',
     name: projectName || 'Untitled Project',
     createdAt: now,
     modifiedAt: now,
@@ -154,13 +156,57 @@ export function serializeProject(
       name: ann.name,
       freezeDuration: ann.freezeDuration,
       fabricData: serializeFabricObject(ann.object)
-    }))
+    })),
+    // Deep-copied so mutating the store afterwards can't reach back into a
+    // project that has already been serialized (e.g. while a save is pending).
+    clips: (clips ?? []).map((clip) => ({ ...clip })),
   }
 }
 
 // Export project to JSON string
 export function exportProjectToJSON(project: ProjectData): string {
   return JSON.stringify(project, null, 2)
+}
+
+let importedClipIdCounter = 0
+function generateImportedClipId(): string {
+  importedClipIdCounter += 1
+  return `clip-imported-${Date.now().toString(36)}-${importedClipIdCounter}`
+}
+
+/**
+ * Filters and repairs a project file's `clips` array. Older files (version
+ * < 1.1) have no `clips` field at all, which is treated as an empty list.
+ * Entries with a non-finite or inverted/empty range are dropped outright;
+ * entries missing `id`, `name` or `color` are repaired in place so a project
+ * hand-edited or produced by another tool still loads.
+ */
+function sanitizeClips(raw: unknown): Clip[] {
+  if (!Array.isArray(raw)) return []
+
+  const result: Clip[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const candidate = entry as Partial<Clip>
+    const start = candidate.start
+    const end = candidate.end
+    if (typeof start !== 'number' || !Number.isFinite(start)) continue
+    if (typeof end !== 'number' || !Number.isFinite(end)) continue
+    if (end <= start) continue
+
+    const id = typeof candidate.id === 'string' && candidate.id.length > 0
+      ? candidate.id
+      : generateImportedClipId()
+    const name = typeof candidate.name === 'string' && candidate.name.length > 0
+      ? candidate.name
+      : `Clip ${result.length + 1}`
+    const color = typeof candidate.color === 'string' && candidate.color.length > 0
+      ? candidate.color
+      : CLIP_COLORS[result.length % CLIP_COLORS.length]
+
+    result.push({ id, name, start, end, color })
+  }
+  return result
 }
 
 // Import project from JSON string
@@ -171,6 +217,13 @@ export function importProjectFromJSON(json: string): ProjectData {
     // Validate required fields
     if (!data.version || !Array.isArray(data.annotations)) {
       throw new Error('Invalid project file format')
+    }
+
+    // Older files (version < 1.1) have no `clips` field; leave it undefined
+    // so callers' `project.clips ?? []` keeps working unchanged. When present,
+    // sanitize so a hand-edited or malformed entry can't reach the app.
+    if (data.clips !== undefined) {
+      data.clips = sanitizeClips(data.clips)
     }
 
     return data as ProjectData

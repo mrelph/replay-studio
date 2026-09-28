@@ -2,8 +2,10 @@ import { useEffect, useCallback } from 'react'
 import { useToolStore, PRESET_COLORS, type ToolType } from '@/stores/toolStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useClipStore } from '@/stores/clipStore'
 import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
 import { fabric } from '@/lib/fabric'
+import { toast } from '@/components/ui'
 
 // Map shortcut actions to tool types
 const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
@@ -147,6 +149,24 @@ export function useKeyboardShortcuts() {
         if (outPoint !== null) {
           seek(outPoint)
         }
+        return
+      }
+
+      // Clips
+      case 'clip.add': {
+        e.preventDefault()
+        const { inPoint: clipIn, outPoint: clipOut } = useVideoStore.getState()
+        if (clipIn === null || clipOut === null) {
+          toast('info', 'Set In (I) and Out (O) first')
+          return
+        }
+        const clip = useClipStore.getState().addClip(clipIn, clipOut)
+        if (!clip) {
+          toast('error', 'Clip range is too short')
+          return
+        }
+        setInPoint(null)
+        setOutPoint(null)
         return
       }
 

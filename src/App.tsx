@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor, Layers, PenTool, Users, Download, Presentation } from 'lucide-react'
+import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor, Layers, PenTool, Users, Download, Presentation, Scissors } from 'lucide-react'
 import VideoPlayer from './components/VideoPlayer/VideoPlayer'
 import DrawingToolbar from './components/Toolbar/DrawingToolbar'
 import DrawingCanvas from './components/Canvas/DrawingCanvas'
@@ -7,7 +7,9 @@ import ShortcutsHelp from './components/ShortcutsHelp'
 import ShortcutsEditor from './components/ShortcutsEditor'
 import AnnotationTimeline from './components/Timeline/AnnotationTimeline'
 import ExportDialog from './components/Export/ExportDialog'
+import ExportClipsDialog from './components/Export/ExportClipsDialog'
 import LayerPanel from './components/LayerPanel/LayerPanel'
+import ClipPanel from './components/Clips/ClipPanel'
 import { Button, IconButton, Kbd, ToastContainer, toast } from './components/ui'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAudienceStream } from './hooks/useAudienceStream'
@@ -16,6 +18,7 @@ import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
 import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore } from './stores/themeStore'
+import { useClipStore } from './stores/clipStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
 import type { ProjectData } from './utils/projectSerializer'
 import type { Annotation } from './stores/drawingStore'
@@ -63,13 +66,16 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showShortcutsEditor, setShowShortcutsEditor] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showExportClips, setShowExportClips] = useState(false)
   const [showLayerPanel, setShowLayerPanel] = useState(true)
+  const [showClipPanel, setShowClipPanel] = useState(true)
   const [dragOver, setDragOver] = useState(false)
 
   const { recentFiles, addRecentFile, removeRecentFile } = useAppStore()
   const { reset: resetVideo, inPoint, outPoint, setInPoint, setOutPoint } = useVideoStore()
   const { annotations, canvas, replaceAnnotations, isRestoring } = useDrawingStore()
   const { isAudienceOpen, openAudienceView, closeAudienceView } = useAudienceStore()
+  const { clips, setClips } = useClipStore()
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
   const videoSrcRef = useRef<string | null>(null)
   const nextProjectRequestIdRef = useRef(0)
@@ -87,6 +93,9 @@ function App() {
     if (projectRequestId === undefined) {
       activeProjectRequestIdRef.current = null
       setPendingProjectLoad(null)
+      // A freshly opened video (not a project load) starts with no clips;
+      // a project load restores its own clips once it is hydrated below.
+      useClipStore.getState().setClips([])
     } else if (activeProjectRequestIdRef.current !== projectRequestId) {
       return null
     }
@@ -163,7 +172,7 @@ function App() {
         actualVideoPath = await window.electronAPI.resolveVideoPath(videoSrc)
       }
 
-      const project = serializeProject(annotations, actualVideoPath, inPoint, outPoint)
+      const project = serializeProject(annotations, actualVideoPath, inPoint, outPoint, undefined, clips)
       const json = exportProjectToJSON(project)
 
       const result = await window.electronAPI.writeFile(filePath, json)
@@ -176,7 +185,7 @@ function App() {
     } catch {
       toast('error', 'Error saving project')
     }
-  }, [annotations, videoSrc, inPoint, outPoint, currentProjectPath])
+  }, [annotations, videoSrc, inPoint, outPoint, currentProjectPath, clips])
 
   // Load project
   const handleLoadProject = useCallback(async () => {
@@ -268,6 +277,7 @@ function App() {
       replaceAnnotations(restoredAnnotations)
       setInPoint(project.inPoint ?? null)
       setOutPoint(project.outPoint ?? null)
+      setClips(project.clips ?? [])
       setCurrentProjectPath(filePath)
       activeProjectRequestIdRef.current = null
       setPendingProjectLoad((pending) => pending?.requestId === requestId ? null : pending)
@@ -288,6 +298,7 @@ function App() {
     replaceAnnotations,
     setInPoint,
     setOutPoint,
+    setClips,
   ])
 
   // Handle drag and drop (works without electronAPI)
@@ -392,11 +403,12 @@ function App() {
         if (showShortcutsEditor) setShowShortcutsEditor(false)
         else if (showShortcuts) setShowShortcuts(false)
         if (showExport) setShowExport(false)
+        if (showExportClips) setShowExportClips(false)
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [showShortcuts, showShortcutsEditor, showExport])
+  }, [showShortcuts, showShortcutsEditor, showExport, showExportClips])
 
   const isCurrentVideoReady = Boolean(
     videoElement &&
@@ -451,6 +463,13 @@ function App() {
               >
                 <Layers className="w-4 h-4" />
               </IconButton>
+              <IconButton
+                onClick={() => setShowClipPanel(!showClipPanel)}
+                title="Toggle Clips Panel"
+                className={showClipPanel ? 'text-accent' : ''}
+              >
+                <Scissors className="w-4 h-4" />
+              </IconButton>
               <Button
                 onClick={() => isAudienceOpen ? closeAudienceView() : openAudienceView()}
                 variant={isAudienceOpen ? 'danger' : 'secondary'}
@@ -494,7 +513,16 @@ function App() {
                   )}
                 </div>
               </div>
-              <LayerPanel isOpen={showLayerPanel} onToggle={() => setShowLayerPanel(!showLayerPanel)} />
+              <div className="relative flex-shrink-0">
+                <ClipPanel
+                  isOpen={showClipPanel}
+                  onToggle={() => setShowClipPanel(!showClipPanel)}
+                  onExportClips={() => setShowExportClips(true)}
+                />
+              </div>
+              <div className="relative flex-shrink-0">
+                <LayerPanel isOpen={showLayerPanel} onToggle={() => setShowLayerPanel(!showLayerPanel)} />
+              </div>
             </div>
             <DrawingToolbar />
             <AnnotationTimeline />
@@ -593,6 +621,9 @@ function App() {
       )}
       {showExport && videoSrc && (
         <ExportDialog onClose={() => setShowExport(false)} videoSrc={videoSrc} />
+      )}
+      {showExportClips && videoSrc && (
+        <ExportClipsDialog onClose={() => setShowExportClips(false)} videoSrc={videoSrc} />
       )}
 
       <ToastContainer />
