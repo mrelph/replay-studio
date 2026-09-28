@@ -14,6 +14,9 @@ protocol.registerSchemesAsPrivileged([
   {
     scheme: 'local-video',
     privileges: {
+      // `standard` is required for Chromium's media loader to issue follow-up
+      // Range requests; without it large files fail with MEDIA_ERR code 4.
+      standard: true,
       secure: true,
       supportFetchAPI: true,
       stream: true,
@@ -24,6 +27,9 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const LOCAL_VIDEO_PREFIX = 'local-video://'
+// Standard schemes lowercase the host, so the path lives in the URL path
+// under a fixed host: `local-video://video/<encodeURIComponent(absPath)>`.
+const LOCAL_VIDEO_URL_BASE = `${LOCAL_VIDEO_PREFIX}video/`
 
 const VIDEO_MIME_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -45,11 +51,18 @@ const registeredVideoPaths = new Set<string>()
 const dialogApprovedWritePaths = new Set<string>()
 const dialogApprovedReadPaths = new Set<string>()
 
-/** The single place `local-video://<encodeURIComponent(absPath)>` is decoded. */
+/**
+ * The single place local-video URLs are decoded. Accepts the current
+ * `local-video://video/<encoded path>` form and the pre-standard-scheme
+ * `local-video://<encoded path>` form that older saved projects may contain.
+ */
 function pathFromLocalVideoUrl(videoUrl: string): string | null {
   if (typeof videoUrl !== 'string' || !videoUrl.startsWith(LOCAL_VIDEO_PREFIX)) return null
+  const encoded = videoUrl.startsWith(LOCAL_VIDEO_URL_BASE)
+    ? videoUrl.slice(LOCAL_VIDEO_URL_BASE.length)
+    : videoUrl.slice(LOCAL_VIDEO_PREFIX.length)
   try {
-    return decodeURIComponent(videoUrl.slice(LOCAL_VIDEO_PREFIX.length))
+    return decodeURIComponent(encoded)
   } catch {
     return null
   }

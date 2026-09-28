@@ -33,7 +33,8 @@ interface PendingProjectLoad {
 }
 
 function videoUrlForPath(filePath: string) {
-  return `local-video://${encodeURIComponent(filePath)}`
+  // Must match LOCAL_VIDEO_URL_BASE in electron/main.ts (standard scheme, fixed host).
+  return `local-video://video/${encodeURIComponent(filePath)}`
 }
 
 function ThemeToggle() {
@@ -310,8 +311,7 @@ function App() {
     const files = e.dataTransfer.files
     if (files.length > 0) {
       const file = files[0]
-      // Electron adds a 'path' property to File objects
-      const filePath = (file as File & { path?: string }).path
+      const filePath = window.electronAPI?.getPathForFile(file) ?? null
 
       // Check if it's a video file
       if (file.type.startsWith('video/') || /\.(mp4|avi|mov|mkv|webm)$/i.test(file.name)) {
@@ -488,9 +488,9 @@ function App() {
             <div className="flex-1 flex min-h-0 relative">
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="video-container flex-1 flex flex-col min-h-0 relative">
-                  <VideoPlayer key={videoSrc} src={videoSrc} onVideoRef={handleVideoRef} />
+                  <VideoPlayer key={`player:${videoSrc}`} src={videoSrc} onVideoRef={handleVideoRef} />
                   {videoElement && isCurrentVideoReady && (
-                    <DrawingCanvas key={videoSrc} videoElement={videoElement} />
+                    <DrawingCanvas key={`canvas:${videoSrc}`} videoElement={videoElement} />
                   )}
                 </div>
               </div>

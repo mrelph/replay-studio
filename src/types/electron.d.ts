@@ -39,6 +39,8 @@ export interface LaserPosition {
 
 export interface ElectronAPI {
   // File dialogs
+  /** Absolute path of a dropped File (replaces File.path, removed in Electron 32). */
+  getPathForFile: (file: File) => string | null
   openFile: () => Promise<string | null>
   saveFile: (defaultName: string) => Promise<string | null>
 
