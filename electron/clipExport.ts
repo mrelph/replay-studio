@@ -723,20 +723,34 @@ export async function cancelClipEncodeJob(jobId: string): Promise<void> {
   job.cancelled = true
 
   if (job.child) {
+    const child = job.child
+    // Windows can't delete a file ffmpeg still has open, so wait for the
+    // process to actually exit before removing the partial output.
+    const exited =
+      child.exitCode !== null || child.signalCode !== null
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => child.once('exit', () => resolve()))
     try {
-      job.child.kill('SIGKILL')
+      child.kill('SIGKILL')
     } catch {
       // Already dead.
     }
+    await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 5000))])
   } else {
     // Never spawned (cancelled between start and run) — clean up ourselves.
     await cleanupJob(jobId)
   }
 
-  try {
-    await fsp.unlink(job.outputPath)
-  } catch {
-    // Nothing to delete, or delete failed — not fatal for a cancel.
+  // Retry briefly: on Windows the handle can outlive the exit event by a moment.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await fsp.unlink(job.outputPath)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') return
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)))
+    }
   }
 }
 
