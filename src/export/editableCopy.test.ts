@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { fabric } from 'fabric'
 import { buildEditableProject } from './editableCopy'
 import type { Annotation } from '@/stores/drawingStore'
+import { CLIP_COLORS } from '@/stores/clipStore'
 
 // serializeFabricObject only reads plain-data fields (type, left, top, ...)
 // at runtime, so a minimal object shaped like a fabric.Rect is enough here
@@ -19,15 +20,28 @@ function fakeAnnotation(overrides: Partial<Annotation>): Annotation {
 }
 
 describe('buildEditableProject', () => {
-  const clip = { start: 10, end: 20 }
+  const clip = { start: 10, end: 20, name: 'Clip Name', tags: ['Offense', 'PP'], notes: 'Watch the breakout' }
 
-  it('sets videoPath, clips: [], and null in/out points', () => {
+  it('sets videoPath, a single carried-over clip, and null in/out points', () => {
     const project = buildEditableProject(clip, [], '/tmp/clean.mp4', 'My Clip')
     expect(project.videoPath).toBe('/tmp/clean.mp4')
-    expect(project.clips).toEqual([])
     expect(project.inPoint).toBeNull()
     expect(project.outPoint).toBeNull()
     expect(project.name).toBe('My Clip')
+
+    // The clip's own name/tags/notes carry into a single clip spanning the
+    // whole copy, rather than the previous `clips: []`.
+    expect(project.clips).toEqual([
+      {
+        id: 'clip-editable-copy',
+        name: 'Clip Name',
+        start: 0,
+        end: 10,
+        color: CLIP_COLORS[0],
+        tags: ['Offense', 'PP'],
+        notes: 'Watch the breakout',
+      },
+    ])
   })
 
   it('drops annotations entirely outside the clip range', () => {

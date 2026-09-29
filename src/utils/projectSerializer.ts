@@ -1,6 +1,7 @@
 import type { Annotation } from '@/stores/drawingStore'
 import type { Clip } from '@/types/clip'
 import { CLIP_COLORS } from '@/stores/clipStore'
+import { normalizeTags, clampNotes } from './clipTags'
 
 export interface SerializedAnnotation {
   id: string
@@ -137,7 +138,7 @@ export function serializeProject(
   const now = new Date().toISOString()
 
   return {
-    version: '1.1',
+    version: '1.2',
     name: projectName || 'Untitled Project',
     createdAt: now,
     modifiedAt: now,
@@ -179,7 +180,10 @@ function generateImportedClipId(): string {
  * < 1.1) have no `clips` field at all, which is treated as an empty list.
  * Entries with a non-finite or inverted/empty range are dropped outright;
  * entries missing `id`, `name` or `color` are repaired in place so a project
- * hand-edited or produced by another tool still loads.
+ * hand-edited or produced by another tool still loads. `tags`/`notes` were
+ * added in version 1.2; a project saved before that (or a hand-edited entry)
+ * gets `tags: []`/`notes: ''` defaults. Non-string tag entries are dropped
+ * and the remainder run through the same normalization live edits use.
  */
 function sanitizeClips(raw: unknown): Clip[] {
   if (!Array.isArray(raw)) return []
@@ -203,8 +207,12 @@ function sanitizeClips(raw: unknown): Clip[] {
     const color = typeof candidate.color === 'string' && candidate.color.length > 0
       ? candidate.color
       : CLIP_COLORS[result.length % CLIP_COLORS.length]
+    const tags = Array.isArray(candidate.tags)
+      ? normalizeTags(candidate.tags.filter((tag): tag is string => typeof tag === 'string'))
+      : []
+    const notes = typeof candidate.notes === 'string' ? clampNotes(candidate.notes) : ''
 
-    result.push({ id, name, start, end, color })
+    result.push({ id, name, start, end, color, tags, notes })
   }
   return result
 }

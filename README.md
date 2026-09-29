@@ -28,6 +28,19 @@ Replay Studio is an Electron-based application that allows users to load video f
 - **Spotlight (S)** - Highlight specific areas with a spotlight effect
 - **Magnifier (M)** - Create magnification zones for detailed analysis
 
+### Clips
+- Mark clips two ways: set In (`I`) / Out (`O`) and press `Shift+C`, or press `X`
+  to mark a moment around the playhead (defaults to 8s before / 4s after,
+  adjustable in the Clips panel) — works while playing, without pausing or seeking
+- Tag clips and add free-form notes; tag chips are colored subtly and stably by tag
+- **Sticky tags**: choose tags in the Clips panel that auto-apply to every new clip
+  (both `Shift+C` and `X`)
+- Filter the clip list by tag, and drag clip bars' edges on the timeline to adjust range
+- Export selected clips (optionally filtered "by tag") to `NN - Name.mp4` (adding
+  `[tag1, tag2]` when a clip has tags), each with an optional editable copy
+  (clean video + `.rsproj`), plus a `clips.csv` manifest of the run (name, times,
+  tags, notes, output file, and exported/failed/cancelled status per clip)
+
 ### Annotation Features
 - Color picker with 10 preset colors
 - Adjustable stroke width (2px to 16px)
@@ -191,6 +204,10 @@ what auto-update looks like from the user's side.
 - `O` - Set Out point
 - `[` - Jump to In point
 - `]` - Jump to Out point
+
+### Clips
+- `Shift+C` - Add clip from In/Out points
+- `X` - Mark moment (clip around the playhead)
 
 ### Editing
 - `Ctrl+Z` - Undo

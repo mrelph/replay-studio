@@ -22,6 +22,7 @@ interface ClipBarProps {
 // cover the coach's workflow, and it keeps 30+ bars cheap to re-render.
 function ClipBar({ clip, index, duration, isSelected, onSelect, onUpdateRange }: ClipBarProps) {
   const [isDragging, setIsDragging] = useState<'start' | 'end' | null>(null)
+  const [isHovered, setIsHovered] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
 
   const left = (clip.start / duration) * 100
@@ -84,7 +85,16 @@ function ClipBar({ clip, index, duration, isSelected, onSelect, onUpdateRange }:
           onSelect()
         }
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
+      {isHovered && !isDragging && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded shadow-lg border border-border-subtle pointer-events-none z-30 whitespace-nowrap">
+          <span className="font-medium">{clip.name}</span>
+          <span className="text-text-disabled ml-1.5">{formatTime(clip.start)}&ndash;{formatTime(clip.end)}</span>
+          {clip.tags.length > 0 && <span className="text-text-tertiary ml-1.5">{clip.tags.join(', ')}</span>}
+        </div>
+      )}
       <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white leading-none truncate px-1 pointer-events-none">
         {index + 1}
       </span>

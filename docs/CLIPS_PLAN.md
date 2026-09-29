@@ -53,7 +53,8 @@ zoomed content ignores fade.
 - `src/types/clip.ts`: `Clip`, `OutputSegment`, `VideoProbe`,
   `ClipEncodeStartOptions`, `ClipEncodeStartResult`, `OverlaySpan`,
   `MagnifierOp`, `ClipEncodeRunOptions`, `ClipEncodeProgressEvent`,
-  `ClipExportResult`.
+  `ClipExportResult`. `Clip` now also carries `tags: string[]` and
+  `notes: string` (both required — see "Fast clip marking & tags" below).
 - `src/types/electron.d.ts`: `probeVideo`, `chooseExportFolder`,
   `clipEncodeStart`, `clipEncodeAddOverlay`, `clipEncodeRun`,
   `clipEncodeCancel`, `onClipEncodeProgress`/`removeClipEncodeProgressListener`.
@@ -136,3 +137,70 @@ startTime, in time order. Segments are `play(start→t1), hold(t1, d1), play(t1�
   overlay PNGs, a magnifier op and a 0.5s hold, runs the job API directly, and
   pixel-samples the output to confirm the overlay only appears in its span
   and the magnifier region differs from the untouched source).
+
+## Fast clip marking & tags (2026-09-29)
+
+Product focus is still editing/making clips, but marking one from a live
+30-minute game shouldn't require pausing to set In/Out first, and coaches want
+to label what a clip is about.
+
+- **`clip.markMoment` (default key `X`, category `Clips` in
+  `src/stores/shortcutsStore.ts`):** creates a clip
+  `[t - preRoll, t + postRoll]` clamped to `[0, duration]`, where `t` is read
+  straight off `useVideoStore.getState().videoElement.currentTime` (falling
+  back to the store's `currentTime`) so it lands on the exact moment the key
+  was pressed, including while playing — it never pauses or seeks. Handled in
+  `src/hooks/useKeyboardShortcuts.ts` alongside the existing `clip.add`
+  (`Shift+C`) case, which both now apply **sticky tags**.
+- **`src/stores/clipPrefsStore.ts`:** a small persisted (`replay-studio-clip-prefs`)
+  store for `preRoll`/`postRoll` (seconds, bounded 0–60, default 8/4) and
+  `stickyTags: string[]` — tags auto-applied to every clip created via
+  `Shift+C` or `X`. Edited from a compact settings row + "Sticky tags"
+  control in `ClipPanel.tsx`.
+- **`Clip.tags`/`Clip.notes`:** normalized by `src/utils/clipTags.ts`
+  (`normalizeTag`/`normalizeTags`/`clampNotes`) — tags are trimmed,
+  whitespace-collapsed, capped at 24 chars, case-insensitively deduped
+  (keeping the first casing), and capped at 12 tags per clip; notes are
+  capped at 2000 chars. The same module's `hashTagColorClass` gives each tag
+  a stable, subtle chip color (a fixed Tailwind palette hashed by the
+  lowercased tag, following the literal-color precedent already used for
+  annotation types in `AnnotationTimeline.tsx`, since the app themes via a
+  `data-theme` attribute rather than `prefers-color-scheme`).
+- **`clipStore.ts`:** `addClip(start, end, name?, tags?)`; `setClipTags`,
+  `addClipTag`, `removeClipTag`, `setClipNotes` — all normalize through
+  `clipTags.ts`.
+- **`ClipPanel.tsx`:** each row shows tag chips + a notes indicator; the
+  selected row expands into a tag input (Enter adds, Backspace on empty
+  removes the last tag, with autocomplete from tags already used in the
+  project) and a notes textarea. A filter bar toggles clips by tag (ANY
+  match, shows "N of M"). Real `<input>`/`<textarea>` elements mean the
+  existing input guard in `useKeyboardShortcuts.ts` already keeps global
+  shortcuts from firing while typing in any of this.
+- **Project files (version `1.2`):** `sanitizeClips` in
+  `projectSerializer.ts` defaults a clip missing `tags`/`notes` (any file
+  saved before this feature) to `[]`/`''`, and drops/normalizes malformed
+  `tags` entries the same way live edits do.
+- **Editable copy (`src/export/editableCopy.ts`):** `buildEditableProject`
+  now carries the original clip's `name`/`tags`/`notes` into the copy as a
+  single clip spanning the whole file (`id: 'clip-editable-copy'`, `[0,
+  clipDuration]`) instead of `clips: []`, so reopening the editable copy
+  still shows them.
+- **Export filenames (`ExportClipsDialog.tsx` +
+  `src/export/clipFilename.ts`):** `buildClipBaseName(nn, name, tags)` builds
+  `"NN - Name"`, or `"NN - Name [tag1, tag2]"` when the clip has tags
+  (sanitized for the filesystem, capped at ~120 chars); the burned-in file,
+  clean copy, and `.rsproj` all share this base name. The dialog also has a
+  "Select by tag" chip row (selects exactly the clips having any chosen
+  tag, alongside the existing all/none).
+- **`clips.csv` (`src/export/clipsCsv.ts`, pure `buildClipsCsv`):** written
+  via `window.electronAPI.writeFile` into the export folder after every
+  export run, even a partial/cancelled one. Columns: number, name, start/end/
+  duration (`hh:mm:ss.f`), tags (semicolon-joined), notes, file (the burned-in
+  output file name), status (`exported`/`failed`/`cancelled`). RFC 4180
+  quoting (quotes a field containing a comma/quote/CR/LF, doubling inner
+  quotes) plus a leading `'` on any field starting with `= + - @` or a
+  tab/CR, to neutralize spreadsheet formula injection. `csv` was added to
+  `EXPORT_WRITE_EXTENSIONS` in `electron/main.ts` so `file:write` accepts it
+  inside an authorized export folder.
+- **Timeline (`AnnotationTimeline.tsx`):** clip bars now show a hover tooltip
+  (name, times, tags) — no other behavior change.

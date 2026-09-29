@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Clip } from '@/types/clip'
+import { normalizeTag, normalizeTags, clampNotes } from '@/utils/clipTags'
 
 // Cycled for new clips so adjacent bars on the timeline are distinguishable.
 export const CLIP_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#ef4444', '#eab308']
@@ -11,13 +12,17 @@ interface ClipState {
   selectedClipId: string | null
 
   /** Adds a clip for [start, end) and returns it, or null if the range is empty. */
-  addClip: (start: number, end: number, name?: string) => Clip | null
+  addClip: (start: number, end: number, name?: string, tags?: string[]) => Clip | null
   updateClip: (id: string, patch: Partial<Omit<Clip, 'id'>>) => void
   removeClip: (id: string) => void
   moveClip: (id: string, toIndex: number) => void
   selectClip: (id: string | null) => void
   /** Replaces all clips (project load / new video). */
   setClips: (clips: Clip[]) => void
+  setClipTags: (id: string, tags: string[]) => void
+  addClipTag: (id: string, tag: string) => void
+  removeClipTag: (id: string, tag: string) => void
+  setClipNotes: (id: string, notes: string) => void
 }
 
 let idCounter = 0
@@ -30,7 +35,7 @@ export const useClipStore = create<ClipState>((set, get) => ({
   clips: [],
   selectedClipId: null,
 
-  addClip: (start, end, name) => {
+  addClip: (start, end, name, tags) => {
     const lo = Math.max(0, Math.min(start, end))
     const hi = Math.max(start, end)
     if (hi - lo < MIN_CLIP_SECONDS) return null
@@ -41,6 +46,8 @@ export const useClipStore = create<ClipState>((set, get) => ({
       start: lo,
       end: hi,
       color: CLIP_COLORS[clips.length % CLIP_COLORS.length],
+      tags: normalizeTags(tags ?? []),
+      notes: '',
     }
     set({ clips: [...clips, clip], selectedClipId: clip.id })
     return clip
@@ -79,4 +86,33 @@ export const useClipStore = create<ClipState>((set, get) => ({
   selectClip: (id) => set({ selectedClipId: id }),
 
   setClips: (clips) => set({ clips, selectedClipId: null }),
+
+  setClipTags: (id, tags) => {
+    set((state) => ({
+      clips: state.clips.map((clip) => (clip.id === id ? { ...clip, tags: normalizeTags(tags) } : clip)),
+    }))
+  },
+
+  addClipTag: (id, tag) => {
+    set((state) => ({
+      clips: state.clips.map((clip) =>
+        clip.id === id ? { ...clip, tags: normalizeTags([...clip.tags, tag]) } : clip
+      ),
+    }))
+  },
+
+  removeClipTag: (id, tag) => {
+    const key = normalizeTag(tag).toLowerCase()
+    set((state) => ({
+      clips: state.clips.map((clip) =>
+        clip.id === id ? { ...clip, tags: clip.tags.filter((t) => t.toLowerCase() !== key) } : clip
+      ),
+    }))
+  },
+
+  setClipNotes: (id, notes) => {
+    set((state) => ({
+      clips: state.clips.map((clip) => (clip.id === id ? { ...clip, notes: clampNotes(notes) } : clip)),
+    }))
+  },
 }))

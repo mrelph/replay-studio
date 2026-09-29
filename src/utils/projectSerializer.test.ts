@@ -148,15 +148,17 @@ describe('clips round-trip and validation', () => {
       start: 1,
       end: 10,
       color: '#3b82f6',
+      tags: [],
+      notes: '',
       ...overrides,
     }
   }
 
-  it('serializeProject writes version 1.1 and a deep-copied clips array', () => {
+  it('serializeProject writes version 1.2 and a deep-copied clips array', () => {
     const clips = [makeClip()]
     const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', clips)
 
-    expect(project.version).toBe('1.1')
+    expect(project.version).toBe('1.2')
     expect(project.clips).toEqual(clips)
     // Deep copy: mutating the input must not reach the serialized project.
     clips[0].name = 'Mutated'
@@ -223,8 +225,75 @@ describe('clips round-trip and validation', () => {
     expect(repaired.id).toBeTruthy()
     expect(repaired.name).toBe('Clip 1')
     expect(CLIP_COLORS).toContain(repaired.color)
+    expect(repaired.tags).toEqual([])
+    expect(repaired.notes).toBe('')
 
-    expect(good).toEqual({ id: 'good-1', name: 'Good clip', start: 20, end: 30, color: '#ec4899' })
+    expect(good).toEqual({
+      id: 'good-1',
+      name: 'Good clip',
+      start: 20,
+      end: 30,
+      color: '#ec4899',
+      tags: [],
+      notes: '',
+    })
+  })
+
+  it('defaults tags/notes for a legacy 1.1 clip that has neither field', () => {
+    const legacy = JSON.stringify({
+      version: '1.1',
+      name: 'Legacy clip file',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      modifiedAt: '2024-01-01T00:00:00.000Z',
+      inPoint: null,
+      outPoint: null,
+      annotations: [],
+      clips: [{ id: 'c1', name: 'Old clip', start: 0, end: 5, color: '#3b82f6' }],
+    })
+
+    const imported = importProjectFromJSON(legacy)
+    expect(imported.clips).toEqual([
+      { id: 'c1', name: 'Old clip', start: 0, end: 5, color: '#3b82f6', tags: [], notes: '' },
+    ])
+  })
+
+  it('round-trips clips with tags and notes through JSON', () => {
+    const clips = [makeClip({ tags: ['Offense', 'PP'], notes: 'Watch the breakout' })]
+    const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', clips)
+
+    const imported = importProjectFromJSON(exportProjectToJSON(project))
+    expect(imported.clips).toEqual(clips)
+  })
+
+  it('drops non-string tags and normalizes the rest on load', () => {
+    const raw = JSON.stringify({
+      version: '1.2',
+      name: 'Test',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      modifiedAt: '2024-01-01T00:00:00.000Z',
+      inPoint: null,
+      outPoint: null,
+      annotations: [],
+      clips: [
+        {
+          id: 'c1',
+          name: 'Clip',
+          start: 0,
+          end: 5,
+          color: '#000',
+          // Non-string entries dropped; whitespace collapsed; case-insensitive
+          // dedupe keeps the first casing; length capped at 24.
+          tags: ['  Offense   Set  ', 42, 'offense set', null, 'a'.repeat(40)],
+          notes: 123,
+        },
+      ],
+    })
+
+    const imported = importProjectFromJSON(raw)
+    expect(imported.clips).toHaveLength(1)
+    const [clip] = imported.clips!
+    expect(clip.tags).toEqual(['Offense Set', 'a'.repeat(24)])
+    expect(clip.notes).toBe('')
   })
 })
 

@@ -7,7 +7,7 @@ interface ShortcutsHelpProps {
 }
 
 // Display order for categories (matches the groupings used in ShortcutsEditor)
-const CATEGORY_ORDER = ['Tools', 'Video Playback', 'In/Out Points', 'Editing', 'Colors']
+const CATEGORY_ORDER = ['Tools', 'Video Playback', 'In/Out Points', 'Clips', 'Editing', 'Colors']
 
 export default function ShortcutsHelp({ onClose, onOpenEditor }: ShortcutsHelpProps) {
   const shortcuts = useShortcutsStore((state) => state.shortcuts)
