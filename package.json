@@ -52,7 +52,8 @@
     "appId": "com.replaystudio.app",
     "productName": "Replay Studio",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "asarUnpack": [
       "node_modules/ffmpeg-static/**/*",
@@ -68,13 +69,16 @@
     ],
     "win": {
       "target": "nsis",
-      "artifactName": "${name}-Setup-${version}.${ext}"
+      "artifactName": "${name}-Setup-${version}.${ext}",
+      "icon": "build/icon.ico"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "artifactName": "${name}-${version}.${ext}"
+      "artifactName": "${name}-${version}.${ext}",
+      "icon": "build/icon.png",
+      "category": "Video"
     }
   }
 }

@@ -366,6 +366,9 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    // Window/taskbar icon on Linux and Windows (installers use build/icon.*).
+    // public/ is copied into dist/ by Vite for packaged builds.
+    icon: path.join(__dirname, app.isPackaged ? '../dist/icon.png' : '../public/icon.png'),
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
