@@ -15,6 +15,14 @@ Replay Studio: an Electron + React desktop app for video markup — telestrator-
 
 Verify changes with `npm run typecheck`, `npm run lint`, `npm run test`, and by running the app.
 
+## Releases
+
+Packaged Linux (AppImage) and Windows builds auto-update via `electron-updater`
+against GitHub Releases on `mrelph/replay-studio` (`electron/updater.ts`). A
+`v*` tag push runs `.github/workflows/release.yml`, which builds and publishes
+both installers plus the update-feed `latest*.yml` files. See
+[RELEASING.md](RELEASING.md) for the release process and auto-update behavior.
+
 ## Architecture
 
 Electron two-process app:

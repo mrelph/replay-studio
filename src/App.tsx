@@ -10,6 +10,7 @@ import ExportDialog from './components/Export/ExportDialog'
 import ExportClipsDialog from './components/Export/ExportClipsDialog'
 import LayerPanel from './components/LayerPanel/LayerPanel'
 import ClipPanel from './components/Clips/ClipPanel'
+import UpdateBanner from './components/UpdateBanner'
 import { Button, IconButton, Kbd, ToastContainer, toast } from './components/ui'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAudienceStream } from './hooks/useAudienceStream'
@@ -627,6 +628,7 @@ function App() {
       )}
 
       <ToastContainer />
+      <UpdateBanner />
     </div>
   )
 }

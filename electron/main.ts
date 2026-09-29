@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, screen, type WebContents } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import fs from 'fs'
 import fsp from 'fs/promises'
@@ -14,6 +15,7 @@ import {
   cancelAllClipEncodeJobs,
 } from './clipExport'
 import type { ClipEncodeStartOptions, ClipEncodeStartResult } from '../src/types/clip'
+import { UpdaterController, currentUpdateEnv, type AutoUpdaterLike } from './updater'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -291,6 +293,12 @@ function hardenWebContents(contents: WebContents) {
 let mainWindow: BrowserWindow | null = null
 let audienceWindow: BrowserWindow | null = null
 
+// Auto-update (see electron/updater.ts). The autoUpdater singleton from
+// electron-updater satisfies AutoUpdaterLike structurally; the cast avoids
+// electron-updater's types leaking into updater.ts, which is written to stay
+// testable outside Electron.
+const updaterController = new UpdaterController(autoUpdater as unknown as AutoUpdaterLike, currentUpdateEnv())
+
 function createAudienceWindow() {
   if (audienceWindow) {
     audienceWindow.focus()
@@ -480,6 +488,13 @@ function createWindow() {
               message: 'Replay Studio',
               detail: 'Version 1.0.0\n\nA video markup application with telestrator-style drawing tools.',
             })
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Check for Updates…',
+          click: () => {
+            void checkForUpdatesFromMenu()
           },
         },
       ],
@@ -771,12 +786,65 @@ ipcMain.handle('clip:encodeCancel', async (event, jobId: string) => {
   await cancelClipEncodeJob(jobId)
 })
 
+// Auto-update IPC (see electron/updater.ts). Both channels are also reachable
+// from the "Check for Updates…" menu item, which calls the same controller
+// methods directly rather than round-tripping through IPC.
+ipcMain.handle('update:check', async () => {
+  return updaterController.checkForUpdatesNow()
+})
+
+ipcMain.handle('update:install', () => {
+  updaterController.installNow()
+})
+
+/** "Check for Updates…" menu handler: same check as the IPC channel, surfaced via a native dialog instead of the renderer. */
+async function checkForUpdatesFromMenu() {
+  const result = await updaterController.checkForUpdatesNow()
+  const version = app.getVersion()
+  const detail = `Current version: ${version}`
+
+  if (result.status === 'unsupported') {
+    dialog.showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'Check for Updates',
+      message: 'Automatic updates are not supported for this install type.',
+      detail: `${detail}\n\nOnly the Linux AppImage and Windows installers can update automatically.`,
+    })
+    return
+  }
+  if (result.status === 'error') {
+    dialog.showMessageBox(mainWindow!, {
+      type: 'error',
+      title: 'Check for Updates',
+      message: 'Update check failed.',
+      detail: `${detail}\n\n${result.message ?? 'Unknown error'}`,
+    })
+    return
+  }
+  if (result.status === 'available') {
+    dialog.showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'Check for Updates',
+      message: `Downloading update v${result.version}…`,
+      detail: `${detail}\n\nReplay Studio will let you know when it's ready to install.`,
+    })
+    return
+  }
+  dialog.showMessageBox(mainWindow!, {
+    type: 'info',
+    title: 'Check for Updates',
+    message: "You're up to date.",
+    detail,
+  })
+}
+
 app.whenReady().then(() => {
   // Serve local video files (modern replacement for registerFileProtocol),
   // allowlist-checked and with Range support so <video> can seek.
   protocol.handle('local-video', handleLocalVideoRequest)
 
   createWindow()
+  updaterController.start(() => mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -793,4 +861,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void cancelAllClipEncodeJobs()
+  updaterController.stop()
 })

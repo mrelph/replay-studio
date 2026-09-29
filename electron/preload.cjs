@@ -228,4 +228,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeLoadProjectListener: () => {
     ipcRenderer.removeAllListeners('load-project');
   },
+
+  // Auto-update (see electron/updater.ts)
+  onUpdateDownloaded: (callback) => {
+    ipcRenderer.on('update:downloaded', (_, info) => callback(info));
+  },
+  removeUpdateDownloadedListener: () => {
+    ipcRenderer.removeAllListeners('update:downloaded');
+  },
+  installUpdate: () => {
+    ipcRenderer.invoke('update:install');
+  },
+  checkForUpdates: async () => {
+    try {
+      return await ipcRenderer.invoke('update:check');
+    } catch (err) {
+      console.error('checkForUpdates error:', err);
+      return { status: 'error', message: err instanceof Error ? err.message : 'Update check failed' };
+    }
+  },
 });

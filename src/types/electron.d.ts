@@ -39,6 +39,19 @@ export interface LaserPosition {
   visible: boolean
 }
 
+export type UpdateCheckStatus = 'up-to-date' | 'available' | 'unsupported' | 'error'
+
+export interface UpdateCheckResult {
+  status: UpdateCheckStatus
+  version?: string
+  message?: string
+}
+
+export interface UpdateDownloadedInfo {
+  version: string
+  releaseNotes?: string
+}
+
 export interface ElectronAPI {
   // File dialogs
   /** Absolute path of a dropped File (replaces File.path, removed in Electron 32). */
@@ -104,6 +117,14 @@ export interface ElectronAPI {
   removeExportProgressListener: () => void
   removeSaveProjectListener: () => void
   removeLoadProjectListener: () => void
+
+  // Auto-update (see electron/updater.ts)
+  onUpdateDownloaded: (callback: (info: UpdateDownloadedInfo) => void) => void
+  removeUpdateDownloadedListener: () => void
+  /** Quits and installs the already-downloaded update. Only meaningful after onUpdateDownloaded has fired. */
+  installUpdate: () => void
+  /** User-initiated check (e.g. a future in-app "Check for Updates" affordance); mirrors the Help menu item. */
+  checkForUpdates: () => Promise<UpdateCheckResult>
 }
 
 declare global {
