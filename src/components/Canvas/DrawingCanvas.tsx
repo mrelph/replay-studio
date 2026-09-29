@@ -6,6 +6,7 @@ import { useVideoStore } from '@/stores/videoStore'
 import { useAudienceStore } from '@/stores/audienceStore'
 import { PlayerTracker } from './tools/PlayerTracker'
 import { getToolDefaults } from '@/utils/annotationDefaults'
+import { annotationStateAt } from '@/export/annotationTiming'
 
 /** Fabric object carrying the magnifier id this component stamps on it. */
 type MagnifierTaggedObject = fabric.Object & { magnifierId?: string }
@@ -286,39 +287,17 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     })
   }, [currentTime, updateMagnifierContent])
 
-  // Control annotation visibility based on current time with fade effects
+  // Control annotation visibility based on current time with fade effects.
+  // The rule itself lives in src/export/annotationTiming.ts, shared with the
+  // clip export renderer so burned-in exports match what's shown here.
   useEffect(() => {
     const canvas = fabricRef.current
     if (!canvas) return
 
     annotations.forEach((annotation) => {
-      const { startTime, endTime, fadeIn = 0, fadeOut = 0 } = annotation
-      const isInTimeRange = currentTime >= startTime && currentTime <= endTime
-
-      if (!isInTimeRange) {
-        // Hide annotation outside time range
-        annotation.object.visible = false
-        annotation.object.opacity = 0
-      } else {
-        // Show annotation and calculate opacity for fade effects
-        annotation.object.visible = true
-
-        const timeInRange = currentTime - startTime
-        const timeToEnd = endTime - currentTime
-
-        let opacity = 1
-
-        // Fade in effect - ensure minimum 0.5 opacity so new drawings are visible
-        if (fadeIn > 0 && timeInRange < fadeIn) {
-          opacity = Math.max(0.5, timeInRange / fadeIn)
-        }
-        // Fade out effect
-        else if (fadeOut > 0 && timeToEnd < fadeOut) {
-          opacity = Math.max(0.2, timeToEnd / fadeOut)
-        }
-
-        annotation.object.opacity = opacity
-      }
+      const { visible, opacity } = annotationStateAt(annotation, currentTime)
+      annotation.object.visible = visible
+      annotation.object.opacity = opacity
     })
 
     canvas.renderAll()

@@ -1,3 +1,13 @@
+import type {
+  VideoProbe,
+  ClipEncodeStartOptions,
+  ClipEncodeStartResult,
+  ClipEncodeAddOverlayResult,
+  ClipEncodeRunOptions,
+  ClipEncodeProgressEvent,
+  ClipExportResult,
+} from './clip'
+
 export interface ExportOptions {
   inputPath: string
   outputPath: string
@@ -37,6 +47,19 @@ export interface LaserPosition {
   visible: boolean
 }
 
+export type UpdateCheckStatus = 'up-to-date' | 'available' | 'unsupported' | 'error'
+
+export interface UpdateCheckResult {
+  status: UpdateCheckStatus
+  version?: string
+  message?: string
+}
+
+export interface UpdateDownloadedInfo {
+  version: string
+  releaseNotes?: string
+}
+
 export interface ElectronAPI {
   // File dialogs
   /** Absolute path of a dropped File (replaces File.path, removed in Electron 32). */
@@ -55,6 +78,22 @@ export interface ElectronAPI {
    * from openFile()/the File menu are registered by the main process already.
    */
   registerVideo: (filePath: string) => Promise<RegisterVideoResult>
+
+  // Multi-clip export (see docs/CLIPS_PLAN.md)
+  /** Width/height/fps/duration/audio of a registered video path. */
+  probeVideo: (filePath: string) => Promise<VideoProbe | { error: string }>
+  /** Folder picker; the returned folder is authorized for export writes. */
+  chooseExportFolder: () => Promise<string | null>
+  clipEncodeStart: (options: ClipEncodeStartOptions) => Promise<ClipEncodeStartResult>
+  /** Adds one drawing-layer PNG to the job; resolves with its 0-based slot index. */
+  /** One drawing-layer frame as raw RGBA (width*height*4 bytes); the main process encodes it to PNG. */
+  clipEncodeAddOverlay: (jobId: string, rgba: Uint8Array) => Promise<ClipEncodeAddOverlayResult>
+  /** Builds the ffmpeg filter graph from the given spans/magnifiers and runs the job to completion. */
+  clipEncodeRun: (jobId: string, payload: ClipEncodeRunOptions) => Promise<ClipExportResult>
+  clipEncodeCancel: (jobId: string) => Promise<void>
+  /** Real-time percent (0-100) while an encode job runs; jobId lets a caller ignore events for other jobs. */
+  onClipEncodeProgress: (callback: (progress: ClipEncodeProgressEvent) => void) => void
+  removeClipEncodeProgressListener: () => void
 
   // Project save/load
   saveProject: (defaultName: string) => Promise<string | null>
@@ -91,6 +130,14 @@ export interface ElectronAPI {
   removeExportProgressListener: () => void
   removeSaveProjectListener: () => void
   removeLoadProjectListener: () => void
+
+  // Auto-update (see electron/updater.ts)
+  onUpdateDownloaded: (callback: (info: UpdateDownloadedInfo) => void) => void
+  removeUpdateDownloadedListener: () => void
+  /** Quits and installs the already-downloaded update. Only meaningful after onUpdateDownloaded has fired. */
+  installUpdate: () => void
+  /** User-initiated check (e.g. a future in-app "Check for Updates" affordance); mirrors the Help menu item. */
+  checkForUpdates: () => Promise<UpdateCheckResult>
 }
 
 declare global {

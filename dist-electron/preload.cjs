@@ -64,6 +64,55 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // Multi-clip export (see docs/CLIPS_PLAN.md)
+  probeVideo: async (filePath) => {
+    try {
+      return await ipcRenderer.invoke('video:probe', filePath);
+    } catch (err) {
+      console.error('probeVideo error:', err);
+      return { error: err instanceof Error ? err.message : 'Probe failed' };
+    }
+  },
+  // Errors propagate so the export dialog can tell the user why the picker failed.
+  chooseExportFolder: () => ipcRenderer.invoke('dialog:chooseExportFolder'),
+  clipEncodeStart: async (options) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeStart', options);
+    } catch (err) {
+      console.error('clipEncodeStart error:', err);
+      return { ok: false, error: err instanceof Error ? err.message : 'Encode start failed' };
+    }
+  },
+  clipEncodeAddOverlay: async (jobId, rgba) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeAddOverlay', jobId, rgba);
+    } catch (err) {
+      console.error('clipEncodeAddOverlay error:', err);
+      return { ok: false, error: err instanceof Error ? err.message : 'Add overlay failed' };
+    }
+  },
+  clipEncodeRun: async (jobId, payload) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeRun', jobId, payload);
+    } catch (err) {
+      console.error('clipEncodeRun error:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Encode run failed' };
+    }
+  },
+  clipEncodeCancel: async (jobId) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeCancel', jobId);
+    } catch (err) {
+      console.error('clipEncodeCancel error:', err);
+    }
+  },
+  onClipEncodeProgress: (callback) => {
+    ipcRenderer.on('clip:encodeProgress', (_, progress) => callback(progress));
+  },
+  removeClipEncodeProgressListener: () => {
+    ipcRenderer.removeAllListeners('clip:encodeProgress');
+  },
+
   // Project save/load
   saveProject: async (defaultName) => {
     try {
@@ -184,5 +233,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   removeLoadProjectListener: () => {
     ipcRenderer.removeAllListeners('load-project');
+  },
+
+  // Auto-update (see electron/updater.ts)
+  onUpdateDownloaded: (callback) => {
+    ipcRenderer.on('update:downloaded', (_, info) => callback(info));
+  },
+  removeUpdateDownloadedListener: () => {
+    ipcRenderer.removeAllListeners('update:downloaded');
+  },
+  installUpdate: () => {
+    ipcRenderer.invoke('update:install');
+  },
+  checkForUpdates: async () => {
+    try {
+      return await ipcRenderer.invoke('update:check');
+    } catch (err) {
+      console.error('checkForUpdates error:', err);
+      return { status: 'error', message: err instanceof Error ? err.message : 'Update check failed' };
+    }
   },
 });

@@ -4,9 +4,12 @@ import {
   importProjectFromJSON,
   serializeFabricObject,
   deserializeFabricObject,
+  serializeProject,
   type ProjectData,
   type SerializedAnnotation,
 } from './projectSerializer'
+import type { Clip } from '@/types/clip'
+import { CLIP_COLORS } from '@/stores/clipStore'
 
 // Import fabric the same way the app does (see src/components/Canvas/DrawingCanvas.tsx).
 import { fabric } from '@/lib/fabric'
@@ -134,6 +137,94 @@ describe('exportProjectToJSON / importProjectFromJSON', () => {
 
   it('rejects invalid JSON entirely', () => {
     expect(() => importProjectFromJSON('{not json')).toThrow('Failed to parse project file')
+  })
+})
+
+describe('clips round-trip and validation', () => {
+  function makeClip(overrides: Partial<Clip> = {}): Clip {
+    return {
+      id: 'clip-1',
+      name: 'First half',
+      start: 1,
+      end: 10,
+      color: '#3b82f6',
+      ...overrides,
+    }
+  }
+
+  it('serializeProject writes version 1.1 and a deep-copied clips array', () => {
+    const clips = [makeClip()]
+    const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', clips)
+
+    expect(project.version).toBe('1.1')
+    expect(project.clips).toEqual(clips)
+    // Deep copy: mutating the input must not reach the serialized project.
+    clips[0].name = 'Mutated'
+    expect(project.clips?.[0].name).toBe('First half')
+  })
+
+  it('round-trips a project with clips through JSON', () => {
+    const clips = [makeClip({ id: 'a' }), makeClip({ id: 'b', name: 'Second half', start: 10, end: 20, color: '#22c55e' })]
+    const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', clips)
+
+    const imported = importProjectFromJSON(exportProjectToJSON(project))
+    expect(imported.clips).toEqual(clips)
+  })
+
+  it('loads a legacy project file with no clips field at all', () => {
+    const legacy = JSON.stringify({
+      version: '1.0.0',
+      name: 'Legacy',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      modifiedAt: '2024-01-01T00:00:00.000Z',
+      inPoint: null,
+      outPoint: null,
+      annotations: [],
+    })
+
+    const imported = importProjectFromJSON(legacy)
+    expect(imported.clips).toBeUndefined()
+    // Call sites treat a missing clips field as an empty list.
+    expect(imported.clips ?? []).toEqual([])
+  })
+
+  it('drops malformed clip entries and repairs missing fields', () => {
+    const raw = JSON.stringify({
+      version: '1.1',
+      name: 'Test',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      modifiedAt: '2024-01-01T00:00:00.000Z',
+      inPoint: null,
+      outPoint: null,
+      annotations: [],
+      clips: [
+        // Valid but missing id/name/color: should be repaired, not dropped.
+        { start: 0, end: 5 },
+        // Inverted/empty range: dropped.
+        { id: 'bad-1', name: 'Bad', start: 5, end: 5, color: '#000' },
+        { id: 'bad-2', name: 'Bad', start: 10, end: 2, color: '#000' },
+        // Non-finite times: dropped.
+        { id: 'bad-3', name: 'Bad', start: Number.NaN, end: 10, color: '#000' },
+        { id: 'bad-4', name: 'Bad', start: 0, end: Infinity, color: '#000' },
+        // Not an object: dropped.
+        null,
+        'not-a-clip',
+        // Valid, fully specified: kept as-is.
+        { id: 'good-1', name: 'Good clip', start: 20, end: 30, color: '#ec4899' },
+      ],
+    })
+
+    const imported = importProjectFromJSON(raw)
+    expect(imported.clips).toHaveLength(2)
+
+    const [repaired, good] = imported.clips!
+    expect(repaired.start).toBe(0)
+    expect(repaired.end).toBe(5)
+    expect(repaired.id).toBeTruthy()
+    expect(repaired.name).toBe('Clip 1')
+    expect(CLIP_COLORS).toContain(repaired.color)
+
+    expect(good).toEqual({ id: 'good-1', name: 'Good clip', start: 20, end: 30, color: '#ec4899' })
   })
 })
 

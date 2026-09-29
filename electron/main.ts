@@ -1,13 +1,36 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, screen, type WebContents } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import { Readable } from 'stream'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { exportVideo, getFFmpegVersion, type ExportOptions, type ExportProgress } from './ffmpegExport'
+import { exportVideo, getFFmpegVersion, getFfmpegBinaryPath, type ExportOptions, type ExportProgress } from './ffmpegExport'
+import {
+  probeVideo,
+  startClipEncodeJob,
+  addOverlayToJob,
+  runClipEncodeJob,
+  cancelClipEncodeJob,
+  cancelAllClipEncodeJobs,
+} from './clipExport'
+import type {
+  ClipEncodeStartOptions,
+  ClipEncodeStartResult,
+  ClipEncodeAddOverlayResult,
+  ClipEncodeRunOptions,
+  ClipExportResult,
+} from '../src/types/clip'
+import { UpdaterController, currentUpdateEnv, type AutoUpdaterLike } from './updater'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// Dev-only: expose the Chrome DevTools protocol for automated end-to-end runs
+// (see REPLAY_E2E_EXPORT_DIR). Never active in a packaged build.
+if (!app.isPackaged && process.env.REPLAY_REMOTE_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.REPLAY_REMOTE_DEBUG_PORT)
+}
 
 // Register the custom protocol as privileged (must be done before app ready)
 protocol.registerSchemesAsPrivileged([
@@ -50,6 +73,11 @@ const VIDEO_EXTENSIONS = new Set(Object.keys(VIDEO_MIME_TYPES))
 const registeredVideoPaths = new Set<string>()
 const dialogApprovedWritePaths = new Set<string>()
 const dialogApprovedReadPaths = new Set<string>()
+/** Folders chosen via chooseExportFolder(); writes are authorized under these. */
+const authorizedExportFolders = new Set<string>()
+
+/** Extensions clip export is allowed to write: burned-in/clean video, GIF, project + metadata. */
+const EXPORT_WRITE_EXTENSIONS = new Set(['mp4', 'gif', 'rsproj', 'json'])
 
 /**
  * The single place local-video URLs are decoded. Accepts the current
@@ -92,6 +120,34 @@ async function canonicalizeTarget(filePath: string): Promise<string | null> {
   const dir = await canonicalize(path.dirname(filePath))
   if (!dir) return null
   return path.join(dir, path.basename(filePath))
+}
+
+/**
+ * Write authorization for the multi-clip export feature: a target path is
+ * allowed if its parent directory canonicalizes to (or under) a folder the
+ * user picked via chooseExportFolder(), and its extension is one export
+ * actually produces. Canonicalizing the parent with realpath resolves any
+ * symlink so a folder can't be used to escape outside itself, and requiring
+ * the target to be a direct or nested child (by canonical path prefix)
+ * rejects `..`-style traversal the same way.
+ */
+async function isInsideAuthorizedExportFolder(targetPath: string): Promise<boolean> {
+  if (typeof targetPath !== 'string' || targetPath.length === 0) return false
+  if (!path.isAbsolute(targetPath)) return false
+
+  const ext = path.extname(targetPath).slice(1).toLowerCase()
+  if (!EXPORT_WRITE_EXTENSIONS.has(ext)) return false
+
+  const basename = path.basename(targetPath)
+  if (!basename || basename === '.' || basename === '..') return false
+
+  const parentDir = await canonicalize(path.dirname(targetPath))
+  if (!parentDir) return false
+
+  // Array.from avoids relying on downlevel Set iteration support.
+  return Array.from(authorizedExportFolders).some(
+    (folder) => parentDir === folder || parentDir.startsWith(folder + path.sep)
+  )
 }
 
 /**
@@ -243,6 +299,12 @@ function hardenWebContents(contents: WebContents) {
 let mainWindow: BrowserWindow | null = null
 let audienceWindow: BrowserWindow | null = null
 
+// Auto-update (see electron/updater.ts). The autoUpdater singleton from
+// electron-updater satisfies AutoUpdaterLike structurally; the cast avoids
+// electron-updater's types leaking into updater.ts, which is written to stay
+// testable outside Electron.
+const updaterController = new UpdaterController(autoUpdater as unknown as AutoUpdaterLike, currentUpdateEnv())
+
 function createAudienceWindow() {
   if (audienceWindow) {
     audienceWindow.focus()
@@ -310,6 +372,9 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    // Window/taskbar icon on Linux and Windows (installers use build/icon.*).
+    // public/ is copied into dist/ by Vite for packaged builds.
+    icon: path.join(__dirname, app.isPackaged ? '../dist/icon.png' : '../public/icon.png'),
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
@@ -399,18 +464,7 @@ function createWindow() {
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
-        { type: 'separator' },
-        {
-          label: 'Audience View',
-          accelerator: 'CmdOrCtrl+Shift+A',
-          click: () => {
-            if (audienceWindow) {
-              audienceWindow.close()
-            } else {
-              createAudienceWindow()
-            }
-          },
-        },
+        // Audience View menu item removed: the feature is hidden for now.
       ],
     },
     {
@@ -432,6 +486,13 @@ function createWindow() {
               message: 'Replay Studio',
               detail: 'Version 1.0.0\n\nA video markup application with telestrator-style drawing tools.',
             })
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Check for Updates…',
+          click: () => {
+            void checkForUpdatesFromMenu()
           },
         },
       ],
@@ -456,6 +517,7 @@ function createWindow() {
     if (audienceWindow && !audienceWindow.isDestroyed()) {
       audienceWindow.close()
     }
+    void cancelAllClipEncodeJobs()
     mainWindow = null
   })
 }
@@ -525,11 +587,16 @@ ipcMain.handle('dialog:loadProject', async () => {
 })
 
 // File read/write for projects. Both are capability-gated: the renderer can
-// only touch paths the user picked in a dialog during this session.
+// only touch paths the user picked in a dialog during this session, or (for
+// write) a path under a folder authorized by chooseExportFolder().
 ipcMain.handle('file:write', async (_, filePath: string, content: string) => {
   const target = await canonicalizeTarget(filePath)
-  if (!target || !dialogApprovedWritePaths.has(target)) {
-    return { success: false, error: 'Write denied: path was not chosen in a save dialog' }
+  if (!target) {
+    return { success: false, error: 'Write denied: invalid path' }
+  }
+  const authorized = dialogApprovedWritePaths.has(target) || (await isInsideAuthorizedExportFolder(target))
+  if (!authorized) {
+    return { success: false, error: 'Write denied: path was not chosen in a save dialog or an authorized export folder' }
   }
   if (typeof content !== 'string') {
     return { success: false, error: 'Write denied: content must be a string' }
@@ -566,14 +633,18 @@ ipcMain.handle('ffmpeg:getVersion', async () => {
 
 ipcMain.handle('ffmpeg:export', async (_event, options: ExportOptions) => {
   // Same capability gate as file:*: read a registered video, write only where a
-  // save dialog pointed.
+  // save dialog pointed or an authorized export folder allows.
   const input = await canonicalize(options?.inputPath)
   if (!input || !registeredVideoPaths.has(input)) {
     return { success: false, error: 'Export denied: source video is not a registered file' }
   }
   const output = await canonicalizeTarget(options?.outputPath)
-  if (!output || !dialogApprovedWritePaths.has(output)) {
-    return { success: false, error: 'Export denied: destination was not chosen in a save dialog' }
+  if (output === input) {
+    return { success: false, error: 'Export denied: output would overwrite the source video' }
+  }
+  const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
+  if (!output || !outputAuthorized) {
+    return { success: false, error: 'Export denied: destination was not chosen in a save dialog or an authorized export folder' }
   }
   try {
     await exportVideo(options, (progress: ExportProgress) => {
@@ -621,12 +692,161 @@ ipcMain.handle('video:register', async (_, filePath: string) => {
   return registerVideoPath(filePath)
 })
 
+// Multi-clip export (see docs/CLIPS_PLAN.md).
+
+ipcMain.handle('video:probe', async (_, filePath: string) => {
+  const real = await canonicalize(filePath)
+  if (!real || !registeredVideoPaths.has(real)) {
+    return { error: 'Probe denied: source video is not a registered file' }
+  }
+  return probeVideo(real, getFfmpegBinaryPath())
+})
+
+ipcMain.handle('dialog:chooseExportFolder', async () => {
+  // Dev-only test seam: lets an automated run pick the folder without the
+  // native dialog. Never active in a packaged build.
+  const e2eFolder = !app.isPackaged ? process.env.REPLAY_E2E_EXPORT_DIR : undefined
+  if (e2eFolder) {
+    const real = await canonicalize(e2eFolder)
+    if (real) authorizedExportFolders.add(real)
+    return real
+  }
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  const real = await canonicalize(result.filePaths[0])
+  if (!real) {
+    console.error('chooseExportFolder: could not resolve', result.filePaths[0])
+    throw new Error(`Folder not accessible: ${result.filePaths[0]}`)
+  }
+  authorizedExportFolders.add(real)
+  return real
+})
+
+/** True only for calls made from the main window (not the audience window). */
+function isFromMainWindow(sender: WebContents): boolean {
+  return mainWindow !== null && !mainWindow.isDestroyed() && sender === mainWindow.webContents
+}
+
+ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions): Promise<ClipEncodeStartResult> => {
+  if (!isFromMainWindow(event.sender)) {
+    return { ok: false, error: 'Encode denied: caller is not the main window' }
+  }
+  if (!options || typeof options !== 'object') {
+    return { ok: false, error: 'Invalid options' }
+  }
+
+  const source = await canonicalize(options.sourcePath)
+  if (!source || !registeredVideoPaths.has(source)) {
+    return { ok: false, error: 'Encode denied: source video is not a registered file' }
+  }
+  const output = await canonicalizeTarget(options.outputPath)
+  if (output === source) {
+    return { ok: false, error: 'Encode denied: output would overwrite the source video' }
+  }
+  const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
+  if (!output || !outputAuthorized) {
+    return { ok: false, error: 'Encode denied: destination was not chosen in a save dialog or an authorized export folder' }
+  }
+
+  const probe = await probeVideo(source, getFfmpegBinaryPath())
+  if ('error' in probe) {
+    return { ok: false, error: `Encode denied: could not probe source audio: ${probe.error}` }
+  }
+
+  return startClipEncodeJob({ ...options, sourcePath: source, outputPath: output }, probe.hasAudio)
+})
+
+ipcMain.handle(
+  'clip:encodeAddOverlay',
+  async (event, jobId: string, rgba: Uint8Array): Promise<ClipEncodeAddOverlayResult> => {
+    if (!isFromMainWindow(event.sender)) return { ok: false, error: 'Encode denied: caller is not the main window' }
+    if (typeof jobId !== 'string' || !(rgba instanceof Uint8Array)) return { ok: false, error: 'Invalid arguments' }
+    return addOverlayToJob(jobId, Buffer.from(rgba.buffer, rgba.byteOffset, rgba.byteLength))
+  }
+)
+
+ipcMain.handle(
+  'clip:encodeRun',
+  async (event, jobId: string, payload: ClipEncodeRunOptions): Promise<ClipExportResult> => {
+    if (!isFromMainWindow(event.sender)) {
+      return { success: false, error: 'Encode denied: caller is not the main window' }
+    }
+    if (typeof jobId !== 'string' || !payload || typeof payload !== 'object') {
+      return { success: false, error: 'Invalid arguments' }
+    }
+    return runClipEncodeJob(jobId, payload, getFfmpegBinaryPath(), (percent) => {
+      mainWindow?.webContents.send('clip:encodeProgress', { jobId, percent })
+    })
+  }
+)
+
+ipcMain.handle('clip:encodeCancel', async (event, jobId: string) => {
+  if (!isFromMainWindow(event.sender)) return
+  if (typeof jobId !== 'string') return
+  await cancelClipEncodeJob(jobId)
+})
+
+// Auto-update IPC (see electron/updater.ts). Both channels are also reachable
+// from the "Check for Updates…" menu item, which calls the same controller
+// methods directly rather than round-tripping through IPC.
+ipcMain.handle('update:check', async () => {
+  return updaterController.checkForUpdatesNow()
+})
+
+ipcMain.handle('update:install', () => {
+  updaterController.installNow()
+})
+
+/** "Check for Updates…" menu handler: same check as the IPC channel, surfaced via a native dialog instead of the renderer. */
+async function checkForUpdatesFromMenu() {
+  const result = await updaterController.checkForUpdatesNow()
+  const version = app.getVersion()
+  const detail = `Current version: ${version}`
+
+  if (result.status === 'unsupported') {
+    dialog.showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'Check for Updates',
+      message: 'Automatic updates are not supported for this install type.',
+      detail: `${detail}\n\nOnly the Linux AppImage and Windows installers can update automatically.`,
+    })
+    return
+  }
+  if (result.status === 'error') {
+    dialog.showMessageBox(mainWindow!, {
+      type: 'error',
+      title: 'Check for Updates',
+      message: 'Update check failed.',
+      detail: `${detail}\n\n${result.message ?? 'Unknown error'}`,
+    })
+    return
+  }
+  if (result.status === 'available') {
+    dialog.showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'Check for Updates',
+      message: `Downloading update v${result.version}…`,
+      detail: `${detail}\n\nReplay Studio will let you know when it's ready to install.`,
+    })
+    return
+  }
+  dialog.showMessageBox(mainWindow!, {
+    type: 'info',
+    title: 'Check for Updates',
+    message: "You're up to date.",
+    detail,
+  })
+}
+
 app.whenReady().then(() => {
   // Serve local video files (modern replacement for registerFileProtocol),
   // allowlist-checked and with Range support so <video> can seek.
   protocol.handle('local-video', handleLocalVideoRequest)
 
   createWindow()
+  updaterController.start(() => mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -639,4 +859,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  void cancelAllClipEncodeJobs()
+  updaterController.stop()
 })

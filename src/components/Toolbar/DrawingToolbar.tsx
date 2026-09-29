@@ -2,12 +2,11 @@ import { useState } from 'react'
 import { fabric } from '@/lib/fabric'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
-  Sun, ZoomIn, Crosshair, Radio, Undo2, Redo2, Trash2, Eraser, Snowflake
+  Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser, Snowflake
 } from 'lucide-react'
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
-import { useAudienceStore } from '@/stores/audienceStore'
 import { Modal, Button } from '@/components/ui'
 
 interface ToolButtonProps {
@@ -68,10 +67,9 @@ const COLOR_NAMES: Record<string, string> = {
 }
 
 export default function DrawingToolbar() {
-  const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth, currentTool, setCurrentTool } = useToolStore()
+  const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth } = useToolStore()
   const { undo, redo, clearAnnotations, undoStack, redoStack, annotations, selectedAnnotationId, updateAnnotation } = useDrawingStore()
   const { currentTime, duration } = useVideoStore()
-  const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [showFreezePopover, setShowFreezePopover] = useState(false)
   const [freezeSeconds, setFreezeSeconds] = useState(3)
@@ -109,21 +107,8 @@ export default function DrawingToolbar() {
       <ToolGroup label="Effects">
         <ToolButton tool="spotlight" label="Spotlight" shortcut="S" icon={<Sun className="w-4 h-4" />} />
         <ToolButton tool="magnifier" label="Zoom Lens" shortcut="Shift+M" icon={<ZoomIn className="w-4 h-4" />} />
-        <ToolButton tool="tracker" label="Player Tracker" shortcut="Shift+K" icon={<Crosshair className="w-4 h-4" />} />
-        <button
-          onClick={() => setCurrentTool('laser')}
-          className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
-            currentTool === 'laser'
-              ? 'bg-error text-white shadow-md'
-              : isAudienceOpen
-              ? 'hover:bg-surface-sunken text-text-secondary hover:text-text-primary'
-              : 'text-text-disabled cursor-not-allowed opacity-40'
-          }`}
-          disabled={!isAudienceOpen}
-          title={`Laser Pointer (Shift+P)${!isAudienceOpen ? ' - Open Audience View first' : ''}`}
-        >
-          <Radio className="w-4 h-4" />
-        </button>
+        {/* Player tracker hidden until tracking is reliable (tool code kept in Canvas/tools). */}
+        {/* Laser pointer hidden with the audience view (it only drew on the audience window). */}
       </ToolGroup>
 
       <VerticalDivider />

@@ -2,9 +2,107 @@ import { useRef, useState, useCallback, useEffect } from 'react'
 import { Trash2, Snowflake } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
+import { useClipStore } from '@/stores/clipStore'
 import { PRESET_COLORS } from '@/stores/toolStore'
 import { Button, Select } from '@/components/ui'
+import type { Clip } from '@/types/clip'
 import WaveformDisplay from './WaveformDisplay'
+
+interface ClipBarProps {
+  clip: Clip
+  index: number
+  duration: number
+  isSelected: boolean
+  onSelect: () => void
+  onUpdateRange: (start: number, end: number) => void
+}
+
+// A thin lane bar for one clip: click selects + seeks, edge handles resize.
+// Kept intentionally simple (no "move whole bar" drag) since edges alone
+// cover the coach's workflow, and it keeps 30+ bars cheap to re-render.
+function ClipBar({ clip, index, duration, isSelected, onSelect, onUpdateRange }: ClipBarProps) {
+  const [isDragging, setIsDragging] = useState<'start' | 'end' | null>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+
+  const left = (clip.start / duration) * 100
+  const width = ((clip.end - clip.start) / duration) * 100
+
+  const handleEdgeMouseDown = (e: React.MouseEvent, edge: 'start' | 'end') => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(edge)
+    onSelect()
+  }
+
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const lane = barRef.current?.parentElement
+      if (!lane) return
+
+      const rect = lane.getBoundingClientRect()
+      const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      const time = x * duration
+
+      if (isDragging === 'start') {
+        onUpdateRange(Math.max(0, Math.min(time, clip.end)), clip.end)
+      } else {
+        onUpdateRange(clip.start, Math.min(duration, Math.max(time, clip.start)))
+      }
+    }
+
+    const handleMouseUp = () => setIsDragging(null)
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, clip.start, clip.end, duration, onUpdateRange])
+
+  return (
+    <div
+      ref={barRef}
+      role="button"
+      tabIndex={0}
+      aria-label={`Clip ${index + 1}: ${clip.name}`}
+      aria-pressed={isSelected}
+      className={`absolute top-0.5 bottom-0.5 rounded-sm cursor-pointer group ${
+        isSelected ? 'ring-2 ring-accent z-10' : 'opacity-85 hover:opacity-100'
+      }`}
+      style={{ left: `${left}%`, width: `${Math.max(width, 0.4)}%`, backgroundColor: clip.color }}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelect()
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+    >
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white leading-none truncate px-1 pointer-events-none">
+        {index + 1}
+      </span>
+      {/* Start handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40"
+        onMouseDown={(e) => handleEdgeMouseDown(e, 'start')}
+        onClick={(e) => e.stopPropagation()}
+      />
+      {/* End handle */}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40"
+        onMouseDown={(e) => handleEdgeMouseDown(e, 'end')}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  )
+}
 
 interface TimelineMarkerProps {
   annotation: Annotation
@@ -139,6 +237,7 @@ export default function AnnotationTimeline() {
   const timelineRef = useRef<HTMLDivElement>(null)
   const { currentTime, duration, seek, inPoint, outPoint } = useVideoStore()
   const { annotations, selectedAnnotationId, selectAnnotation, updateAnnotation, removeAnnotation } = useDrawingStore()
+  const { clips, selectedClipId, selectClip, updateClip } = useClipStore()
   const [trackHeight, setTrackHeight] = useState(96)
   const [trackWidth, setTrackWidth] = useState(0)
   const isResizingRef = useRef(false)
@@ -235,7 +334,9 @@ export default function AnnotationTimeline() {
               Delete
             </Button>
           )}
-          <span className="text-xs text-text-disabled">{annotations.length} annotations</span>
+          <span className="text-xs text-text-disabled">
+            {annotations.length} annotations{clips.length > 0 ? ` · ${clips.length} clips` : ''}
+          </span>
         </div>
       </div>
 
@@ -262,22 +363,40 @@ export default function AnnotationTimeline() {
           ))}
         </div>
 
+        {/* Clip bars lane */}
+        <div className="absolute inset-x-0 top-4 h-4 bg-surface-elevated/40 border-b border-border-subtle/50">
+          {clips.map((clip, index) => (
+            <ClipBar
+              key={clip.id}
+              clip={clip}
+              index={index}
+              duration={duration}
+              isSelected={selectedClipId === clip.id}
+              onSelect={() => {
+                selectClip(clip.id)
+                seek(clip.start)
+              }}
+              onUpdateRange={(start, end) => updateClip(clip.id, { start, end })}
+            />
+          ))}
+        </div>
+
         {/* In/Out point markers */}
         {inPoint !== null && (
           <div
-            className="absolute top-4 bottom-0 w-0.5 bg-success z-20"
+            className="absolute top-8 bottom-0 w-0.5 bg-success z-20"
             style={{ left: `${(inPoint / duration) * 100}%` }}
           />
         )}
         {outPoint !== null && (
           <div
-            className="absolute top-4 bottom-0 w-0.5 bg-error z-20"
+            className="absolute top-8 bottom-0 w-0.5 bg-error z-20"
             style={{ left: `${(outPoint / duration) * 100}%` }}
           />
         )}
         {inPoint !== null && outPoint !== null && (
           <div
-            className="absolute top-4 bottom-0 bg-accent/10 z-10"
+            className="absolute top-8 bottom-0 bg-accent/10 z-10"
             style={{
               left: `${(inPoint / duration) * 100}%`,
               width: `${((outPoint - inPoint) / duration) * 100}%`,
@@ -286,7 +405,7 @@ export default function AnnotationTimeline() {
         )}
 
         {/* Annotation markers */}
-        <div className="absolute inset-x-0 top-4 bottom-0">
+        <div className="absolute inset-x-0 top-8 bottom-0">
           {annotations.map((annotation) => (
             <TimelineMarker
               key={annotation.id}

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useShortcutsStore } from './shortcutsStore'
+import { useShortcutsStore, mergeShortcuts, DEFAULT_SHORTCUTS, type ShortcutDefinition } from './shortcutsStore'
 import { PRESET_COLORS } from './toolStore'
 
 // The shortcuts store colors correspond 1:1 with PRESET_COLORS[0..8] in
@@ -82,5 +82,24 @@ describe('shortcutsStore', () => {
 
     expect(getActionForKey('p', false, false, false)).toBe('tool.pen')
     expect(getActionForKey('g', false, false, false)).toBeUndefined()
+  })
+})
+
+describe('mergeShortcuts', () => {
+  it('keeps saved bindings, drops removed actions and adds new defaults', () => {
+    const saved = [
+      { action: 'tool.pen', label: 'Pen', category: 'Tools', binding: { key: 'b' } },
+      { action: 'tool.tracker', label: 'Player tracker', category: 'Tools', binding: { key: 'k', shift: true } },
+    ] as unknown as ShortcutDefinition[]
+    const merged = mergeShortcuts(saved, DEFAULT_SHORTCUTS)
+
+    expect(merged.find((s) => s.action === 'tool.pen')?.binding).toEqual({ key: 'b' })
+    expect(merged.some((s) => (s.action as string) === 'tool.tracker')).toBe(false)
+    expect(merged.find((s) => s.action === 'clip.add')?.binding).toEqual({ key: 'c', shift: true })
+    expect(merged).toHaveLength(DEFAULT_SHORTCUTS.length)
+  })
+
+  it('falls back to defaults when nothing valid was saved', () => {
+    expect(mergeShortcuts(undefined, DEFAULT_SHORTCUTS)).toBe(DEFAULT_SHORTCUTS)
   })
 })

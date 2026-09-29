@@ -12,9 +12,7 @@ export type ShortcutAction =
   | 'tool.text'
   | 'tool.spotlight'
   | 'tool.magnifier'
-  | 'tool.tracker'
   | 'tool.arcArrow'
-  | 'tool.laser'
   | 'tool.erase'
   // Video
   | 'video.playPause'
@@ -33,6 +31,8 @@ export type ShortcutAction =
   | 'inout.setOut'
   | 'inout.jumpToIn'
   | 'inout.jumpToOut'
+  // Clips
+  | 'clip.add'
   // Editing
   | 'edit.undo'
   | 'edit.redo'
@@ -65,7 +65,7 @@ export interface ShortcutDefinition {
 }
 
 // Default shortcut mappings
-const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
+export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   // Tools
   { action: 'tool.select', label: 'Select tool', category: 'Tools', binding: { key: 'v' } },
   { action: 'tool.pen', label: 'Pen (freehand)', category: 'Tools', binding: { key: 'p' } },
@@ -76,9 +76,7 @@ const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'tool.text', label: 'Text tool', category: 'Tools', binding: { key: 't' } },
   { action: 'tool.spotlight', label: 'Spotlight tool', category: 'Tools', binding: { key: 's' } },
   { action: 'tool.magnifier', label: 'Magnifier tool', category: 'Tools', binding: { key: 'm', shift: true } },
-  { action: 'tool.tracker', label: 'Player tracker', category: 'Tools', binding: { key: 'k', shift: true } },
   { action: 'tool.arcArrow', label: 'Arc arrow tool', category: 'Tools', binding: { key: 'a', shift: true } },
-  { action: 'tool.laser', label: 'Laser pointer', category: 'Tools', binding: { key: 'p', shift: true } },
   { action: 'tool.erase', label: 'Eraser tool', category: 'Tools', binding: { key: 'e' } },
   // Video
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },
@@ -97,6 +95,7 @@ const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'inout.setOut', label: 'Set Out point', category: 'In/Out Points', binding: { key: 'o' } },
   { action: 'inout.jumpToIn', label: 'Jump to In point', category: 'In/Out Points', binding: { key: '[' } },
   { action: 'inout.jumpToOut', label: 'Jump to Out point', category: 'In/Out Points', binding: { key: ']' } },
+  { action: 'clip.add', label: 'Add clip from In/Out', category: 'Clips', binding: { key: 'c', shift: true } },
   // Editing
   { action: 'edit.undo', label: 'Undo', category: 'Editing', binding: { key: 'z', ctrl: true } },
   { action: 'edit.redo', label: 'Redo', category: 'Editing', binding: { key: 'y', ctrl: true } },
@@ -166,6 +165,18 @@ export function useShortcutKeyLabel(action: ShortcutAction): string {
   )
 }
 
+export function mergeShortcuts(
+  saved: ShortcutDefinition[] | undefined,
+  defaults: ShortcutDefinition[],
+): ShortcutDefinition[] {
+  if (!Array.isArray(saved)) return defaults
+  const savedByAction = new Map(saved.map((s) => [s.action, s.binding]))
+  return defaults.map((d) => {
+    const binding = savedByAction.get(d.action)
+    return binding ? { ...d, binding } : d
+  })
+}
+
 export const useShortcutsStore = create<ShortcutsState>()(
   persist(
     (set, get) => ({
@@ -203,6 +214,15 @@ export const useShortcutsStore = create<ShortcutsState>()(
     }),
     {
       name: 'replay-studio-shortcuts',
+      // Reconcile saved bindings with the current defaults: keep the user's
+      // bindings for known actions, drop removed actions, add new ones.
+      merge: (persisted, current) => ({
+        ...current,
+        shortcuts: mergeShortcuts(
+          (persisted as Partial<ShortcutsState> | undefined)?.shortcuts,
+          DEFAULT_SHORTCUTS,
+        ),
+      }),
     }
   )
 )
