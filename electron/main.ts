@@ -18,6 +18,12 @@ import type { ClipEncodeStartOptions, ClipEncodeStartResult } from '../src/types
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// Dev-only: expose the Chrome DevTools protocol for automated end-to-end runs
+// (see REPLAY_E2E_EXPORT_DIR). Never active in a packaged build.
+if (!app.isPackaged && process.env.REPLAY_REMOTE_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.REPLAY_REMOTE_DEBUG_PORT)
+}
+
 // Register the custom protocol as privileged (must be done before app ready)
 protocol.registerSchemesAsPrivileged([
   {
@@ -684,6 +690,14 @@ ipcMain.handle('video:probe', async (_, filePath: string) => {
 })
 
 ipcMain.handle('dialog:chooseExportFolder', async () => {
+  // Dev-only test seam: lets an automated run pick the folder without the
+  // native dialog. Never active in a packaged build.
+  const e2eFolder = !app.isPackaged ? process.env.REPLAY_E2E_EXPORT_DIR : undefined
+  if (e2eFolder) {
+    const real = await canonicalize(e2eFolder)
+    if (real) authorizedExportFolders.add(real)
+    return real
+  }
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ['openDirectory', 'createDirectory'],
   })

@@ -199,24 +199,24 @@ function once(target: EventTarget, successEvent: string): Promise<void> {
 }
 
 /**
- * Seeks to `time` and waits for the browser to finish, but skips the
- * seek+wait entirely when the video is already there. This matters because
- * a hold segment always ends exactly where the next play segment begins
- * (the timeline is built as play→hold→play with a shared boundary time), so
- * every freeze-frame would otherwise re-set `currentTime` to its current
- * value on the very next segment — and some browsers never fire `seeked`
- * for a no-op seek, which would hang the export indefinitely.
+ * Seeks to `time` and resolves once the frame there has been presented.
+ *
+ * The frame callback must be registered BEFORE the seek: on a paused video
+ * the new frame is presented alongside `seeked`, so a requestVideoFrameCallback
+ * registered after `seeked` never fires (this hung every export). The short
+ * fallback keeps a skipped callback from ever stalling the export.
+ *
+ * Skipped when already there with a decoded frame: a hold segment ends
+ * exactly where the next play segment begins, and a no-op seek may never
+ * fire `seeked`.
  */
-async function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
-  if (Math.abs(video.currentTime - time) < 1e-3) return
+async function seekToFrame(video: HTMLVideoElement, time: number): Promise<void> {
+  if (Math.abs(video.currentTime - time) < 1e-3 && video.readyState >= 2) return
+  const presented = new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()))
+  const seeked = once(video, 'seeked')
   video.currentTime = time
-  await once(video, 'seeked')
-}
-
-function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
-  return new Promise((resolve) => {
-    video.requestVideoFrameCallback(() => resolve())
-  })
+  await seeked
+  await Promise.race([presented, new Promise<void>((resolve) => setTimeout(resolve, 250))])
 }
 
 async function encodeJpeg(canvas: HTMLCanvasElement): Promise<Uint8Array> {
@@ -298,6 +298,10 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
   video.muted = true
   video.playsInline = true
   video.preload = 'auto'
+  // Without CORS mode, drawing a local-video:// frame taints the composite
+  // canvas and toBlob() throws a SecurityError. The protocol handler sends
+  // access-control-allow-origin: *, so an anonymous CORS load is permitted.
+  video.crossOrigin = 'anonymous'
   video.playbackRate = 1
   video.style.position = 'fixed'
   video.style.left = '-99999px'
@@ -455,8 +459,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
     const segDuration = seg.srcEnd - seg.srcStart
     const targetTimes = Array.from({ length: segFrameCount }, (_, i) => seg.srcStart + segDuration * (i / segFrameCount))
 
-    await seekTo(video, seg.srcStart)
-    await waitForVideoFrame(video)
+    await seekToFrame(video, seg.srcStart)
     if (cancelled || signal.aborted) return
 
     try {
@@ -468,9 +471,9 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
     let nextIndex = 0
     let lastBytes: Uint8Array | null = null
 
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const onFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
-        void (async () => {
+        ;(async () => {
           if (cancelled || signal.aborted || nextIndex >= segFrameCount) {
             resolve()
             return
@@ -504,7 +507,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
           }
 
           video.requestVideoFrameCallback(onFrame)
-        })()
+        })().catch(reject) // e.g. a toBlob SecurityError: fail the clip instead of hanging
       }
 
       video.requestVideoFrameCallback(onFrame)
@@ -538,8 +541,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
     } catch {
       // ignore
     }
-    await seekTo(video, seg.srcTime)
-    await waitForVideoFrame(video)
+    await seekToFrame(video, seg.srcTime)
     if (cancelled || signal.aborted) return
 
     const bytes = await compositeFrame(seg.srcTime)
