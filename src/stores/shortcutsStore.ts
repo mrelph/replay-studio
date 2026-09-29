@@ -13,7 +13,6 @@ export type ShortcutAction =
   | 'tool.spotlight'
   | 'tool.magnifier'
   | 'tool.arcArrow'
-  | 'tool.laser'
   | 'tool.erase'
   // Video
   | 'video.playPause'
@@ -78,7 +77,6 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'tool.spotlight', label: 'Spotlight tool', category: 'Tools', binding: { key: 's' } },
   { action: 'tool.magnifier', label: 'Magnifier tool', category: 'Tools', binding: { key: 'm', shift: true } },
   { action: 'tool.arcArrow', label: 'Arc arrow tool', category: 'Tools', binding: { key: 'a', shift: true } },
-  { action: 'tool.laser', label: 'Laser pointer', category: 'Tools', binding: { key: 'p', shift: true } },
   { action: 'tool.erase', label: 'Eraser tool', category: 'Tools', binding: { key: 'e' } },
   // Video
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },

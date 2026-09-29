@@ -464,18 +464,7 @@ function createWindow() {
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
-        { type: 'separator' },
-        {
-          label: 'Audience View',
-          accelerator: 'CmdOrCtrl+Shift+A',
-          click: () => {
-            if (audienceWindow) {
-              audienceWindow.close()
-            } else {
-              createAudienceWindow()
-            }
-          },
-        },
+        // Audience View menu item removed: the feature is hidden for now.
       ],
     },
     {

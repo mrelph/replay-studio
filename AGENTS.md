@@ -5,7 +5,7 @@ Replay Studio: an Electron + React desktop app for video markup — telestrator-
 ## Commands
 
 - `npm run dev` — Vite dev server; vite-plugin-electron builds `electron/main.ts` and launches Electron with HMR
-- `npm run typecheck` — `tsc --noEmit`
+- `npm run typecheck` — `tsc --noEmit` for `src/` plus `tsc -p tsconfig.node.json` for `electron/` (the two projects are independent; no `tsc -b`)
 - `npm run lint` — `eslint .` (flat config in `eslint.config.js`; TS recommended rules + react-hooks; `@typescript-eslint/no-explicit-any` is a warning, not an error — the codebase has many pre-existing `any`s not yet cleaned up)
 - `npm run test` — `vitest run` (jsdom environment; tests live alongside source as `*.test.ts`)
 - `npm run test:watch` — `vitest` in watch mode
@@ -14,6 +14,14 @@ Replay Studio: an Electron + React desktop app for video markup — telestrator-
 - `npm run preview` — Vite preview of the renderer only
 
 Verify changes with `npm run typecheck`, `npm run lint`, `npm run test`, and by running the app.
+
+## Releases
+
+Packaged Linux (AppImage) and Windows builds auto-update via `electron-updater`
+against GitHub Releases on `mrelph/replay-studio` (`electron/updater.ts`). A
+`v*` tag push runs `.github/workflows/release.yml`, which builds and publishes
+both installers plus the update-feed `latest*.yml` files. See
+[RELEASING.md](RELEASING.md) for the release process and auto-update behavior.
 
 ## Architecture
 
@@ -43,4 +51,5 @@ Data flow: renderer calls `window.electronAPI.*` (preload) → `ipcRenderer.invo
 - `dist-electron/` is gitignored EXCEPT `dist-electron/preload.cjs`, which is tracked — rebuilds overwrite it; commit intentional changes.
 - YOLO model `public/models/yolov8n.onnx` is gitignored and the `public/` dir may be absent locally; object detection needs the model downloaded separately (packaged via `asarUnpack: dist/models`).
 - `onnxruntime-web` is excluded from Vite `optimizeDeps` and split into its own chunk — don't "fix" that.
+- **Hidden features (code kept, no UI entry points):** player tracker/YOLO (unreliable) and the audience view + laser pointer (not a core use case). Product focus is editing and making clips. Don't re-surface these without asking.
 - README.md predates several features (preload.cjs, audience view, waveform, YOLO, project serialization); trust the code over the docs. Deeper docs: ARCHITECTURE.md, KEYBOARD_SHORTCUTS.md, TROUBLESHOOTING.md.

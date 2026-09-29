@@ -19,7 +19,6 @@ const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
   'tool.text': 'text',
   'tool.spotlight': 'spotlight',
   'tool.magnifier': 'magnifier',
-  'tool.laser': 'laser',
   'tool.erase': 'erase',
 }
 

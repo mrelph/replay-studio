@@ -51,4 +51,5 @@ Data flow: renderer calls `window.electronAPI.*` (preload) → `ipcRenderer.invo
 - `dist-electron/` is gitignored EXCEPT `dist-electron/preload.cjs`, which is tracked — rebuilds overwrite it; commit intentional changes.
 - YOLO model `public/models/yolov8n.onnx` is gitignored and the `public/` dir may be absent locally; object detection needs the model downloaded separately (packaged via `asarUnpack: dist/models`).
 - `onnxruntime-web` is excluded from Vite `optimizeDeps` and split into its own chunk — don't "fix" that.
+- **Hidden features (code kept, no UI entry points):** player tracker/YOLO (unreliable) and the audience view + laser pointer (not a core use case). Product focus is editing and making clips. Don't re-surface these without asking.
 - README.md predates several features (preload.cjs, audience view, waveform, YOLO, project serialization); trust the code over the docs. Deeper docs: ARCHITECTURE.md, KEYBOARD_SHORTCUTS.md, TROUBLESHOOTING.md.

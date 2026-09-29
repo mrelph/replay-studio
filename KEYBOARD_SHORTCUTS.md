@@ -21,7 +21,6 @@ exactly. If you change a default binding in that file, update this doc too.
 | `S` | Spotlight tool |
 | `Shift+M` | Magnifier tool |
 | `Shift+A` | Arc arrow tool |
-| `Shift+P` | Laser pointer |
 | `E` | Eraser tool |
 
 ## Video Playback

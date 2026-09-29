@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor, Layers, PenTool, Users, Download, Presentation, Scissors } from 'lucide-react'
+import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor, Layers, PenTool, Users, Download, Scissors, Snowflake } from 'lucide-react'
 import VideoPlayer from './components/VideoPlayer/VideoPlayer'
 import DrawingToolbar from './components/Toolbar/DrawingToolbar'
 import DrawingCanvas from './components/Canvas/DrawingCanvas'
@@ -75,7 +75,6 @@ function App() {
   const { recentFiles, addRecentFile, removeRecentFile } = useAppStore()
   const { reset: resetVideo, inPoint, outPoint, setInPoint, setOutPoint } = useVideoStore()
   const { annotations, canvas, replaceAnnotations, isRestoring } = useDrawingStore()
-  const { isAudienceOpen, openAudienceView, closeAudienceView } = useAudienceStore()
   const { clips, setClips } = useClipStore()
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
   const videoSrcRef = useRef<string | null>(null)
@@ -471,14 +470,7 @@ function App() {
               >
                 <Scissors className="w-4 h-4" />
               </IconButton>
-              <Button
-                onClick={() => isAudienceOpen ? closeAudienceView() : openAudienceView()}
-                variant={isAudienceOpen ? 'danger' : 'secondary'}
-                size="sm"
-                title="Toggle Audience View (Ctrl+Shift+A)"
-              >
-                {isAudienceOpen ? 'Close Audience' : 'Audience View'}
-              </Button>
+              {/* Audience view hidden: not a core use case for now (code kept in AudienceView/). */}
               <Button
                 onClick={() => setShowExport(true)}
                 size="sm"
@@ -550,7 +542,7 @@ function App() {
                     { icon: PenTool, title: 'Draw & Annotate', desc: 'Freehand, arrows, shapes, and text overlays' },
                     { icon: Users, title: 'Highlight Players', desc: 'Spotlight and magnifier to focus attention' },
                     { icon: Download, title: 'Export Clips', desc: 'Mark clips across a game; export each with drawings burned in' },
-                    { icon: Presentation, title: 'Present Live', desc: 'Audience view with laser pointer' },
+                    { icon: Snowflake, title: 'Freeze & Slow-Mo', desc: 'Hold on key moments, step frame by frame' },
                   ].map(({ icon: Icon, title, desc }) => (
                     <div
                       key={title}
