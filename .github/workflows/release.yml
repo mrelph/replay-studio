@@ -1,0 +1,52 @@
+name: Release
+
+# Cuts a release when a `v*` tag is pushed (see RELEASING.md). Builds the
+# Linux AppImage and Windows NSIS installer and publishes them, plus the
+# electron-updater feed files (latest-linux.yml / latest.yml), to a GitHub
+# Release matching the tag. electron-updater on end-user machines reads that
+# release to auto-update.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify tag matches package.json version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${pkg_version}. Run 'npm version' to bump the version before tagging, or re-tag to match."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build and publish
+        run: npx vite build && npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

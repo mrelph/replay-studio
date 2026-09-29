@@ -156,6 +156,13 @@ The build settings are configured in `package.json`:
 - **Output Directory**: `release/`
 - **Windows Target**: NSIS installer
 
+## Updates
+
+Packaged Linux (AppImage) and Windows builds check for updates automatically
+and install them quietly in the background, prompting only to restart when
+one's ready. See [RELEASING.md](RELEASING.md) for how releases are cut and
+what auto-update looks like from the user's side.
+
 ## Keyboard Shortcuts
 
 ### Tools
