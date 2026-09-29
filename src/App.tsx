@@ -118,6 +118,14 @@ function App() {
     setVideoSrc(videoUrl)
     addRecentFile(filePath)
     resetVideo()
+    // Frame stepping, nudges and timecode use the source's real frame rate.
+    if (window.electronAPI) {
+      void window.electronAPI.probeVideo(filePath).then((probe) => {
+        if (videoSrcRef.current === videoUrl && !('error' in probe)) {
+          useVideoStore.getState().setFps(probe.fps)
+        }
+      }).catch(() => { /* keep DEFAULT_FPS */ })
+    }
     return videoUrl
   }, [addRecentFile, resetVideo])
 

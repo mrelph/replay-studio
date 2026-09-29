@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useShortcutsStore, mergeShortcuts, DEFAULT_SHORTCUTS, type ShortcutDefinition } from './shortcutsStore'
+import { useShortcutsStore, mergeShortcuts, migrateShortcuts, DEFAULT_SHORTCUTS, type ShortcutDefinition } from './shortcutsStore'
 import { PRESET_COLORS } from './toolStore'
 
 // The shortcuts store colors correspond 1:1 with PRESET_COLORS[0..8] in
@@ -101,5 +101,38 @@ describe('mergeShortcuts', () => {
 
   it('falls back to defaults when nothing valid was saved', () => {
     expect(mergeShortcuts(undefined, DEFAULT_SHORTCUTS)).toBe(DEFAULT_SHORTCUTS)
+  })
+})
+
+describe('migrateShortcuts (v0 → v1: J/L become the shuttle)', () => {
+  const v0 = (bindings: Array<[ShortcutDefinition['action'], ShortcutDefinition['binding']]>) => ({
+    shortcuts: bindings.map(([action, binding]) => ({ action, label: '', category: '', binding })),
+  })
+
+  it('drops the old J/L skip defaults so the shuttle owns J/L', () => {
+    const migrated = migrateShortcuts(v0([
+      ['video.skipForward', { key: 'l' }],
+      ['video.skipBackward', { key: 'j' }],
+      ['tool.pen', { key: 'p' }],
+    ]), 0) as { shortcuts: ShortcutDefinition[] }
+    const merged = mergeShortcuts(migrated.shortcuts, DEFAULT_SHORTCUTS)
+    const keyFor = (a: string) => merged.find((s) => s.action === a)?.binding
+    expect(keyFor('video.shuttleForward')).toEqual({ key: 'l' })
+    expect(keyFor('video.skipForward')).toEqual({ key: 'arrowright', shift: true })
+    expect(keyFor('video.skipBackward')).toEqual({ key: 'arrowleft', shift: true })
+  })
+
+  it('keeps a deliberately customized skip binding', () => {
+    const migrated = migrateShortcuts(v0([['video.skipForward', { key: 'g' }]]), 0) as { shortcuts: ShortcutDefinition[] }
+    expect(migrated.shortcuts).toHaveLength(1)
+  })
+
+  it('has no default binding collisions', () => {
+    const seen = new Set<string>()
+    for (const { binding: b } of DEFAULT_SHORTCUTS) {
+      const id = `${b.key}|${!!b.ctrl}|${!!b.shift}|${!!b.alt}`
+      expect(seen.has(id), id).toBe(false)
+      seen.add(id)
+    }
   })
 })

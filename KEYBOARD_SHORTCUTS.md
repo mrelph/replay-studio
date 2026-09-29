@@ -30,9 +30,11 @@ exactly. If you change a default binding in that file, update this doc too.
 | `Space` | Play / Pause |
 | `→` | Next frame |
 | `←` | Previous frame |
-| `L` | Skip forward 10s |
-| `J` | Skip backward 10s |
-| `K` | Pause |
+| `L` | Shuttle forward — tap again for 2x / 4x / 8x |
+| `J` | Shuttle reverse — tap again for 2x / 4x / 8x |
+| `K` | Stop shuttle / pause (restores your chosen speed) |
+| `K` held + `J` / `L` | Previous / next frame |
+| `Shift+←` / `Shift+→` | Skip backward / forward 10s |
 | `Home` | Go to start |
 | `End` | Go to end |
 | `M` | Toggle mute |
@@ -47,6 +49,17 @@ exactly. If you change a default binding in that file, update this doc too.
 | `O` | Set Out point |
 | `[` | Jump to In point |
 | `]` | Jump to Out point |
+| `Alt+←` / `Alt+→` | Nudge In 1 frame earlier / later |
+| `Alt+Shift+←` / `Alt+Shift+→` | Nudge Out 1 frame earlier / later |
+
+Frame steps and nudges use the video's real frame rate (read with ffmpeg when
+the video opens; 30 fps until then). The timecode reads `mm:ss:frames`.
+Nudges act on the **selected clip** if there is one, otherwise on the loose
+In/Out points, and park the playhead on the edge so you can see the frame
+(for Out, the last frame still inside the clip).
+
+Upgrading from v1.2 or earlier: the old `J`/`L` skip bindings move to
+`Shift+←/→` automatically; a skip binding you customised yourself is kept.
 
 ## Clips
 

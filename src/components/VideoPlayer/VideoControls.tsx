@@ -7,15 +7,10 @@ import { useVideoStore } from '@/stores/videoStore'
 import { useState, useRef, useEffect } from 'react'
 import { IconButton, Select, Slider } from '@/components/ui'
 import { useShortcutKeyLabel } from '@/stores/shortcutsStore'
+import { formatTimecode } from '@/utils/frames'
 
-const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  const frames = Math.floor((seconds % 1) * 30)
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${frames.toString().padStart(2, '0')}`
-}
+// 4x/8x are reachable by tapping the forward shuttle (L), so the picker must be able to show them.
+const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8]
 
 export default function VideoControls() {
   const {
@@ -28,6 +23,8 @@ export default function VideoControls() {
     inPoint,
     outPoint,
     isLooping,
+    fps,
+    reverseRate,
     togglePlay,
     seek,
     stepFrame,
@@ -50,6 +47,7 @@ export default function VideoControls() {
   const volumeRef = useRef<HTMLDivElement>(null)
   const volumeHideTimer = useRef<number>(0)
 
+  const formatTime = (seconds: number) => formatTimecode(seconds, fps)
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   // Tooltip key labels, read from the shortcuts store so they can't drift
@@ -224,7 +222,10 @@ export default function VideoControls() {
         </div>
 
         {/* Center - Time display */}
-        <div className="text-sm font-mono text-text-secondary tabular-nums">
+        <div className="text-sm font-mono text-text-secondary tabular-nums whitespace-nowrap" title={`mm:ss:frames @ ${Number(fps.toFixed(3))} fps`}>
+          {reverseRate > 0 && (
+            <span className="text-accent mr-2" aria-live="polite">&#9664;&#9664; {reverseRate}x</span>
+          )}
           <span className="text-text-primary">{formatTime(currentTime)}</span>
           <span className="text-text-disabled mx-1">/</span>
           <span>{formatTime(duration)}</span>

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { DEFAULT_FPS, stepFrames, nextForwardRate, nextReverseRate } from '@/utils/frames'
 
 interface VideoState {
   videoElement: HTMLVideoElement | null
@@ -11,6 +12,12 @@ interface VideoState {
   inPoint: number | null
   outPoint: number | null
   isLooping: boolean
+  /** Source frame rate (probed on load; DEFAULT_FPS until then). */
+  fps: number
+  /** Reverse shuttle speed (J); 0 when not playing backwards. */
+  reverseRate: number
+  /** playbackRate to restore when a forward shuttle (L L…) is stopped; null when not shuttling. */
+  shuttleBaseRate: number | null
 
   // Actions
   setVideoElement: (element: HTMLVideoElement | null) => void
@@ -23,11 +30,18 @@ interface VideoState {
   setInPoint: (time: number | null) => void
   setOutPoint: (time: number | null) => void
   setIsLooping: (looping: boolean) => void
+  setFps: (fps: number) => void
   play: () => void
   pause: () => void
   togglePlay: () => void
   seek: (time: number) => void
   stepFrame: (direction: 'forward' | 'backward') => void
+  /** L: play forward, or double speed if already going forward (max 8x). */
+  shuttleForward: () => void
+  /** J: play backward, or double reverse speed (max 8x). */
+  shuttleReverse: () => void
+  /** K: stop any shuttle/playback and restore the pre-shuttle speed. */
+  shuttleStop: () => void
   skip: (seconds: number) => void
   jumpToStart: () => void
   jumpToEnd: () => void
@@ -37,7 +51,17 @@ interface VideoState {
   reset: () => void
 }
 
-const FRAME_DURATION = 1 / 30 // Assuming 30fps
+// HTMLVideoElement can't play backwards, so reverse shuttle is a seek loop:
+// each animation frame, once the previous seek has landed, jump back by the
+// wall-clock time elapsed × rate. Choppy on long-GOP footage but real-time.
+let reverseLoop: { raf: number; cleanup: () => void } | null = null
+
+function stopReverseLoop() {
+  if (!reverseLoop) return
+  cancelAnimationFrame(reverseLoop.raf)
+  reverseLoop.cleanup()
+  reverseLoop = null
+}
 
 export const useVideoStore = create<VideoState>((set, get) => ({
   videoElement: null,
@@ -50,6 +74,9 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   inPoint: null,
   outPoint: null,
   isLooping: false,
+  fps: DEFAULT_FPS,
+  reverseRate: 0,
+  shuttleBaseRate: null,
 
   setVideoElement: (element) => set({ videoElement: element }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
@@ -60,7 +87,8 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     if (videoElement) {
       videoElement.playbackRate = rate
     }
-    set({ playbackRate: rate })
+    // An explicit speed choice replaces whatever a shuttle would restore.
+    set({ playbackRate: rate, shuttleBaseRate: null })
   },
   setVolume: (volume) => {
     const { videoElement } = get()
@@ -79,6 +107,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   setInPoint: (time) => set({ inPoint: time }),
   setOutPoint: (time) => set({ outPoint: time }),
   setIsLooping: (looping) => set({ isLooping: looping }),
+  setFps: (fps) => set({ fps: Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_FPS }),
 
   play: () => {
     const { videoElement } = get()
@@ -89,7 +118,11 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     videoElement?.pause()
   },
   togglePlay: () => {
-    const { videoElement, isPlaying } = get()
+    const { videoElement, isPlaying, reverseRate, shuttleBaseRate } = get()
+    if (reverseRate > 0 || shuttleBaseRate !== null) {
+      get().shuttleStop()
+      return
+    }
     if (videoElement) {
       if (isPlaying) videoElement.pause()
       else videoElement.play()
@@ -102,11 +135,85 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     }
   },
   stepFrame: (direction) => {
-    const { videoElement, duration, currentTime } = get()
+    const { videoElement, duration, fps } = get()
     if (videoElement) {
-      const delta = direction === 'forward' ? FRAME_DURATION : -FRAME_DURATION
-      videoElement.currentTime = Math.max(0, Math.min(duration, currentTime + delta))
+      if (get().reverseRate > 0) get().shuttleStop()
+      else videoElement.pause()
+      // Read the element, not the store: repeated steps (key auto-repeat)
+      // must build on the pending seek, not a stale timeupdate value.
+      videoElement.currentTime = stepFrames(videoElement.currentTime, direction === 'forward' ? 1 : -1, fps, duration)
     }
+  },
+  shuttleForward: () => {
+    const { videoElement, isPlaying, playbackRate, reverseRate, shuttleBaseRate } = get()
+    if (!videoElement) return
+    const direction = reverseRate > 0 ? 'reverse' : isPlaying ? 'forward' : 'stopped'
+    stopReverseLoop()
+    const base = shuttleBaseRate ?? playbackRate
+    const rate = nextForwardRate(direction, playbackRate, base)
+    videoElement.playbackRate = rate
+    set({ reverseRate: 0, playbackRate: rate, shuttleBaseRate: rate === base ? null : base })
+    if (videoElement.paused) void videoElement.play()
+  },
+  shuttleReverse: () => {
+    const { videoElement, isPlaying, reverseRate } = get()
+    if (!videoElement) return
+    const rate = nextReverseRate(reverseRate > 0 ? 'reverse' : isPlaying ? 'forward' : 'stopped', reverseRate)
+    if (!videoElement.paused) videoElement.pause()
+    const { shuttleBaseRate } = get()
+    if (shuttleBaseRate !== null) {
+      videoElement.playbackRate = shuttleBaseRate
+      set({ playbackRate: shuttleBaseRate, shuttleBaseRate: null })
+    }
+    set({ reverseRate: rate })
+    if (reverseLoop) return
+
+    const video = videoElement
+    let seeking = false
+    let last = performance.now()
+    const onSeeked = () => { seeking = false }
+    // Any real play (space, click) cancels reverse.
+    const onPlay = () => get().shuttleStop()
+    video.addEventListener('seeked', onSeeked)
+    video.addEventListener('play', onPlay)
+    const tick = (now: number) => {
+      const state = get()
+      if (state.reverseRate <= 0 || state.videoElement !== video) {
+        stopReverseLoop()
+        return
+      }
+      if (!seeking) {
+        const target = Math.max(0, video.currentTime - ((now - last) / 1000) * state.reverseRate)
+        last = now
+        seeking = true
+        video.currentTime = target
+        if (target <= 0) {
+          state.shuttleStop()
+          return
+        }
+      }
+      if (reverseLoop) reverseLoop.raf = requestAnimationFrame(tick)
+    }
+    reverseLoop = {
+      raf: requestAnimationFrame(tick),
+      cleanup: () => {
+        video.removeEventListener('seeked', onSeeked)
+        video.removeEventListener('play', onPlay)
+      },
+    }
+  },
+  shuttleStop: () => {
+    const { videoElement, shuttleBaseRate } = get()
+    stopReverseLoop()
+    if (videoElement) {
+      videoElement.pause()
+      if (shuttleBaseRate !== null) videoElement.playbackRate = shuttleBaseRate
+    }
+    set((state) => ({
+      reverseRate: 0,
+      shuttleBaseRate: null,
+      playbackRate: shuttleBaseRate ?? state.playbackRate,
+    }))
   },
   skip: (seconds) => {
     const { videoElement, duration, currentTime } = get()
@@ -145,11 +252,17 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     }
     set({ isMuted: !isMuted })
   },
-  reset: () => set({
-    isPlaying: false,
-    currentTime: 0,
-    duration: 0,
-    inPoint: null,
-    outPoint: null,
-  }),
+  reset: () => {
+    stopReverseLoop()
+    set({
+      isPlaying: false,
+      fps: DEFAULT_FPS,
+      reverseRate: 0,
+      shuttleBaseRate: null,
+      currentTime: 0,
+      duration: 0,
+      inPoint: null,
+      outPoint: null,
+    })
+  },
 }))

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useToolStore, PRESET_COLORS, type ToolType } from '@/stores/toolStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
@@ -7,6 +7,40 @@ import { useClipPrefsStore } from '@/stores/clipPrefsStore'
 import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
 import { fabric } from '@/lib/fabric'
 import { toast } from '@/components/ui'
+import { stepFrames } from '@/utils/frames'
+
+/**
+ * Moves an In or Out edge by whole frames: the selected clip's edge when a
+ * clip is selected, else the loose In/Out point. Pauses and parks the
+ * playhead on the edge (for Out, the last frame still inside) so the
+ * result is visible.
+ */
+function nudgeEdge(edge: 'in' | 'out', frames: number) {
+  const video = useVideoStore.getState()
+  const { fps, duration } = video
+  video.shuttleStop()
+  const clipState = useClipStore.getState()
+  const clip = clipState.clips.find((c) => c.id === clipState.selectedClipId)
+
+  let edgeTime: number
+  if (clip) {
+    const t = stepFrames(edge === 'in' ? clip.start : clip.end, frames, fps, duration)
+    clipState.updateClip(clip.id, edge === 'in' ? { start: t } : { end: t })
+    // updateClip rejects ranges below the minimum length; show where it really is.
+    const updated = useClipStore.getState().clips.find((c) => c.id === clip.id) ?? clip
+    edgeTime = edge === 'in' ? updated.start : updated.end
+  } else {
+    const point = edge === 'in' ? video.inPoint : video.outPoint
+    if (point === null) {
+      toast('info', `Select a clip or set ${edge === 'in' ? 'In (I)' : 'Out (O)'} first`)
+      return
+    }
+    edgeTime = stepFrames(point, frames, fps, duration)
+    if (edge === 'in') video.setInPoint(edgeTime)
+    else video.setOutPoint(edgeTime)
+  }
+  video.seek(edge === 'in' ? edgeTime : stepFrames(edgeTime, -1, fps, duration))
+}
 
 // Map shortcut actions to tool types
 const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
@@ -39,6 +73,8 @@ export function useKeyboardShortcuts() {
     videoElement
   } = useVideoStore()
   const { undo, redo, canvas, removeAnnotations } = useDrawingStore()
+  // NLE convention: while the stop key (K) is held, J/L step single frames.
+  const stopKeyHeldRef = useRef(false)
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't handle shortcuts when typing in inputs
@@ -56,6 +92,7 @@ export function useKeyboardShortcuts() {
     const action = useShortcutsStore.getState().getActionForKey(key, ctrl, shift, alt)
 
     if (!action) return
+    if (action === 'video.pause') stopKeyHeldRef.current = true
 
     // Tool actions
     const toolType = TOOL_ACTION_MAP[action]
@@ -89,9 +126,17 @@ export function useKeyboardShortcuts() {
         return
       case 'video.pause':
         e.preventDefault()
-        if (videoElement) {
-          videoElement.pause()
-        }
+        if (!e.repeat) useVideoStore.getState().shuttleStop()
+        return
+      case 'video.shuttleForward':
+        e.preventDefault()
+        if (stopKeyHeldRef.current) stepFrame('forward')
+        else if (!e.repeat) useVideoStore.getState().shuttleForward()
+        return
+      case 'video.shuttleReverse':
+        e.preventDefault()
+        if (stopKeyHeldRef.current) stepFrame('backward')
+        else if (!e.repeat) useVideoStore.getState().shuttleReverse()
         return
       case 'video.goToStart':
         e.preventDefault()
@@ -151,6 +196,23 @@ export function useKeyboardShortcuts() {
         }
         return
       }
+
+      case 'trim.inBackward':
+        e.preventDefault()
+        nudgeEdge('in', -1)
+        return
+      case 'trim.inForward':
+        e.preventDefault()
+        nudgeEdge('in', 1)
+        return
+      case 'trim.outBackward':
+        e.preventDefault()
+        nudgeEdge('out', -1)
+        return
+      case 'trim.outForward':
+        e.preventDefault()
+        nudgeEdge('out', 1)
+        return
 
       // Clips
       case 'clip.add': {
@@ -250,7 +312,18 @@ export function useKeyboardShortcuts() {
   }, [setCurrentTool, togglePlay, stepFrame, skip, seek, duration, setInPoint, setOutPoint, toggleMute, setIsLooping, isLooping, videoElement, undo, redo, canvas, removeAnnotations])
 
   useEffect(() => {
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const stopKey = useShortcutsStore.getState().getShortcut('video.pause')?.binding.key
+      if (e.key.toLowerCase() === stopKey) stopKeyHeldRef.current = false
+    }
+    const handleBlur = () => { stopKeyHeldRef.current = false }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+    }
   }, [handleKeyDown])
 }

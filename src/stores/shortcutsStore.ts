@@ -26,11 +26,17 @@ export type ShortcutAction =
   | 'video.toggleMute'
   | 'video.toggleFullscreen'
   | 'video.toggleLoop'
+  | 'video.shuttleForward'
+  | 'video.shuttleReverse'
   // In/Out points
   | 'inout.setIn'
   | 'inout.setOut'
   | 'inout.jumpToIn'
   | 'inout.jumpToOut'
+  | 'trim.inBackward'
+  | 'trim.inForward'
+  | 'trim.outBackward'
+  | 'trim.outForward'
   // Clips
   | 'clip.add'
   | 'clip.markMoment'
@@ -83,9 +89,11 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },
   { action: 'video.stepForward', label: 'Next frame', category: 'Video Playback', binding: { key: 'arrowright' } },
   { action: 'video.stepBackward', label: 'Previous frame', category: 'Video Playback', binding: { key: 'arrowleft' } },
-  { action: 'video.skipForward', label: 'Skip forward 10s', category: 'Video Playback', binding: { key: 'l' } },
-  { action: 'video.skipBackward', label: 'Skip backward 10s', category: 'Video Playback', binding: { key: 'j' } },
-  { action: 'video.pause', label: 'Pause', category: 'Video Playback', binding: { key: 'k' } },
+  { action: 'video.shuttleReverse', label: 'Shuttle reverse (tap again: faster; hold K: prev frame)', category: 'Video Playback', binding: { key: 'j' } },
+  { action: 'video.pause', label: 'Stop shuttle / pause', category: 'Video Playback', binding: { key: 'k' } },
+  { action: 'video.shuttleForward', label: 'Shuttle forward (tap again: faster; hold K: next frame)', category: 'Video Playback', binding: { key: 'l' } },
+  { action: 'video.skipForward', label: 'Skip forward 10s', category: 'Video Playback', binding: { key: 'arrowright', shift: true } },
+  { action: 'video.skipBackward', label: 'Skip backward 10s', category: 'Video Playback', binding: { key: 'arrowleft', shift: true } },
   { action: 'video.goToStart', label: 'Go to start', category: 'Video Playback', binding: { key: 'home' } },
   { action: 'video.goToEnd', label: 'Go to end', category: 'Video Playback', binding: { key: 'end' } },
   { action: 'video.toggleMute', label: 'Toggle mute', category: 'Video Playback', binding: { key: 'm' } },
@@ -96,6 +104,10 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'inout.setOut', label: 'Set Out point', category: 'In/Out Points', binding: { key: 'o' } },
   { action: 'inout.jumpToIn', label: 'Jump to In point', category: 'In/Out Points', binding: { key: '[' } },
   { action: 'inout.jumpToOut', label: 'Jump to Out point', category: 'In/Out Points', binding: { key: ']' } },
+  { action: 'trim.inBackward', label: 'Nudge In 1 frame earlier (selected clip, else In point)', category: 'In/Out Points', binding: { key: 'arrowleft', alt: true } },
+  { action: 'trim.inForward', label: 'Nudge In 1 frame later (selected clip, else In point)', category: 'In/Out Points', binding: { key: 'arrowright', alt: true } },
+  { action: 'trim.outBackward', label: 'Nudge Out 1 frame earlier (selected clip, else Out point)', category: 'In/Out Points', binding: { key: 'arrowleft', alt: true, shift: true } },
+  { action: 'trim.outForward', label: 'Nudge Out 1 frame later (selected clip, else Out point)', category: 'In/Out Points', binding: { key: 'arrowright', alt: true, shift: true } },
   { action: 'clip.add', label: 'Add clip from In/Out', category: 'Clips', binding: { key: 'c', shift: true } },
   { action: 'clip.markMoment', label: 'Mark moment (clip around playhead)', category: 'Clips', binding: { key: 'x' } },
   // Editing
@@ -179,6 +191,26 @@ export function mergeShortcuts(
   })
 }
 
+// v0 bound skip ±10s to J/L; v1 gives J/L to the shuttle. Drop those old
+// default bindings so they fall back to the new defaults instead of
+// shadowing the shuttle. Deliberate custom bindings are kept.
+const V0_SKIP_DEFAULTS: Partial<Record<ShortcutAction, string>> = {
+  'video.skipForward': 'l',
+  'video.skipBackward': 'j',
+}
+
+export function migrateShortcuts(persisted: unknown, version: number): unknown {
+  const state = persisted as Partial<ShortcutsState> | undefined
+  if (version >= 1 || !Array.isArray(state?.shortcuts)) return persisted
+  return {
+    ...state,
+    shortcuts: state.shortcuts.filter((s) => {
+      const b = s.binding
+      return !(V0_SKIP_DEFAULTS[s.action] === b.key && !b.ctrl && !b.shift && !b.alt)
+    }),
+  }
+}
+
 export const useShortcutsStore = create<ShortcutsState>()(
   persist(
     (set, get) => ({
@@ -216,6 +248,8 @@ export const useShortcutsStore = create<ShortcutsState>()(
     }),
     {
       name: 'replay-studio-shortcuts',
+      version: 1,
+      migrate: (persisted, version) => migrateShortcuts(persisted, version),
       // Reconcile saved bindings with the current defaults: keep the user's
       // bindings for known actions, drop removed actions, add new ones.
       merge: (persisted, current) => ({
