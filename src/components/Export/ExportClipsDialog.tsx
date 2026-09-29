@@ -20,7 +20,7 @@ type ClipStatus =
   | { kind: 'pending' }
   | { kind: 'rendering'; percent: number }
   | { kind: 'saving-copy' }
-  | { kind: 'done'; droppedFrames: number }
+  | { kind: 'done' }
   | { kind: 'failed'; message: string }
   | { kind: 'cancelled' }
 
@@ -28,8 +28,6 @@ interface ExportSummary {
   exportedCount: number
   failedCount: number
   cancelledCount: number
-  droppedFrames: number
-  totalFrames: number
 }
 
 /** Removes filesystem-hostile characters, trims, and caps length for a safe output filename component. */
@@ -92,7 +90,7 @@ function statusLabel(status: ClipStatus | undefined): string {
     case 'saving-copy':
       return 'Saving editable copy…'
     case 'done':
-      return status.droppedFrames > 0 ? `Done (${status.droppedFrames} dropped frame${status.droppedFrames === 1 ? '' : 's'})` : 'Done'
+      return 'Done'
     case 'failed':
       return status.message
     case 'cancelled':
@@ -232,8 +230,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
     let exportedCount = 0
     let failedCount = 0
-    let droppedFrames = 0
-    let totalFrames = 0
 
     for (const { clip, nn } of selectedClips) {
       if (controller.signal.aborted) break
@@ -244,20 +240,16 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
       setStatuses((s) => ({ ...s, [clip.id]: { kind: 'rendering', percent: 0 } }))
 
-      const { frameCount } = buildOutputTimeline(clip, annotations, probe.fps)
-
       try {
         const result = await renderClip({
           clip,
-          videoUrl: videoSrc,
           probe,
           annotations,
           includeDrawings: burnIn,
           quality,
           outputPath,
           sourcePath,
-          onProgress: (done, total) => {
-            const percent = total > 0 ? Math.round((done / total) * 100) : 0
+          onProgress: (percent) => {
             setStatuses((s) => ({ ...s, [clip.id]: { kind: 'rendering', percent } }))
           },
           signal: controller.signal,
@@ -272,9 +264,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
           setStatuses((s) => ({ ...s, [clip.id]: { kind: 'failed', message: result.error || 'Export failed' } }))
           continue
         }
-
-        totalFrames += frameCount
-        droppedFrames += result.droppedFrames
 
         if (saveEditableCopy) {
           setStatuses((s) => ({ ...s, [clip.id]: { kind: 'saving-copy' } }))
@@ -314,7 +303,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
         }
 
         exportedCount += 1
-        setStatuses((s) => ({ ...s, [clip.id]: { kind: 'done', droppedFrames: result.droppedFrames } }))
+        setStatuses((s) => ({ ...s, [clip.id]: { kind: 'done' } }))
       } catch (err) {
         failedCount += 1
         setStatuses((s) => ({
@@ -336,7 +325,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     })
 
     const cancelledCount = selectedCount - exportedCount - failedCount
-    const finalSummary: ExportSummary = { exportedCount, failedCount, cancelledCount, droppedFrames, totalFrames }
+    const finalSummary: ExportSummary = { exportedCount, failedCount, cancelledCount }
     setSummary(finalSummary)
     setExporting(false)
     abortControllerRef.current = null
@@ -359,7 +348,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     burnIn,
     saveEditableCopy,
     quality,
-    videoSrc,
   ])
 
   const overallPercent = useMemo(() => {
@@ -367,9 +355,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     const sum = selectedClips.reduce((acc, { clip }) => acc + statusPercent(statuses[clip.id]), 0)
     return Math.round(sum / selectedCount)
   }, [selectedClips, statuses, selectedCount])
-
-  const droppedFrameWarning =
-    summary && summary.totalFrames > 0 && summary.droppedFrames / summary.totalFrames > 0.01
 
   return (
     <Modal
@@ -603,14 +588,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
               {summary.cancelledCount > 0 ? ` · ${summary.cancelledCount} cancelled` : ''}
               {summary.failedCount > 0 ? ` · ${summary.failedCount} failed` : ''}
             </p>
-            {droppedFrameWarning && (
-              <p className="flex items-center gap-1.5 text-warning mt-1">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                {summary.droppedFrames} of {summary.totalFrames} frames were dropped (
-                {((summary.droppedFrames / summary.totalFrames) * 100).toFixed(1)}%) — playback may have been too
-                slow to keep up during capture.
-              </p>
-            )}
           </div>
         )}
       </div>

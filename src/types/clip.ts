@@ -36,10 +36,14 @@ export interface VideoProbe {
 export type ClipExportQuality = 'high' | 'medium' | 'low'
 
 /**
- * Starts an ffmpeg job that reads JPEG frames from the renderer (stdin,
- * image2pipe at `fps`) and mixes audio from `sourcePath` following
- * `segments` (holds are silent). The renderer must then send exactly
- * `frameCount` frames via clipEncodeFrame, in order, and call clipEncodeFinish.
+ * Starts an ffmpeg-driven encode job for one clip: ffmpeg decodes
+ * `sourcePath` directly (accurate input seek near the clip start) and builds
+ * the base output timeline from `segments` (unchanged from the previous
+ * design: `play` copies source time, `hold` freezes a frame). No frames are
+ * streamed from the renderer any more — the renderer instead renders a
+ * transparent drawing-layer overlay as PNGs (`clipEncodeAddOverlay`) and
+ * describes how they, plus any magnifier ops, map onto the output timeline
+ * (`clipEncodeRun`).
  */
 export interface ClipEncodeStartOptions {
   /** Absolute path; must be inside a folder returned by chooseExportFolder. */
@@ -49,6 +53,7 @@ export interface ClipEncodeStartOptions {
   width: number
   height: number
   fps: number
+  /** Total output frame count; also the frame the video stream is capped to. */
   frameCount: number
   quality: ClipExportQuality
   segments: OutputSegment[]
@@ -57,3 +62,74 @@ export interface ClipEncodeStartOptions {
 export type ClipEncodeStartResult =
   | { ok: true; jobId: string }
   | { ok: false; error: string }
+
+/** Result of adding one overlay PNG to a job; `index` is its 0-based slot. */
+export type ClipEncodeAddOverlayResult =
+  | { ok: true; index: number }
+  | { ok: false; error: string }
+
+/**
+ * Maps a contiguous run of output frames (`[frameStart, frameStart +
+ * frameCount)`) onto one overlay PNG, added earlier via
+ * `clipEncodeAddOverlay` and referenced here by its returned `index`. Spans
+ * must be contiguous and cover exactly `[0, frameCount)` with no gaps or
+ * overlaps.
+ */
+export interface OverlaySpan {
+  overlayIndex: number
+  frameStart: number
+  frameCount: number
+}
+
+/** An axis-aligned pixel rectangle in the source video's native resolution. */
+export interface MagnifierSourceRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** A circle in the output video's native (pre-quality-scale) pixel space. */
+export interface MagnifierDestCircle {
+  centerX: number
+  centerY: number
+  radius: number
+}
+
+/** An output-time window (seconds) during which a magnifier op is enabled. */
+export interface MagnifierEnableWindow {
+  start: number
+  end: number
+}
+
+/**
+ * One magnifier annotation's live-video zoom, expressed entirely in output
+ * space: crop `sourceRect` out of the (already time-mapped) base video,
+ * scale it up, mask it to a circle, and overlay it at `destCircle` during
+ * `enable` (output-time seconds; a magnifier spanning a hold is enabled for
+ * that hold's whole duration). The drawing-layer PNG for the same magnifier
+ * renders only its ring/border (see docs/CLIPS_PLAN.md); the live-sampled
+ * fill is composited by ffmpeg from this op.
+ */
+export interface MagnifierOp {
+  sourceRect: MagnifierSourceRect
+  destCircle: MagnifierDestCircle
+  enable: MagnifierEnableWindow[]
+}
+
+/** Payload for `clipEncodeRun`: how the drawing-layer overlays and magnifier ops map onto the output timeline. */
+export interface ClipEncodeRunOptions {
+  spans: OverlaySpan[]
+  magnifiers: MagnifierOp[]
+}
+
+export interface ClipEncodeProgressEvent {
+  jobId: string
+  /** 0-100. */
+  percent: number
+}
+
+export interface ClipExportResult {
+  success: boolean
+  error?: string
+}

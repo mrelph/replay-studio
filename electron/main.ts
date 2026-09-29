@@ -9,12 +9,18 @@ import { exportVideo, getFFmpegVersion, getFfmpegBinaryPath, type ExportOptions,
 import {
   probeVideo,
   startClipEncodeJob,
-  clipEncodeFrame as encodeFrame,
-  finishClipEncodeJob,
+  addOverlayToJob,
+  runClipEncodeJob,
   cancelClipEncodeJob,
   cancelAllClipEncodeJobs,
 } from './clipExport'
-import type { ClipEncodeStartOptions, ClipEncodeStartResult } from '../src/types/clip'
+import type {
+  ClipEncodeStartOptions,
+  ClipEncodeStartResult,
+  ClipEncodeAddOverlayResult,
+  ClipEncodeRunOptions,
+  ClipExportResult,
+} from '../src/types/clip'
 import { UpdaterController, currentUpdateEnv, type AutoUpdaterLike } from './updater'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -760,28 +766,32 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
     return { ok: false, error: `Encode denied: could not probe source audio: ${probe.error}` }
   }
 
-  return startClipEncodeJob(
-    { ...options, sourcePath: source, outputPath: output },
-    probe.hasAudio,
-    getFfmpegBinaryPath()
-  )
+  return startClipEncodeJob({ ...options, sourcePath: source, outputPath: output }, probe.hasAudio)
 })
 
-ipcMain.handle('clip:encodeFrame', async (event, jobId: string, jpeg: Uint8Array): Promise<boolean> => {
-  if (!isFromMainWindow(event.sender)) return false
-  if (typeof jobId !== 'string' || !(jpeg instanceof Uint8Array)) return false
-  return encodeFrame(jobId, Buffer.from(jpeg))
-})
+ipcMain.handle(
+  'clip:encodeAddOverlay',
+  async (event, jobId: string, png: Uint8Array): Promise<ClipEncodeAddOverlayResult> => {
+    if (!isFromMainWindow(event.sender)) return { ok: false, error: 'Encode denied: caller is not the main window' }
+    if (typeof jobId !== 'string' || !(png instanceof Uint8Array)) return { ok: false, error: 'Invalid arguments' }
+    return addOverlayToJob(jobId, Buffer.from(png))
+  }
+)
 
-ipcMain.handle('clip:encodeFinish', async (event, jobId: string) => {
-  if (!isFromMainWindow(event.sender)) {
-    return { success: false, error: 'Encode denied: caller is not the main window' }
+ipcMain.handle(
+  'clip:encodeRun',
+  async (event, jobId: string, payload: ClipEncodeRunOptions): Promise<ClipExportResult> => {
+    if (!isFromMainWindow(event.sender)) {
+      return { success: false, error: 'Encode denied: caller is not the main window' }
+    }
+    if (typeof jobId !== 'string' || !payload || typeof payload !== 'object') {
+      return { success: false, error: 'Invalid arguments' }
+    }
+    return runClipEncodeJob(jobId, payload, getFfmpegBinaryPath(), (percent) => {
+      mainWindow?.webContents.send('clip:encodeProgress', { jobId, percent })
+    })
   }
-  if (typeof jobId !== 'string') {
-    return { success: false, error: 'Invalid job id' }
-  }
-  return finishClipEncodeJob(jobId)
-})
+)
 
 ipcMain.handle('clip:encodeCancel', async (event, jobId: string) => {
   if (!isFromMainWindow(event.sender)) return
