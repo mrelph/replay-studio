@@ -271,6 +271,27 @@ function videoScaleFilter(quality: ClipExportQuality): string {
 }
 
 /** The earliest source time referenced by any segment; used as the `-ss` (input-seek) offset. */
+/**
+ * The frame on screen at time `t` (what the coach saw in the player) is the
+ * last one whose PTS <= t — but `-ss t` and `trim=start=t` keep only frames
+ * with PTS >= t, i.e. the NEXT frame whenever `t` sits inside a frame (which
+ * it always does after frame-stepping). Moving every segment time back to
+ * half a frame before that frame's start makes the cut land on the intended
+ * frame and tolerates up to half a frame of PTS jitter either way.
+ */
+export function frameWindowStart(t: number, fps: number): number {
+  const index = Math.floor(t * fps + 1e-3)
+  return Math.max(0, (index - 0.5) / fps)
+}
+
+export function alignSegmentsToFrames(segments: OutputSegment[], fps: number): OutputSegment[] {
+  return segments.map((segment) =>
+    segment.kind === 'play'
+      ? { kind: 'play', srcStart: frameWindowStart(segment.srcStart, fps), srcEnd: frameWindowStart(segment.srcEnd, fps) }
+      : { kind: 'hold', srcTime: frameWindowStart(segment.srcTime, fps), duration: segment.duration }
+  )
+}
+
 export function computeSeekOffset(segments: OutputSegment[]): number {
   if (segments.length === 0) return 0
   const first = segments[0]
@@ -297,8 +318,8 @@ export interface BuildClipEncodeFilterGraphInput {
  * the concat demuxer. Pure — no I/O, fully testable.
  */
 export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInput): string[] {
-  const { outputPath, sourcePath, fps, frameCount, quality, segments, hasAudio, overlayConcatListPath, magnifiers } =
-    input
+  const { outputPath, sourcePath, fps, frameCount, quality, hasAudio, overlayConcatListPath, magnifiers } = input
+  const segments = alignSegmentsToFrames(input.segments, fps)
   const { crf, preset } = QUALITY_SETTINGS[quality]
   const segFrameCounts = segmentFrameCountsForBuilder(segments, fps)
   const seekOffset = computeSeekOffset(segments)

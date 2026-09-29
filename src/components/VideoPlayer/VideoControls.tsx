@@ -25,6 +25,8 @@ export default function VideoControls() {
     isLooping,
     fps,
     reverseRate,
+    isRecordingHolds,
+    setIsRecordingHolds,
     togglePlay,
     seek,
     stepFrame,
@@ -53,6 +55,7 @@ export default function VideoControls() {
   // Tooltip key labels, read from the shortcuts store so they can't drift
   // from the actual bindings if they're ever rebound.
   const loopKeyLabel = useShortcutKeyLabel('video.toggleLoop')
+  const recordHoldsKeyLabel = useShortcutKeyLabel('clip.recordHolds')
   const muteKeyLabel = useShortcutKeyLabel('video.toggleMute')
   const fullscreenKeyLabel = useShortcutKeyLabel('video.toggleFullscreen')
   const playPauseKeyLabel = useShortcutKeyLabel('video.playPause')
@@ -300,6 +303,22 @@ export default function VideoControls() {
           >
             <Repeat2 className="w-4 h-4" />
           </IconButton>
+
+          {/* Record pauses as holds */}
+          <button
+            type="button"
+            onClick={() => setIsRecordingHolds(!isRecordingHolds)}
+            title={`${isRecordingHolds ? 'Stop recording pauses' : 'Record pauses as holds: each pause → resume freezes that frame for as long as you paused'} (${recordHoldsKeyLabel})`}
+            aria-pressed={isRecordingHolds}
+            className={`ml-0.5 h-7 px-2 flex items-center gap-1.5 text-[10px] font-semibold tracking-wide rounded-lg transition-colors ${
+              isRecordingHolds
+                ? 'bg-error/15 text-error ring-1 ring-error/40'
+                : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full bg-error ${isRecordingHolds ? 'animate-pulse' : 'opacity-50'}`} />
+            HOLDS
+          </button>
 
           {/* Divider */}
           <div className="w-px h-5 bg-border-subtle mx-1.5" />

@@ -8,6 +8,8 @@ import {
   parseFfmpegProbeOutput,
   probeVideo,
   buildClipEncodeFilterGraph,
+  frameWindowStart,
+  alignSegmentsToFrames,
   buildOverlayConcatList,
   computeSeekOffset,
   validateClipEncodeOptions,
@@ -185,6 +187,32 @@ const BASE_INPUT = {
   fps: 30,
 }
 
+describe('frame alignment of cut points', () => {
+  const fps = 30000 / 1001
+
+  it('keeps the frame on screen at a mid-frame time, not the next one', () => {
+    // Frame 150 spans [5.005, 5.0384); a playhead just inside it (as after
+    // frame-stepping) must select frame 150, whose PTS lies in the window.
+    const start = frameWindowStart(150 / fps + 1e-4, fps)
+    expect(start).toBeLessThan(150 / fps)
+    expect(start + 1 / fps).toBeGreaterThan(150 / fps)
+    expect(start + 1 / fps).toBeLessThan(151 / fps)
+  })
+
+  it('clamps at the start of the video', () => {
+    expect(frameWindowStart(0, 30)).toBe(0)
+  })
+
+  it('shifts play ranges and hold frames alike, preserving hold durations', () => {
+    const aligned = alignSegmentsToFrames([
+      { kind: 'play', srcStart: 3.0, srcEnd: 5.0051 },
+      { kind: 'hold', srcTime: 5.0051, duration: 3 },
+    ], fps)
+    expect(aligned[0]).toEqual({ kind: 'play', srcStart: 88.5 / fps, srcEnd: 149.5 / fps })
+    expect(aligned[1]).toEqual({ kind: 'hold', srcTime: 149.5 / fps, duration: 3 })
+  })
+})
+
 describe('buildClipEncodeFilterGraph', () => {
   it('builds a high-quality, no-audio, no-overlay, no-magnifier command with an accurate input seek', () => {
     const segments: OutputSegment[] = [{ kind: 'play', srcStart: 10, srcEnd: 12 }]
@@ -199,7 +227,8 @@ describe('buildClipEncodeFilterGraph', () => {
 
     expect(args).toEqual([
       '-y',
-      '-ss', '10.000000',
+      // Half a frame early, so the frame on screen at 10 s survives the seek.
+      '-ss', '9.983333',
       '-i', '/videos/game.mp4',
       '-filter_complex',
       '[0:v]trim=start=0.000000:end=2.000000,setpts=PTS-STARTPTS[v0];' +
@@ -235,7 +264,7 @@ describe('buildClipEncodeFilterGraph', () => {
     })
 
     expect(args).toContain('-ss')
-    expect(args[args.indexOf('-ss') + 1]).toBe('10.000000')
+    expect(args[args.indexOf('-ss') + 1]).toBe('9.983333')
 
     const filter = args[args.indexOf('-filter_complex') + 1]
     // Play segment shifted by the 10s seek offset: [0, 2.5).

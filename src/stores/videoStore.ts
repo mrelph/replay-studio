@@ -18,6 +18,8 @@ interface VideoState {
   reverseRate: number
   /** playbackRate to restore when a forward shuttle (L L…) is stopped; null when not shuttling. */
   shuttleBaseRate: number | null
+  /** While on, each pause → resume records a hold of the paused length at that frame. */
+  isRecordingHolds: boolean
 
   // Actions
   setVideoElement: (element: HTMLVideoElement | null) => void
@@ -31,6 +33,7 @@ interface VideoState {
   setOutPoint: (time: number | null) => void
   setIsLooping: (looping: boolean) => void
   setFps: (fps: number) => void
+  setIsRecordingHolds: (recording: boolean) => void
   play: () => void
   pause: () => void
   togglePlay: () => void
@@ -77,6 +80,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   fps: DEFAULT_FPS,
   reverseRate: 0,
   shuttleBaseRate: null,
+  isRecordingHolds: false,
 
   setVideoElement: (element) => set({ videoElement: element }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
@@ -107,6 +111,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   setInPoint: (time) => set({ inPoint: time }),
   setOutPoint: (time) => set({ outPoint: time }),
   setIsLooping: (looping) => set({ isLooping: looping }),
+  setIsRecordingHolds: (recording) => set({ isRecordingHolds: recording }),
   setFps: (fps) => set({ fps: Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_FPS }),
 
   play: () => {

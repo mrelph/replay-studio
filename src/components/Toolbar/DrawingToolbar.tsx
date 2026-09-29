@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { fabric } from '@/lib/fabric'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
   Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser, Snowflake
@@ -7,6 +6,9 @@ import {
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
+import { useClipPrefsStore } from '@/stores/clipPrefsStore'
+import { useShortcutKeyLabel } from '@/stores/shortcutsStore'
+import { setFreezeAt } from '@/utils/freezeMarkers'
 import { Modal, Button } from '@/components/ui'
 
 interface ToolButtonProps {
@@ -69,10 +71,12 @@ const COLOR_NAMES: Record<string, string> = {
 export default function DrawingToolbar() {
   const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth } = useToolStore()
   const { undo, redo, clearAnnotations, undoStack, redoStack, annotations, selectedAnnotationId, updateAnnotation } = useDrawingStore()
-  const { currentTime, duration } = useVideoStore()
+  const { currentTime, duration, fps } = useVideoStore()
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [showFreezePopover, setShowFreezePopover] = useState(false)
-  const [freezeSeconds, setFreezeSeconds] = useState(3)
+  const freezeSeconds = useClipPrefsStore((st) => st.holdSeconds)
+  const setFreezeSeconds = useClipPrefsStore((st) => st.setHoldSeconds)
+  const holdKeyLabel = useShortcutKeyLabel('clip.toggleHold')
 
   return (
     <div role="toolbar" aria-label="Drawing tools" className="h-12 bg-surface-elevated/95 border-t border-border-subtle flex items-center px-3 gap-1 backdrop-blur-sm flex-shrink-0 overflow-x-auto">
@@ -185,7 +189,7 @@ export default function DrawingToolbar() {
                 ? 'bg-accent text-accent-text shadow-md'
                 : 'hover:bg-surface-sunken text-text-secondary hover:text-text-primary'
             } disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent`}
-            title="Mark Freeze Frame"
+            title={`Mark Freeze Frame (${holdKeyLabel})`}
           >
             <Snowflake className="w-4 h-4" />
           </button>
@@ -211,31 +215,7 @@ export default function DrawingToolbar() {
                     // Apply freeze to selected annotation
                     updateAnnotation(selectedAnnotationId, { freezeDuration: freezeSeconds })
                   } else {
-                    // Create an invisible freeze-frame marker annotation
-                    const { addAnnotation, canvas: canvasInst } = useDrawingStore.getState()
-                    if (canvasInst) {
-                      const marker = new fabric.Rect({
-                        left: 0,
-                        top: 0,
-                        width: 1,
-                        height: 1,
-                        fill: 'transparent',
-                        stroke: 'transparent',
-                        selectable: false,
-                        evented: false,
-                        visible: false,
-                      })
-                      canvasInst.add(marker)
-                      addAnnotation({
-                        id: `freeze-${Date.now()}`,
-                        object: marker,
-                        startTime: currentTime,
-                        endTime: currentTime + 0.1,
-                        layer: 1,
-                        toolType: 'freeze',
-                        freezeDuration: freezeSeconds,
-                      })
-                    }
+                    setFreezeAt(currentTime, freezeSeconds, fps)
                   }
                   setShowFreezePopover(false)
                 }}

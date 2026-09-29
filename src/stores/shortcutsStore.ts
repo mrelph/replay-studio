@@ -40,6 +40,8 @@ export type ShortcutAction =
   // Clips
   | 'clip.add'
   | 'clip.markMoment'
+  | 'clip.toggleHold'
+  | 'clip.recordHolds'
   // Editing
   | 'edit.undo'
   | 'edit.redo'
@@ -110,6 +112,8 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'trim.outForward', label: 'Nudge Out 1 frame later (selected clip, else Out point)', category: 'In/Out Points', binding: { key: 'arrowright', alt: true, shift: true } },
   { action: 'clip.add', label: 'Add clip from In/Out', category: 'Clips', binding: { key: 'c', shift: true } },
   { action: 'clip.markMoment', label: 'Mark moment (clip around playhead)', category: 'Clips', binding: { key: 'x' } },
+  { action: 'clip.toggleHold', label: 'Add / remove a hold (freeze) on this frame', category: 'Clips', binding: { key: 'h' } },
+  { action: 'clip.recordHolds', label: 'Record pauses as holds (on / off)', category: 'Clips', binding: { key: 'h', shift: true } },
   // Editing
   { action: 'edit.undo', label: 'Undo', category: 'Editing', binding: { key: 'z', ctrl: true } },
   { action: 'edit.redo', label: 'Redo', category: 'Editing', binding: { key: 'y', ctrl: true } },

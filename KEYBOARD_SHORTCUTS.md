@@ -67,6 +67,8 @@ Upgrading from v1.2 or earlier: the old `J`/`L` skip bindings move to
 |----------|--------|
 | `Shift+C` | Add clip from In/Out |
 | `X` | Mark moment: clip around the playhead (see the Clips panel's "Mark: −Ns / +Ns" setting) |
+| `H` | Add a hold (freeze) on the paused frame; press again to remove it |
+| `Shift+H` | Record pauses as holds (on / off) — also the **HOLDS** button by the loop toggle |
 
 `X` clips `[playhead − pre-roll, playhead + post-roll]` (defaults 8s/4s, adjustable
 in the Clips panel), clamped to the video's length. It works while playing — it
@@ -120,3 +122,25 @@ Shortcuts are rebindable: open the shortcuts help modal (`?`) and click
 **Edit shortcuts…**, or reach it directly if your build exposes a menu item
 for it. Click the pencil next to any shortcut, press the new key combo, and
 confirm. Use **Reset to Defaults** to restore the bindings listed above.
+
+## Holds (freeze frames)
+
+A hold freezes one frame for a few seconds. Exported clips include every hold
+inside their range: the frame repeats for that long, with silence, so a
+10 s clip with a 3 s hold exports at 13 s. Holds also play back live in the app.
+
+- **`H`** (while paused) adds a hold on the frame you're looking at, using the
+  length set in the snowflake (freeze) button on the drawing toolbar (default
+  3 s). Press `H` again on the same frame to remove it.
+- **Record pauses (`Shift+H`)**: while recording is on, each time you pause and
+  then resume, a hold is added at that frame **for as long as you paused**. So you
+  can talk through a play in real time, and the clip picks up your pauses.
+  - Stepping a few frames while paused (up to about ½ s) is fine: the hold goes
+    on the frame you resume from.
+  - A pause is **not** recorded if you rewind or scrub away before resuming, if
+    it lasts under 0.3 s (a double-tap), or if it's the app's own stop (the Out
+    point, a hold playing back, or the J reverse shuttle).
+  - Long pauses are capped at 30 s. You can edit any hold's length in the
+    annotation details on the timeline.
+  - Pausing again on a frame that already has a hold replaces that hold's length.
+

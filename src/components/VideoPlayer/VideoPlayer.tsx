@@ -2,6 +2,9 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import VideoControls from './VideoControls'
+import { toast } from '@/components/ui'
+import { formatTimecode } from '@/utils/frames'
+import { recordedHold, setFreezeAt } from '@/utils/freezeMarkers'
 
 interface VideoPlayerProps {
   src: string
@@ -29,6 +32,13 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   // True only while a freeze-triggered video.pause() is in flight, so the
   // 'pause' event handler can tell that apart from a user-initiated pause.
   const isFreezePauseRef = useRef(false)
+  // True while the freeze logic's own snap-to-frame seek is in flight, so
+  // 'seeking' doesn't treat it as a user seek (which cancels the resume timer).
+  const isFreezeSeekRef = useRef(false)
+  // Same, for the pause that enforces the Out point.
+  const isOutPointPauseRef = useRef(false)
+  // Hold recording: where and when the coach last paused (null = nothing to record on resume).
+  const pauseStartRef = useRef<{ time: number; at: number } | null>(null)
 
   // Reset triggered freezes when user seeks or pauses
   const resetFreezes = useCallback(() => {
@@ -71,6 +81,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           video.currentTime = inPoint ?? 0
         } else {
           video.currentTime = outPoint
+          if (!video.paused) isOutPointPauseRef.current = true
           video.pause()
         }
       }
@@ -90,7 +101,10 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           if (prevTime <= ann.startTime && curTime >= ann.startTime) {
             triggeredFreezesRef.current.add(ann.id)
             isFreezePauseRef.current = true
-            video.currentTime = ann.startTime
+            if (video.currentTime !== ann.startTime) {
+              isFreezeSeekRef.current = true
+              video.currentTime = ann.startTime
+            }
             video.pause()
             freezeTimeoutRef.current = setTimeout(() => {
               freezeTimeoutRef.current = null
@@ -121,12 +135,43 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       }
     }
 
-    // Reset freeze tracking on seek
-    const handleSeeking = () => resetFreezes()
+    // Reset freeze tracking on seek. Start crossing-detection from the seek
+    // target, not 0 — otherwise the first timeupdate after a seek "crosses"
+    // every earlier freeze and yanks playback back to it.
+    const handleSeeking = () => {
+      if (isFreezeSeekRef.current) {
+        isFreezeSeekRef.current = false
+        return
+      }
+      resetFreezes()
+      lastTimeRef.current = video.currentTime
+    }
 
-    const handlePlay = () => setIsPlaying(true)
+    const handlePlay = () => {
+      setIsPlaying(true)
+      const pause = pauseStartRef.current
+      pauseStartRef.current = null
+      if (!pause || !useVideoStore.getState().isRecordingHolds) return
+      const hold = recordedHold(pause.time, video.currentTime, (performance.now() - pause.at) / 1000)
+      if (!hold.record) return
+      const { fps } = useVideoStore.getState()
+      const id = setFreezeAt(video.currentTime, hold.seconds, fps)
+      if (!id) return
+      // Playback is resuming from this very frame; the coach already held it
+      // live, so don't let the new freeze fire again right now.
+      triggeredFreezesRef.current.add(id)
+      const stamp = formatTimecode(video.currentTime, fps)
+      toast('success', hold.capped ? `Hold recorded at ${stamp} (capped at ${hold.seconds}s)` : `${hold.seconds}s hold recorded at ${stamp}`)
+    }
     const handlePause = () => {
       setIsPlaying(false)
+      const systemPause = isFreezePauseRef.current || isOutPointPauseRef.current
+      isOutPointPauseRef.current = false
+      // Only a coach's own pause is a hold candidate — not a freeze firing,
+      // the Out point stopping playback, or the reverse shuttle taking over.
+      pauseStartRef.current = systemPause || useVideoStore.getState().reverseRate > 0
+        ? null
+        : { time: video.currentTime, at: performance.now() }
       if (isFreezePauseRef.current) {
         // This pause was triggered by the freeze-frame logic itself — leave
         // the pending resume timer alone.
@@ -162,6 +207,10 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     video.addEventListener('error', handleError)
     video.addEventListener('canplay', handleCanPlay)
     video.addEventListener('seeking', handleSeeking)
+    // Reverse shuttling (J) moves the playhead; whatever pause preceded it isn't a hold.
+    const unsubscribeReverse = useVideoStore.subscribe((state) => {
+      if (state.reverseRate > 0) pauseStartRef.current = null
+    })
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata)
@@ -172,6 +221,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       video.removeEventListener('error', handleError)
       video.removeEventListener('canplay', handleCanPlay)
       video.removeEventListener('seeking', handleSeeking)
+      unsubscribeReverse()
     }
   }, [setCurrentTime, setDuration, setIsPlaying, resetFreezes])
 
