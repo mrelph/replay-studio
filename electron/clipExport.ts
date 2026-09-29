@@ -466,7 +466,11 @@ export function buildOverlayConcatList(spans: OverlaySpan[], overlayPaths: strin
   let lastPath: string | null = null
 
   for (const span of spans) {
-    const filePath = overlayPaths[span.overlayIndex]
+    // Bare file names: the list lives in the same temp dir as the PNGs and
+    // the concat demuxer resolves relative entries against the list's own
+    // directory. This keeps user-dependent temp paths (backslashes, a quote
+    // in a Windows user name) out of the quoted list syntax entirely.
+    const filePath = path.basename(overlayPaths[span.overlayIndex])
     const duration = span.frameCount / fps
     lines.push(`file '${filePath}'`)
     lines.push(`duration ${fmt(duration)}`)

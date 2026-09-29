@@ -351,11 +351,11 @@ describe('buildOverlayConcatList', () => {
     ]
     const list = buildOverlayConcatList(spans, overlayPaths, 30)
     expect(list).toBe(
-      "file '/tmp/job/overlay_0.png'\n" +
+      "file 'overlay_0.png'\n" +
         'duration 1.500000\n' +
-        "file '/tmp/job/overlay_1.png'\n" +
+        "file 'overlay_1.png'\n" +
         'duration 3.000000\n' +
-        "file '/tmp/job/overlay_1.png'\n"
+        "file 'overlay_1.png'\n"
     )
   })
 
