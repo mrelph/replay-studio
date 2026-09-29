@@ -1,17 +1,37 @@
 // Multi-clip export encoder. See docs/CLIPS_PLAN.md.
 //
-// Two independent, pure/testable pieces plus a small stateful job registry:
+// ffmpeg decodes the source video directly (accurate input seek near the
+// clip start) and builds the output timeline from `OutputSegment[]`. The
+// renderer supplies the drawing layer as transparent PNGs (one per distinct
+// visible-annotation state), which are fed to ffmpeg as a second input via
+// the concat demuxer and composited with `overlay`; magnifiers are
+// reproduced by cropping/scaling/masking a region of the *base* (pre-overlay)
+// video and overlaying it during output-time enable windows.
+//
+// Pure/testable pieces:
 //  - parseFfmpegProbeOutput: turns `ffmpeg -i <path>` stderr into a VideoProbe.
-//  - buildClipEncodeArgs: turns encode options + a hasAudio flag into the
-//    ffmpeg argv that reads JPEG frames from stdin and mixes source audio.
-//  - startClipEncodeJob/clipEncodeFrame/finishClipEncodeJob/cancelClipEncodeJob:
-//    spawn and drive one ffmpeg process per job, keyed by a random id. These
-//    take no dependency on Electron/ipcMain so they can be exercised directly
-//    in tests.
+//  - buildClipEncodeFilterGraph: turns encode options + overlay/magnifier
+//    data into the ffmpeg argv.
+//  - buildOverlayConcatList: the concat-demuxer list file content for the
+//    overlay PNG timeline.
+//  - validateClipEncodeOptions / validateOverlaySpans / validateMagnifierOps.
+// Stateful job registry (spawn/drive one ffmpeg process per job):
+//  - startClipEncodeJob / addOverlayToJob / runClipEncodeJob / cancelClipEncodeJob.
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { randomUUID } from 'crypto'
 import fsp from 'fs/promises'
-import type { ClipEncodeStartOptions, ClipEncodeStartResult, ClipExportQuality, OutputSegment, VideoProbe } from '../src/types/clip'
+import os from 'os'
+import path from 'path'
+import type {
+  ClipEncodeStartOptions,
+  ClipEncodeStartResult,
+  ClipExportQuality,
+  ClipExportResult,
+  MagnifierOp,
+  OutputSegment,
+  OverlaySpan,
+  VideoProbe,
+} from '../src/types/clip'
 
 // ---------------------------------------------------------------------------
 // Probing
@@ -97,118 +117,6 @@ export function probeVideo(filePath: string, ffmpegPath: string): Promise<VideoP
 }
 
 // ---------------------------------------------------------------------------
-// Encode argument / filter-graph builder (pure)
-// ---------------------------------------------------------------------------
-
-const QUALITY_SETTINGS: Record<ClipExportQuality, { crf: number; preset: string }> = {
-  // 'slow' would be more faithful to ffmpegExport.ts's high preset, but clip
-  // export composites and encodes frame-by-frame as they arrive; 'medium'
-  // keeps encode speed close to real time.
-  high: { crf: 18, preset: 'medium' },
-  medium: { crf: 23, preset: 'medium' },
-  low: { crf: 28, preset: 'fast' },
-}
-
-const AUDIO_SAMPLE_RATE = 48000
-
-function fmtSeconds(seconds: number): string {
-  return seconds.toFixed(6)
-}
-
-/** Downscale filter matching QUALITY_PRESETS in ffmpegExport.ts, plus even dimensions. */
-function videoScaleFilter(quality: ClipExportQuality): string {
-  switch (quality) {
-    case 'medium':
-      // -2 keeps width even while matching aspect ratio; min() only downscales.
-      return 'scale=-2:min(ih\\,720)'
-    case 'low':
-      return 'scale=-2:min(ih\\,480)'
-    case 'high':
-    default:
-      return 'scale=trunc(iw/2)*2:trunc(ih/2)*2'
-  }
-}
-
-export interface BuildClipEncodeArgsInput {
-  outputPath: string
-  sourcePath: string
-  width: number
-  height: number
-  fps: number
-  quality: ClipExportQuality
-  segments: OutputSegment[]
-  /** From probing sourcePath; ClipEncodeStartOptions has no audio flag. */
-  hasAudio: boolean
-}
-
-/**
- * Builds the ffmpeg argv for one encode job: JPEG frames from stdin
- * (image2pipe) composited with source audio built from `segments` via
- * `atrim`/`anullsrc` + `concat`. Pure — no I/O, fully testable.
- */
-export function buildClipEncodeArgs(input: BuildClipEncodeArgsInput): string[] {
-  const { outputPath, sourcePath, fps, quality, segments, hasAudio } = input
-  const { crf, preset } = QUALITY_SETTINGS[quality]
-
-  const filterParts: string[] = [`[0:v]${videoScaleFilter(quality)}[vout]`]
-
-  if (hasAudio) {
-    segments.forEach((segment, i) => {
-      if (segment.kind === 'play') {
-        filterParts.push(
-          `[1:a]atrim=start=${fmtSeconds(segment.srcStart)}:end=${fmtSeconds(segment.srcEnd)},` +
-            `asetpts=PTS-STARTPTS,aresample=${AUDIO_SAMPLE_RATE},` +
-            `aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
-        )
-      } else {
-        filterParts.push(
-          `anullsrc=channel_layout=stereo:sample_rate=${AUDIO_SAMPLE_RATE},` +
-            `atrim=duration=${fmtSeconds(segment.duration)},asetpts=PTS-STARTPTS,` +
-            `aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
-        )
-      }
-    })
-    const concatInputs = segments.map((_, i) => `[a${i}]`).join('')
-    filterParts.push(`${concatInputs}concat=n=${segments.length}:v=0:a=1[aout]`)
-  }
-
-  const args: string[] = [
-    '-y',
-    '-f', 'image2pipe',
-    '-framerate', String(fps),
-    '-c:v', 'mjpeg',
-    '-i', 'pipe:0',
-  ]
-
-  if (hasAudio) {
-    args.push('-i', sourcePath)
-  }
-
-  args.push('-filter_complex', filterParts.join(';'))
-  args.push('-map', '[vout]')
-  if (hasAudio) {
-    args.push('-map', '[aout]')
-  }
-
-  args.push(
-    '-r', String(fps),
-    '-c:v', 'libx264',
-    '-preset', preset,
-    '-crf', String(crf),
-    '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart',
-  )
-
-  if (hasAudio) {
-    args.push('-c:a', 'aac', '-b:a', '128k')
-  }
-
-  args.push(outputPath)
-
-  return args
-}
-
-// ---------------------------------------------------------------------------
 // Validation (pure)
 // ---------------------------------------------------------------------------
 
@@ -216,6 +124,11 @@ const MAX_DIMENSION = 16384
 const MAX_FPS = 300
 const MAX_FRAME_COUNT = 20_000_000
 const QUALITIES: ClipExportQuality[] = ['high', 'medium', 'low']
+
+export const MAX_OVERLAYS_PER_JOB = 500
+export const MAX_OVERLAY_PNG_BYTES = 20 * 1024 * 1024
+export const MAX_MAGNIFIERS_PER_JOB = 20
+export const MAX_ENABLE_WINDOWS_PER_MAGNIFIER = 200
 
 /** Returns an error message, or null when `options` is well-formed. */
 export function validateClipEncodeOptions(options: ClipEncodeStartOptions): string | null {
@@ -259,142 +172,526 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
   return null
 }
 
+/**
+ * Validates that `spans` are well-formed, reference only overlays that exist
+ * (`0 <= overlayIndex < overlayCount`), and are contiguous with no gaps or
+ * overlaps covering exactly `[0, frameCount)`. `spans` may be empty (no
+ * drawings burned in).
+ */
+export function validateOverlaySpans(spans: unknown, overlayCount: number, frameCount: number): string | null {
+  if (!Array.isArray(spans)) return 'Invalid spans'
+  if (spans.length === 0) return null
+
+  let cursor = 0
+  for (const span of spans) {
+    if (!span || typeof span !== 'object') return 'Invalid span'
+    const { overlayIndex, frameStart, frameCount: spanFrameCount } = span as OverlaySpan
+    if (!Number.isInteger(overlayIndex) || overlayIndex < 0 || overlayIndex >= overlayCount) {
+      return 'Invalid span overlay index'
+    }
+    if (!Number.isInteger(frameStart) || frameStart !== cursor) {
+      return 'Spans must be contiguous starting at frame 0'
+    }
+    if (!Number.isInteger(spanFrameCount) || spanFrameCount <= 0) {
+      return 'Invalid span frame count'
+    }
+    cursor += spanFrameCount
+  }
+
+  if (cursor !== frameCount) return 'Spans must cover exactly the job frame count'
+  return null
+}
+
+/** Validates magnifier ops: finite/bounded rect + circle geometry, and non-empty, in-range enable windows. */
+export function validateMagnifierOps(
+  magnifiers: unknown,
+  width: number,
+  height: number,
+  totalDurationSeconds: number
+): string | null {
+  if (!Array.isArray(magnifiers)) return 'Invalid magnifiers'
+  if (magnifiers.length > MAX_MAGNIFIERS_PER_JOB) return 'Too many magnifiers'
+
+  for (const magnifier of magnifiers) {
+    if (!magnifier || typeof magnifier !== 'object') return 'Invalid magnifier op'
+    const { sourceRect, destCircle, enable } = magnifier as MagnifierOp
+
+    if (!sourceRect || typeof sourceRect !== 'object') return 'Invalid magnifier source rect'
+    const { x, y, width: rw, height: rh } = sourceRect
+    if (![x, y, rw, rh].every((n) => Number.isFinite(n))) return 'Invalid magnifier source rect values'
+    if (rw <= 0 || rh <= 0) return 'Invalid magnifier source rect size'
+    if (x < 0 || y < 0 || x + rw > width || y + rh > height) return 'Magnifier source rect out of bounds'
+
+    if (!destCircle || typeof destCircle !== 'object') return 'Invalid magnifier dest circle'
+    const { centerX, centerY, radius } = destCircle
+    if (![centerX, centerY, radius].every((n) => Number.isFinite(n))) return 'Invalid magnifier dest circle values'
+    if (radius <= 0 || radius > Math.max(width, height)) return 'Invalid magnifier dest circle radius'
+    if (centerX - radius < -radius || centerY - radius < -radius) return 'Magnifier dest circle out of bounds'
+
+    if (!Array.isArray(enable) || enable.length === 0) return 'Magnifier must have at least one enable window'
+    if (enable.length > MAX_ENABLE_WINDOWS_PER_MAGNIFIER) return 'Too many magnifier enable windows'
+    for (const window of enable) {
+      if (!window || typeof window !== 'object') return 'Invalid magnifier enable window'
+      const { start, end } = window
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return 'Invalid magnifier enable window times'
+      if (start < 0 || end <= start || end > totalDurationSeconds + 1) return 'Magnifier enable window out of range'
+    }
+  }
+
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// ffmpeg filter graph / argv builder (pure)
+// ---------------------------------------------------------------------------
+
+const QUALITY_SETTINGS: Record<ClipExportQuality, { crf: number; preset: string }> = {
+  high: { crf: 18, preset: 'medium' },
+  medium: { crf: 23, preset: 'medium' },
+  low: { crf: 28, preset: 'fast' },
+}
+
+const AUDIO_SAMPLE_RATE = 48000
+
+function fmt(seconds: number): string {
+  return seconds.toFixed(6)
+}
+
+/** Downscale filter matching QUALITY_PRESETS in ffmpegExport.ts, plus even dimensions. */
+function videoScaleFilter(quality: ClipExportQuality): string {
+  switch (quality) {
+    case 'medium':
+      return 'scale=-2:min(ih\\,720)'
+    case 'low':
+      return 'scale=-2:min(ih\\,480)'
+    case 'high':
+    default:
+      return 'scale=trunc(iw/2)*2:trunc(ih/2)*2'
+  }
+}
+
+/** The earliest source time referenced by any segment; used as the `-ss` (input-seek) offset. */
+export function computeSeekOffset(segments: OutputSegment[]): number {
+  if (segments.length === 0) return 0
+  const first = segments[0]
+  return first.kind === 'play' ? first.srcStart : first.srcTime
+}
+
+export interface BuildClipEncodeFilterGraphInput {
+  outputPath: string
+  sourcePath: string
+  fps: number
+  frameCount: number
+  quality: ClipExportQuality
+  segments: OutputSegment[]
+  hasAudio: boolean
+  /** Present iff there is at least one overlay span (drawings are being burned in). */
+  overlayConcatListPath?: string
+  magnifiers: MagnifierOp[]
+}
+
+/**
+ * Builds the ffmpeg argv for one encode job. Single source input, seeked
+ * near the clip start (`-ss` before `-i`, frame-accurate when transcoding);
+ * an optional second input feeds the drawing-layer overlay PNG timeline via
+ * the concat demuxer. Pure — no I/O, fully testable.
+ */
+export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInput): string[] {
+  const { outputPath, sourcePath, fps, frameCount, quality, segments, hasAudio, overlayConcatListPath, magnifiers } =
+    input
+  const { crf, preset } = QUALITY_SETTINGS[quality]
+  const segFrameCounts = segmentFrameCountsForBuilder(segments, fps)
+  const seekOffset = computeSeekOffset(segments)
+
+  const filterParts: string[] = []
+
+  // --- Base video timeline: per-segment trim/hold, concatenated, CFR-locked. ---
+  segments.forEach((segment, i) => {
+    if (segment.kind === 'play') {
+      const start = segment.srcStart - seekOffset
+      const end = segment.srcEnd - seekOffset
+      filterParts.push(`[0:v]trim=start=${fmt(start)}:end=${fmt(end)},setpts=PTS-STARTPTS[v${i}]`)
+    } else {
+      const t = segment.srcTime - seekOffset
+      const oneFrame = 1 / fps
+      const holdFrames = Math.max(1, segFrameCounts[i])
+      // `tpad`'s `stop_duration` can't infer per-frame spacing from a
+      // single-frame input (there's no previous frame to diff against), so
+      // it silently pads far too little. `loop` repeats the single trimmed
+      // frame an exact number of times instead, and the following `setpts`
+      // gives the repeats sequential, evenly-spaced timestamps at `fps` so
+      // concat/the final CFR `fps=` filter see a normal run of frames.
+      filterParts.push(
+        `[0:v]trim=start=${fmt(t)}:end=${fmt(t + oneFrame)},setpts=PTS-STARTPTS,` +
+          `loop=loop=${holdFrames - 1}:size=1:start=0,setpts=N/(${fmt(fps)}*TB)[v${i}]`
+      )
+    }
+  })
+  const vConcatInputs = segments.map((_, i) => `[v${i}]`).join('')
+  filterParts.push(`${vConcatInputs}concat=n=${segments.length}:v=1:a=0[vbase0]`)
+  filterParts.push(`[vbase0]fps=${fmt(fps)}[vbase]`)
+
+  // --- Magnifiers: crop/scale/circular-mask a region of the base video, overlay during enable windows. ---
+  let running = 'vbase'
+  if (magnifiers.length > 0) {
+    const splitOutputs = ['vbase_ovl', ...magnifiers.map((_, j) => `vbase_mag${j}`)]
+    filterParts.push(`[vbase]split=${splitOutputs.length}${splitOutputs.map((l) => `[${l}]`).join('')}`)
+    running = 'vbase_ovl'
+
+    magnifiers.forEach((magnifier, j) => {
+      const { sourceRect, destCircle, enable } = magnifier
+      const cropW = Math.max(2, Math.round(sourceRect.width))
+      const cropH = Math.max(2, Math.round(sourceRect.height))
+      const cropX = Math.max(0, Math.round(sourceRect.x))
+      const cropY = Math.max(0, Math.round(sourceRect.y))
+      const destSize = Math.max(2, Math.round(destCircle.radius * 2))
+      const destX = Math.round(destCircle.centerX - destCircle.radius)
+      const destY = Math.round(destCircle.centerY - destCircle.radius)
+
+      const circleAlpha =
+        `if(lte(pow(X-(W/2)\\,2)+pow(Y-(H/2)\\,2)\\,pow(W/2\\,2))\\,255\\,0)`
+      filterParts.push(
+        `[vbase_mag${j}]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${destSize}:${destSize},` +
+          `format=rgba,geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='${circleAlpha}'[magcirc${j}]`
+      )
+
+      const enableExpr = enable.map((w) => `between(t\\,${fmt(w.start)}\\,${fmt(w.end)})`).join('+')
+      const nextLabel = j === magnifiers.length - 1 ? 'vmagfinal' : `vmag${j}`
+      filterParts.push(
+        `[${running}][magcirc${j}]overlay=${destX}:${destY}:enable='${enableExpr}':eof_action=pass[${nextLabel}]`
+      )
+      running = nextLabel
+    })
+  }
+
+  // --- Drawing-layer overlay (transparent PNG timeline), composited on top. ---
+  if (overlayConcatListPath) {
+    filterParts.push(`[1:v]fps=${fmt(fps)},format=rgba[ovl]`)
+    filterParts.push(`[${running}][ovl]overlay=0:0:format=auto:eof_action=pass[vov]`)
+    running = 'vov'
+  }
+
+  // --- Quality scale, after compositing. ---
+  filterParts.push(`[${running}]${videoScaleFilter(quality)}[vout]`)
+
+  // --- Audio: same source input (seeked identically), so times use the same offset. ---
+  if (hasAudio) {
+    segments.forEach((segment, i) => {
+      if (segment.kind === 'play') {
+        const start = segment.srcStart - seekOffset
+        const end = segment.srcEnd - seekOffset
+        filterParts.push(
+          `[0:a]atrim=start=${fmt(start)}:end=${fmt(end)},` +
+            `asetpts=PTS-STARTPTS,aresample=${AUDIO_SAMPLE_RATE},` +
+            `aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
+        )
+      } else {
+        filterParts.push(
+          `anullsrc=channel_layout=stereo:sample_rate=${AUDIO_SAMPLE_RATE},` +
+            `atrim=duration=${fmt(segment.duration)},asetpts=PTS-STARTPTS,` +
+            `aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
+        )
+      }
+    })
+    const aConcatInputs = segments.map((_, i) => `[a${i}]`).join('')
+    filterParts.push(`${aConcatInputs}concat=n=${segments.length}:v=0:a=1[aout]`)
+  }
+
+  const args: string[] = ['-y', '-ss', fmt(seekOffset), '-i', sourcePath]
+
+  if (overlayConcatListPath) {
+    args.push('-f', 'concat', '-safe', '0', '-i', overlayConcatListPath)
+  }
+
+  args.push('-filter_complex', filterParts.join(';'))
+  args.push('-map', '[vout]')
+  if (hasAudio) {
+    args.push('-map', '[aout]')
+  }
+
+  args.push(
+    '-r', fmt(fps),
+    '-frames:v', String(frameCount),
+    '-c:v', 'libx264',
+    '-preset', preset,
+    '-crf', String(crf),
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart'
+  )
+
+  if (hasAudio) {
+    args.push('-c:a', 'aac', '-b:a', '128k')
+  }
+
+  args.push('-progress', 'pipe:1', '-nostats', outputPath)
+
+  return args
+}
+
+/**
+ * Same per-segment frame distribution as `src/export/outputTimeline.ts`'s
+ * `segmentFrameCounts`, duplicated here (rather than imported) so this
+ * module has no dependency on the renderer-side export code — it needs to
+ * be usable from a plain Node test/process without pulling in `src/`.
+ */
+function segmentFrameCountsForBuilder(segments: OutputSegment[], fps: number): number[] {
+  const counts: number[] = []
+  let cumulativeDuration = 0
+  let cumulativeFrames = 0
+
+  for (const seg of segments) {
+    const segDuration = seg.kind === 'play' ? seg.srcEnd - seg.srcStart : seg.duration
+    cumulativeDuration += segDuration
+    const targetFrames = Math.round(cumulativeDuration * fps)
+    const segFrameCount = Math.max(0, targetFrames - cumulativeFrames)
+    counts.push(segFrameCount)
+    cumulativeFrames += segFrameCount
+  }
+
+  return counts
+}
+
+/**
+ * Builds the concat-demuxer list file content for the overlay PNG timeline:
+ * one `file`/`duration` pair per span (in frames-to-seconds), with the last
+ * file repeated once more without a duration line — the concat demuxer
+ * ignores the final entry's `duration`, so without this the last span would
+ * effectively get no display time.
+ */
+export function buildOverlayConcatList(spans: OverlaySpan[], overlayPaths: string[], fps: number): string {
+  const lines: string[] = []
+  let lastPath: string | null = null
+
+  for (const span of spans) {
+    const filePath = overlayPaths[span.overlayIndex]
+    const duration = span.frameCount / fps
+    lines.push(`file '${filePath}'`)
+    lines.push(`duration ${fmt(duration)}`)
+    lastPath = filePath
+  }
+
+  if (lastPath) {
+    lines.push(`file '${lastPath}'`)
+  }
+
+  return lines.join('\n') + '\n'
+}
+
 // ---------------------------------------------------------------------------
 // Job registry (stateful, no Electron dependency)
 // ---------------------------------------------------------------------------
 
-export interface EncodeFinishResult {
-  success: boolean
-  error?: string
-}
-
 interface EncodeJob {
-  child: ChildProcessWithoutNullStreams
   outputPath: string
+  sourcePath: string
+  width: number
+  height: number
+  fps: number
   frameCount: number
-  framesReceived: number
-  stderrTail: string
-  exitPromise: Promise<{ code: number | null; signal: NodeJS.Signals | null }>
+  quality: ClipExportQuality
+  segments: OutputSegment[]
+  hasAudio: boolean
+  tmpDir: string
+  overlayPaths: string[]
+  child: ChildProcessWithoutNullStreams | null
+  cancelled: boolean
 }
 
 const jobs = new Map<string, EncodeJob>()
 
-/** Validates options, spawns ffmpeg, and registers a job keyed by a fresh id. */
-export function startClipEncodeJob(
+/** Registers a job (creating its temp dir for overlay PNGs) without spawning ffmpeg yet. */
+export async function startClipEncodeJob(
   options: ClipEncodeStartOptions,
-  hasAudio: boolean,
-  ffmpegPath: string
-): ClipEncodeStartResult {
+  hasAudio: boolean
+): Promise<ClipEncodeStartResult> {
   const validationError = validateClipEncodeOptions(options)
   if (validationError) return { ok: false, error: validationError }
 
-  const args = buildClipEncodeArgs({
+  let tmpDir: string
+  try {
+    tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'replay-clip-'))
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Could not create a temp directory' }
+  }
+
+  const job: EncodeJob = {
     outputPath: options.outputPath,
     sourcePath: options.sourcePath,
     width: options.width,
     height: options.height,
     fps: options.fps,
+    frameCount: options.frameCount,
     quality: options.quality,
     segments: options.segments,
     hasAudio,
-  })
-
-  let child: ChildProcessWithoutNullStreams
-  try {
-    child = spawn(ffmpegPath, args)
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Failed to start ffmpeg' }
+    tmpDir,
+    overlayPaths: [],
+    child: null,
+    cancelled: false,
   }
-  child.stdout.resume()
-
-  const job: EncodeJob = {
-    child,
-    outputPath: options.outputPath,
-    frameCount: options.frameCount,
-    framesReceived: 0,
-    stderrTail: '',
-    exitPromise: new Promise((resolve) => {
-      child.on('close', (code, signal) => resolve({ code, signal }))
-    }),
-  }
-
-  child.stderr.on('data', (data: Buffer) => {
-    job.stderrTail = (job.stderrTail + data.toString()).slice(-4000)
-  })
-  child.on('error', (err) => {
-    job.stderrTail += `\n[ffmpeg spawn error] ${err.message}`
-  })
 
   const id = randomUUID()
   jobs.set(id, job)
   return { ok: true, jobId: id }
 }
 
-/** True if the job exists and is still alive; false (frame dropped) otherwise. */
+export type AddOverlayResult = { ok: true; index: number } | { ok: false; error: string }
+
+/** Writes one overlay PNG into the job's temp dir and returns its slot index. */
+export async function addOverlayToJob(jobId: string, png: Buffer): Promise<AddOverlayResult> {
+  const job = jobs.get(jobId)
+  if (!job) return { ok: false, error: 'Unknown encode job' }
+  if (job.cancelled) return { ok: false, error: 'Job was cancelled' }
+  if (job.overlayPaths.length >= MAX_OVERLAYS_PER_JOB) return { ok: false, error: 'Too many overlays for this job' }
+  if (png.byteLength === 0 || png.byteLength > MAX_OVERLAY_PNG_BYTES) return { ok: false, error: 'Invalid overlay PNG size' }
+  // Cheap PNG signature check — never trust the renderer's content type.
+  const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  if (png.length < 8 || !png.subarray(0, 8).equals(PNG_SIGNATURE)) return { ok: false, error: 'Not a PNG file' }
+
+  const index = job.overlayPaths.length
+  const filePath = path.join(job.tmpDir, `overlay_${index}.png`)
+  try {
+    await fsp.writeFile(filePath, png)
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Could not write overlay PNG' }
+  }
+  job.overlayPaths.push(filePath)
+  return { ok: true, index }
+}
+
+export interface RunClipEncodeJobInput {
+  spans: OverlaySpan[]
+  magnifiers: MagnifierOp[]
+}
+
+/** Builds the filter graph, spawns ffmpeg, reports progress, and cleans up the job's temp dir. */
+export async function runClipEncodeJob(
+  jobId: string,
+  input: RunClipEncodeJobInput,
+  ffmpegPath: string,
+  onProgress?: (percent: number) => void
+): Promise<ClipExportResult> {
+  const job = jobs.get(jobId)
+  if (!job) return { success: false, error: 'Unknown encode job' }
+  if (job.cancelled) return { success: false, error: 'Job was cancelled' }
+
+  const spansError = validateOverlaySpans(input.spans, job.overlayPaths.length, job.frameCount)
+  if (spansError) return { success: false, error: spansError }
+
+  const totalDuration = job.frameCount / job.fps
+  const magnifiersError = validateMagnifierOps(input.magnifiers, job.width, job.height, totalDuration)
+  if (magnifiersError) return { success: false, error: magnifiersError }
+
+  let overlayConcatListPath: string | undefined
+  if (input.spans.length > 0) {
+    overlayConcatListPath = path.join(job.tmpDir, 'overlay_list.txt')
+    const listContent = buildOverlayConcatList(input.spans, job.overlayPaths, job.fps)
+    try {
+      await fsp.writeFile(overlayConcatListPath, listContent)
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Could not write overlay list' }
+    }
+  }
+
+  const args = buildClipEncodeFilterGraph({
+    outputPath: job.outputPath,
+    sourcePath: job.sourcePath,
+    fps: job.fps,
+    frameCount: job.frameCount,
+    quality: job.quality,
+    segments: job.segments,
+    hasAudio: job.hasAudio,
+    overlayConcatListPath,
+    magnifiers: input.magnifiers,
+  })
+
+  let child: ChildProcessWithoutNullStreams
+  try {
+    child = spawn(ffmpegPath, args)
+  } catch (err) {
+    await cleanupJob(jobId)
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to start ffmpeg' }
+  }
+  job.child = child
+
+  let stderrTail = ''
+  let stdoutTail = ''
+  child.stderr.on('data', (data: Buffer) => {
+    stderrTail = (stderrTail + data.toString()).slice(-4000)
+  })
+  child.stdout.on('data', (data: Buffer) => {
+    stdoutTail += data.toString()
+    // `-progress pipe:1` writes `key=value\n` lines, one block per update.
+    let newlineIndex: number
+    while ((newlineIndex = stdoutTail.indexOf('\n')) >= 0) {
+      const line = stdoutTail.slice(0, newlineIndex).trim()
+      stdoutTail = stdoutTail.slice(newlineIndex + 1)
+      const match = /^out_time_us=(-?\d+)$/.exec(line) || /^out_time_ms=(-?\d+)$/.exec(line)
+      if (match && onProgress) {
+        const outTimeSeconds = Number(match[1]) / 1_000_000
+        if (Number.isFinite(outTimeSeconds) && totalDuration > 0) {
+          const percent = Math.max(0, Math.min(100, Math.round((outTimeSeconds / totalDuration) * 100)))
+          onProgress(percent)
+        }
+      }
+      if (line === 'progress=end' && onProgress) {
+        onProgress(100)
+      }
+    }
+  })
+
+  const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+    child.on('close', (code, signal) => resolve({ code, signal }))
+  })
+  child.on('error', (err) => {
+    stderrTail += `\n[ffmpeg spawn error] ${err.message}`
+  })
+
+  const { code, signal } = await exitPromise
+  const wasCancelled = job.cancelled
+  await cleanupJob(jobId)
+
+  if (wasCancelled) return { success: false, error: 'Cancelled' }
+  if (code === 0) return { success: true }
+
+  const tail = stderrTail.trim().slice(-800)
+  const reason = signal ? `signal ${signal}` : `code ${code}`
+  return { success: false, error: `ffmpeg exited with ${reason}${tail ? `: ${tail}` : ''}` }
+}
+
+/** True if the job is registered (still accepting overlays / not yet run to completion). */
 export function isClipEncodeJobActive(jobId: string): boolean {
   return jobs.has(jobId)
 }
 
-/**
- * Writes one JPEG frame to ffmpeg's stdin, honoring backpressure by awaiting
- * 'drain' when the write buffer is full. Resolves false if the job is
- * unknown or the pipe has already closed/errored.
- */
-export async function clipEncodeFrame(jobId: string, jpeg: Buffer): Promise<boolean> {
-  const job = jobs.get(jobId)
-  if (!job) return false
-  const { stdin } = job.child
-  if (!stdin || stdin.destroyed) return false
-  try {
-    const ok = stdin.write(jpeg)
-    job.framesReceived += 1
-    if (!ok) {
-      await new Promise<void>((resolve) => stdin.once('drain', resolve))
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** Ends stdin, waits for ffmpeg to exit, and reports success/failure. */
-export async function finishClipEncodeJob(jobId: string): Promise<EncodeFinishResult> {
-  const job = jobs.get(jobId)
-  if (!job) return { success: false, error: 'Unknown encode job' }
-
-  try {
-    if (!job.child.stdin.destroyed) job.child.stdin.end()
-  } catch {
-    // Already closed.
-  }
-
-  const result = await job.exitPromise
-  jobs.delete(jobId)
-
-  if (result.code === 0) {
-    return { success: true }
-  }
-  const tail = job.stderrTail.trim().slice(-800)
-  const reason = result.signal ? `signal ${result.signal}` : `code ${result.code}`
-  return { success: false, error: `ffmpeg exited with ${reason}${tail ? `: ${tail}` : ''}` }
-}
-
-/** Kills ffmpeg and deletes the partial output file, if any. */
-export async function cancelClipEncodeJob(jobId: string): Promise<void> {
+async function cleanupJob(jobId: string): Promise<void> {
   const job = jobs.get(jobId)
   if (!job) return
   jobs.delete(jobId)
+  try {
+    await fsp.rm(job.tmpDir, { recursive: true, force: true })
+  } catch {
+    // Best-effort; a leftover temp dir is not fatal.
+  }
+}
 
-  try {
-    job.child.kill('SIGKILL')
-  } catch {
-    // Already dead.
+/** Kills ffmpeg (if running), deletes the job's temp dir and any partial output file. */
+export async function cancelClipEncodeJob(jobId: string): Promise<void> {
+  const job = jobs.get(jobId)
+  if (!job) return
+  job.cancelled = true
+
+  if (job.child) {
+    try {
+      job.child.kill('SIGKILL')
+    } catch {
+      // Already dead.
+    }
+  } else {
+    // Never spawned (cancelled between start and run) — clean up ourselves.
+    await cleanupJob(jobId)
   }
-  try {
-    await job.exitPromise
-  } catch {
-    // Ignore; we only wanted the process gone.
-  }
+
   try {
     await fsp.unlink(job.outputPath)
   } catch {

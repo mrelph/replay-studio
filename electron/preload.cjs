@@ -83,20 +83,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return { ok: false, error: err instanceof Error ? err.message : 'Encode start failed' };
     }
   },
-  clipEncodeFrame: async (jobId, jpeg) => {
+  clipEncodeAddOverlay: async (jobId, png) => {
     try {
-      return await ipcRenderer.invoke('clip:encodeFrame', jobId, jpeg);
+      return await ipcRenderer.invoke('clip:encodeAddOverlay', jobId, png);
     } catch (err) {
-      console.error('clipEncodeFrame error:', err);
-      return false;
+      console.error('clipEncodeAddOverlay error:', err);
+      return { ok: false, error: err instanceof Error ? err.message : 'Add overlay failed' };
     }
   },
-  clipEncodeFinish: async (jobId) => {
+  clipEncodeRun: async (jobId, payload) => {
     try {
-      return await ipcRenderer.invoke('clip:encodeFinish', jobId);
+      return await ipcRenderer.invoke('clip:encodeRun', jobId, payload);
     } catch (err) {
-      console.error('clipEncodeFinish error:', err);
-      return { success: false, error: err instanceof Error ? err.message : 'Encode finish failed' };
+      console.error('clipEncodeRun error:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Encode run failed' };
     }
   },
   clipEncodeCancel: async (jobId) => {
@@ -105,6 +105,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     } catch (err) {
       console.error('clipEncodeCancel error:', err);
     }
+  },
+  onClipEncodeProgress: (callback) => {
+    ipcRenderer.on('clip:encodeProgress', (_, progress) => callback(progress));
+  },
+  removeClipEncodeProgressListener: () => {
+    ipcRenderer.removeAllListeners('clip:encodeProgress');
   },
 
   // Project save/load

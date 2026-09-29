@@ -1,4 +1,12 @@
-import type { VideoProbe, ClipEncodeStartOptions, ClipEncodeStartResult } from './clip'
+import type {
+  VideoProbe,
+  ClipEncodeStartOptions,
+  ClipEncodeStartResult,
+  ClipEncodeAddOverlayResult,
+  ClipEncodeRunOptions,
+  ClipEncodeProgressEvent,
+  ClipExportResult,
+} from './clip'
 
 export interface ExportOptions {
   inputPath: string
@@ -64,10 +72,14 @@ export interface ElectronAPI {
   /** Folder picker; the returned folder is authorized for export writes. */
   chooseExportFolder: () => Promise<string | null>
   clipEncodeStart: (options: ClipEncodeStartOptions) => Promise<ClipEncodeStartResult>
-  /** Resolves once ffmpeg has accepted the frame (backpressure); false if the job is gone. */
-  clipEncodeFrame: (jobId: string, jpeg: Uint8Array) => Promise<boolean>
-  clipEncodeFinish: (jobId: string) => Promise<ExportResult>
+  /** Adds one drawing-layer PNG to the job; resolves with its 0-based slot index. */
+  clipEncodeAddOverlay: (jobId: string, png: Uint8Array) => Promise<ClipEncodeAddOverlayResult>
+  /** Builds the ffmpeg filter graph from the given spans/magnifiers and runs the job to completion. */
+  clipEncodeRun: (jobId: string, payload: ClipEncodeRunOptions) => Promise<ClipExportResult>
   clipEncodeCancel: (jobId: string) => Promise<void>
+  /** Real-time percent (0-100) while an encode job runs; jobId lets a caller ignore events for other jobs. */
+  onClipEncodeProgress: (callback: (progress: ClipEncodeProgressEvent) => void) => void
+  removeClipEncodeProgressListener: () => void
 
   // Project save/load
   saveProject: (defaultName: string) => Promise<string | null>
