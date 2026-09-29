@@ -83,9 +83,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return { ok: false, error: err instanceof Error ? err.message : 'Encode start failed' };
     }
   },
-  clipEncodeAddOverlay: async (jobId, png) => {
+  clipEncodeAddOverlay: async (jobId, rgba) => {
     try {
-      return await ipcRenderer.invoke('clip:encodeAddOverlay', jobId, png);
+      return await ipcRenderer.invoke('clip:encodeAddOverlay', jobId, rgba);
     } catch (err) {
       console.error('clipEncodeAddOverlay error:', err);
       return { ok: false, error: err instanceof Error ? err.message : 'Add overlay failed' };

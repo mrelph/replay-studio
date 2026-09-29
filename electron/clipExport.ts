@@ -22,6 +22,7 @@ import { randomUUID } from 'crypto'
 import fsp from 'fs/promises'
 import os from 'os'
 import path from 'path'
+import zlib from 'zlib'
 import type {
   ClipEncodeStartOptions,
   ClipEncodeStartResult,
@@ -126,7 +127,6 @@ const MAX_FRAME_COUNT = 20_000_000
 const QUALITIES: ClipExportQuality[] = ['high', 'medium', 'low']
 
 export const MAX_OVERLAYS_PER_JOB = 500
-export const MAX_OVERLAY_PNG_BYTES = 20 * 1024 * 1024
 export const MAX_MAGNIFIERS_PER_JOB = 20
 export const MAX_ENABLE_WINDOWS_PER_MAGNIFIER = 200
 
@@ -329,7 +329,10 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
   })
   const vConcatInputs = segments.map((_, i) => `[v${i}]`).join('')
   filterParts.push(`${vConcatInputs}concat=n=${segments.length}:v=1:a=0[vbase0]`)
-  filterParts.push(`[vbase0]fps=${fmt(fps)}[vbase]`)
+  // Segment trims can each lose a frame to timestamp rounding (a 20 s clip
+  // with a hold came out 2 frames short). Clone the last frame for a moment
+  // and let `-frames:v frameCount` cut the stream to the exact length.
+  filterParts.push(`[vbase0]fps=${fmt(fps)},tpad=stop_mode=clone:stop_duration=0.5[vbase]`)
 
   // --- Magnifiers: crop/scale/circular-mask a region of the base video, overlay during enable windows. ---
   let running = 'vbase'
@@ -537,21 +540,55 @@ export async function startClipEncodeJob(
 
 export type AddOverlayResult = { ok: true; index: number } | { ok: false; error: string }
 
-/** Writes one overlay PNG into the job's temp dir and returns its slot index. */
-export async function addOverlayToJob(jobId: string, png: Buffer): Promise<AddOverlayResult> {
+/**
+ * Encodes straight (non-premultiplied) RGBA pixels as a PNG. Done here rather
+ * than with canvas.toBlob in the renderer: Chromium schedules toBlob PNG
+ * encoding as a low-priority task (~1 s per image regardless of size), while
+ * deflate here takes tens of ms for a mostly transparent 1080p layer.
+ */
+export function encodeRgbaPng(width: number, height: number, rgba: Buffer): Buffer {
+  const stride = width * 4
+  // Each scanline is prefixed with filter type 0 (None).
+  const raw = Buffer.alloc((stride + 1) * height)
+  for (let y = 0; y < height; y++) {
+    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride)
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length)
+    const typeAndData = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(zlib.crc32(typeAndData))
+    return Buffer.concat([len, typeAndData, crc])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 6 // color type RGBA
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw, { level: 1 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+/**
+ * Takes one drawing-layer frame as raw RGBA (exactly width*height*4 bytes for
+ * this job), encodes it to PNG in the job's temp dir, and returns its slot index.
+ */
+export async function addOverlayToJob(jobId: string, rgba: Buffer): Promise<AddOverlayResult> {
   const job = jobs.get(jobId)
   if (!job) return { ok: false, error: 'Unknown encode job' }
   if (job.cancelled) return { ok: false, error: 'Job was cancelled' }
   if (job.overlayPaths.length >= MAX_OVERLAYS_PER_JOB) return { ok: false, error: 'Too many overlays for this job' }
-  if (png.byteLength === 0 || png.byteLength > MAX_OVERLAY_PNG_BYTES) return { ok: false, error: 'Invalid overlay PNG size' }
-  // Cheap PNG signature check — never trust the renderer's content type.
-  const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-  if (png.length < 8 || !png.subarray(0, 8).equals(PNG_SIGNATURE)) return { ok: false, error: 'Not a PNG file' }
+  if (rgba.byteLength !== job.width * job.height * 4) return { ok: false, error: 'Overlay size does not match the video' }
 
   const index = job.overlayPaths.length
   const filePath = path.join(job.tmpDir, `overlay_${index}.png`)
   try {
-    await fsp.writeFile(filePath, png)
+    await fsp.writeFile(filePath, encodeRgbaPng(job.width, job.height, rgba))
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Could not write overlay PNG' }
   }

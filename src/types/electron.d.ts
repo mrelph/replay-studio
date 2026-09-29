@@ -86,7 +86,8 @@ export interface ElectronAPI {
   chooseExportFolder: () => Promise<string | null>
   clipEncodeStart: (options: ClipEncodeStartOptions) => Promise<ClipEncodeStartResult>
   /** Adds one drawing-layer PNG to the job; resolves with its 0-based slot index. */
-  clipEncodeAddOverlay: (jobId: string, png: Uint8Array) => Promise<ClipEncodeAddOverlayResult>
+  /** One drawing-layer frame as raw RGBA (width*height*4 bytes); the main process encodes it to PNG. */
+  clipEncodeAddOverlay: (jobId: string, rgba: Uint8Array) => Promise<ClipEncodeAddOverlayResult>
   /** Builds the ffmpeg filter graph from the given spans/magnifiers and runs the job to completion. */
   clipEncodeRun: (jobId: string, payload: ClipEncodeRunOptions) => Promise<ClipExportResult>
   clipEncodeCancel: (jobId: string) => Promise<void>

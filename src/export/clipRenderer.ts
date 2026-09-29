@@ -58,7 +58,7 @@ interface ClonedAnnotation {
 }
 
 /** Applies one span's visibility/opacity to every clone, renders, and encodes a transparent PNG. */
-async function renderSpanPng(
+async function renderSpanRgba(
   staticCanvas: fabric.StaticCanvas,
   clones: ClonedAnnotation[],
   signature: DrawingSpan['signature']
@@ -76,14 +76,14 @@ async function renderSpanPng(
   }
   staticCanvas.renderAll()
 
+  // Raw RGBA readback (~10 ms); PNG encoding happens in the main process
+  // because canvas.toBlob is throttled to ~1 s per image. getImageData
+  // returns straight (un-premultiplied) alpha, which is what PNG expects.
   const canvasEl = staticCanvas.getElement()
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvasEl.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('canvas.toBlob produced no PNG data'))),
-      'image/png'
-    )
-  })
-  return new Uint8Array(await blob.arrayBuffer())
+  const ctx = canvasEl.getContext('2d')
+  if (!ctx) throw new Error('Could not read the drawing layer')
+  const { data } = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height)
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
 }
 
 /**
@@ -155,7 +155,8 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
 
     const spans = buildDrawingSpans(segments, spanAnnotations, probe.fps)
 
-    staticCanvas = new fabric.StaticCanvas(null, { width: probe.width, height: probe.height })
+    // No retina scaling: the layer must be exactly the video's native pixel size.
+    staticCanvas = new fabric.StaticCanvas(null, { width: probe.width, height: probe.height, enableRetinaScaling: false })
     const clones: ClonedAnnotation[] = []
     for (const annotation of annotations) {
       const isMagnifier = annotation.toolType === 'magnifier'
@@ -173,8 +174,8 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
       const key = signatureKey(span.signature)
       let index = overlayIndexBySignatureKey.get(key)
       if (index === undefined) {
-        const png = await renderSpanPng(staticCanvas, clones, span.signature)
-        const added = await window.electronAPI.clipEncodeAddOverlay(jobId, png)
+        const rgba = await renderSpanRgba(staticCanvas, clones, span.signature)
+        const added = await window.electronAPI.clipEncodeAddOverlay(jobId, rgba)
         if (!added.ok) throw new Error(added.error)
         index = added.index
         overlayIndexBySignatureKey.set(key, index)

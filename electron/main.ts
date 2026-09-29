@@ -771,10 +771,10 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
 
 ipcMain.handle(
   'clip:encodeAddOverlay',
-  async (event, jobId: string, png: Uint8Array): Promise<ClipEncodeAddOverlayResult> => {
+  async (event, jobId: string, rgba: Uint8Array): Promise<ClipEncodeAddOverlayResult> => {
     if (!isFromMainWindow(event.sender)) return { ok: false, error: 'Encode denied: caller is not the main window' }
-    if (typeof jobId !== 'string' || !(png instanceof Uint8Array)) return { ok: false, error: 'Invalid arguments' }
-    return addOverlayToJob(jobId, Buffer.from(png))
+    if (typeof jobId !== 'string' || !(rgba instanceof Uint8Array)) return { ok: false, error: 'Invalid arguments' }
+    return addOverlayToJob(jobId, Buffer.from(rgba.buffer, rgba.byteOffset, rgba.byteLength))
   }
 )
 

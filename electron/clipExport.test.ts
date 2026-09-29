@@ -15,6 +15,7 @@ import {
   validateMagnifierOps,
   startClipEncodeJob,
   addOverlayToJob,
+  encodeRgbaPng,
   runClipEncodeJob,
   cancelClipEncodeJob,
 } from './clipExport'
@@ -203,7 +204,7 @@ describe('buildClipEncodeFilterGraph', () => {
       '-filter_complex',
       '[0:v]trim=start=0.000000:end=2.000000,setpts=PTS-STARTPTS[v0];' +
         '[v0]concat=n=1:v=1:a=0[vbase0];' +
-        '[vbase0]fps=30.000000[vbase];' +
+        '[vbase0]fps=30.000000,tpad=stop_mode=clone:stop_duration=0.5[vbase];' +
         '[vbase]scale=trunc(iw/2)*2:trunc(ih/2)*2[vout]',
       '-map', '[vout]',
       '-r', '30.000000',
@@ -244,7 +245,7 @@ describe('buildClipEncodeFilterGraph', () => {
       '[0:v]trim=start=2.500000:end=2.533333,setpts=PTS-STARTPTS,loop=loop=44:size=1:start=0,setpts=N/(30.000000*TB)[v1]'
     )
     expect(filter).toContain('[v0][v1]concat=n=2:v=1:a=0[vbase0]')
-    expect(filter).toContain('[vbase0]fps=30.000000[vbase]')
+    expect(filter).toContain('[vbase0]fps=30.000000,tpad=stop_mode=clone:stop_duration=0.5[vbase]')
     expect(filter).toContain('[vbase]scale=-2:min(ih\\,720)[vout]')
 
     // Audio built from the same single (seeked) input, same time shift.
@@ -554,8 +555,6 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clip-export-e2e-'))
   const sourcePath = path.join(tmpDir, 'source.mp4')
   const outputPath = path.join(tmpDir, 'output.mp4')
-  const transparentPngPath = path.join(tmpDir, 'transparent.png')
-  const redBoxPngPath = path.join(tmpDir, 'redbox.png')
 
   const WIDTH = 1920
   const HEIGHT = 1080
@@ -579,28 +578,17 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
     ])
     expect(genSource.status).toBe(0)
 
-    // Overlay 0: fully transparent. Overlay 1: transparent with an opaque red box at (50,50)-(150,150).
-    const genTransparent = spawnSync(bin, [
-      '-y',
-      '-f', 'lavfi', '-i', `color=c=black@0.0:s=${WIDTH}x${HEIGHT}:d=1,format=rgba`,
-      '-frames:v', '1',
-      transparentPngPath,
-    ])
-    expect(genTransparent.status).toBe(0)
-
-    // `drawbox` only blends RGB against the existing frame; on a transparent
-    // canvas it leaves alpha at 0, producing an invisible "red" box. `geq`
-    // sets alpha explicitly, so the box is actually opaque.
-    const genRedBox = spawnSync(bin, [
-      '-y',
-      '-f', 'lavfi', '-i', `color=c=black@0.0:s=${WIDTH}x${HEIGHT}:d=1,format=rgba`,
-      '-vf',
-      "geq=r='if(between(X\\,50\\,149)*between(Y\\,50\\,149)\\,255\\,0)':g=0:b=0:" +
-        "a='if(between(X\\,50\\,149)*between(Y\\,50\\,149)\\,255\\,0)'",
-      '-frames:v', '1',
-      redBoxPngPath,
-    ])
-    expect(genRedBox.status).toBe(0)
+    // Overlays are raw RGBA, as the renderer sends them. Overlay 0: fully
+    // transparent. Overlay 1: transparent with an opaque red box at (50,50)-(149,149).
+    const transparentRgba = Buffer.alloc(WIDTH * HEIGHT * 4)
+    const redBoxRgba = Buffer.alloc(WIDTH * HEIGHT * 4)
+    for (let y = 50; y < 150; y++) {
+      for (let x = 50; x < 150; x++) {
+        const i = (y * WIDTH + x) * 4
+        redBoxRgba[i] = 255
+        redBoxRgba[i + 3] = 255
+      }
+    }
 
     // Timeline: play [0,2) -> hold at 2 for 0.5s -> play [2,4). Total 4.5s @ 30fps = 135 frames.
     const segments: OutputSegment[] = [
@@ -626,9 +614,9 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
     if (!started.ok) return
     const { jobId } = started
 
-    const overlay0 = await addOverlayToJob(jobId, await fsp.readFile(transparentPngPath))
+    const overlay0 = await addOverlayToJob(jobId, transparentRgba)
     expect(overlay0.ok).toBe(true)
-    const overlay1 = await addOverlayToJob(jobId, await fsp.readFile(redBoxPngPath))
+    const overlay1 = await addOverlayToJob(jobId, redBoxRgba)
     expect(overlay1.ok).toBe(true)
     if (!overlay0.ok || !overlay1.ok) return
 
@@ -725,4 +713,20 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
 
     await expect(fsp.stat(cancelOutputPath)).rejects.toThrow()
   }, 30_000)
+})
+
+describe('encodeRgbaPng', () => {
+  it('produces a PNG that ffmpeg decodes back to the same pixels', () => {
+    if (!ffmpegPath || !fs.existsSync(ffmpegPath)) return
+    const w = 3
+    const h = 2
+    const rgba = Buffer.from([
+      255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0,
+      10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120,
+    ])
+    const png = encodeRgbaPng(w, h, rgba)
+    const decoded = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'png_pipe', '-i', 'pipe:0', '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'], { input: png })
+    expect(decoded.status).toBe(0)
+    expect(Buffer.from(decoded.stdout).equals(rgba)).toBe(true)
+  })
 })
