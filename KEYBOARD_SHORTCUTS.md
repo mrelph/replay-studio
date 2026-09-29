@@ -20,7 +20,6 @@ exactly. If you change a default binding in that file, update this doc too.
 | `T` | Text tool |
 | `S` | Spotlight tool |
 | `Shift+M` | Magnifier tool |
-| `Shift+K` | Player tracker |
 | `Shift+A` | Arc arrow tool |
 | `Shift+P` | Laser pointer |
 | `E` | Eraser tool |
@@ -49,6 +48,7 @@ exactly. If you change a default binding in that file, update this doc too.
 | `O` | Set Out point |
 | `[` | Jump to In point |
 | `]` | Jump to Out point |
+| `Shift+C` | Add clip from In/Out (see Clips panel) |
 
 ## Editing
 

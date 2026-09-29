@@ -24,7 +24,7 @@ Electron two-process app:
 - `electron/preload.cjs` — THE live preload script (CommonJS), exposes `window.electronAPI` via contextBridge
 - `src/` — React renderer
   - `src/stores/` — Zustand stores: `videoStore` (playback, in/out points), `toolStore` (active tool, color, stroke), `drawingStore` (annotations, undo/redo), `appStore`, plus `shortcutsStore`, `audienceStore`, `themeStore`, `waveformStore`
-  - `src/components/Canvas/DrawingCanvas.tsx` + `Canvas/tools/` — Fabric.js drawing tools (spotlight, magnifier, player tracker, YOLO detector via onnxruntime-web)
+  - `src/components/Canvas/DrawingCanvas.tsx` + `Canvas/tools/` — Fabric.js drawing tools (spotlight, magnifier; player tracker + YOLO detector via onnxruntime-web exist but are hidden from the UI and docs until tracking is reliable)
   - `src/plugins/ToolRegistry.ts` — tool plugin registration
   - `src/types/electron.d.ts` — renderer-side types for `window.electronAPI` (keep in sync with preload.cjs)
 - Path alias: `@` → `./src` (vite.config.ts)

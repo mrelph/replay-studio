@@ -27,7 +27,6 @@ Replay Studio is an Electron-based application that allows users to load video f
 - **Text (T)** - Add text annotations with custom styling
 - **Spotlight (S)** - Highlight specific areas with a spotlight effect
 - **Magnifier (M)** - Create magnification zones for detailed analysis
-- **Player Tracker (K)** - Track player/object movement with crosshair markers
 
 ### Annotation Features
 - Color picker with 10 preset colors
@@ -169,7 +168,6 @@ The build settings are configured in `package.json`:
 - `T` - Text tool
 - `S` - Spotlight tool
 - `M` - Magnifier tool
-- `K` - Player tracker
 
 ### Video Playback
 - `Space` - Play / Pause
@@ -237,7 +235,7 @@ The build settings are configured in `package.json`:
 ## Known Limitations
 
 - Export functionality uses a simplified implementation; full FFmpeg integration is planned for future releases
-- Player tracker and magnifier tools have basic implementations
+- Magnifier tool has a basic implementation
 - No support for audio-only annotations
 - Limited video codec support (depends on Chromium/Electron support)
 

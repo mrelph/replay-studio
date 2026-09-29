@@ -547,8 +547,8 @@ function App() {
                 <div className="grid grid-cols-2 gap-3 mt-8">
                   {[
                     { icon: PenTool, title: 'Draw & Annotate', desc: 'Freehand, arrows, shapes, and text overlays' },
-                    { icon: Users, title: 'Player Tracking', desc: 'Spotlight, magnifier, and motion tracking' },
-                    { icon: Download, title: 'Export Clips', desc: 'MP4 and animated GIF with annotations' },
+                    { icon: Users, title: 'Highlight Players', desc: 'Spotlight and magnifier to focus attention' },
+                    { icon: Download, title: 'Export Clips', desc: 'Mark clips across a game; export each with drawings burned in' },
                     { icon: Presentation, title: 'Present Live', desc: 'Audience view with laser pointer' },
                   ].map(({ icon: Icon, title, desc }) => (
                     <div

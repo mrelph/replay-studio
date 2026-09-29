@@ -255,7 +255,7 @@ Press `?` at any time to see the full keyboard shortcuts reference!
 
 Now that you're familiar with the basics:
 
-1. **Explore all the tools**: Try the Spotlight, Magnifier, and Tracker tools
+1. **Explore all the tools**: Try the Spotlight and Magnifier tools
 2. **Learn advanced shortcuts**: Memorize J/K/L for professional video navigation
 3. **Experiment with colors and styles**: Create your signature annotation style
 4. **Share your work**: Export and share your annotated videos
