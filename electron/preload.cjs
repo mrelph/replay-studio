@@ -73,14 +73,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return { error: err instanceof Error ? err.message : 'Probe failed' };
     }
   },
-  chooseExportFolder: async () => {
-    try {
-      return await ipcRenderer.invoke('dialog:chooseExportFolder');
-    } catch (err) {
-      console.error('chooseExportFolder error:', err);
-      return null;
-    }
-  },
+  // Errors propagate so the export dialog can tell the user why the picker failed.
+  chooseExportFolder: () => ipcRenderer.invoke('dialog:chooseExportFolder'),
   clipEncodeStart: async (options) => {
     try {
       return await ipcRenderer.invoke('clip:encodeStart', options);

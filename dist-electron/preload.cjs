@@ -64,6 +64,49 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // Multi-clip export (see docs/CLIPS_PLAN.md)
+  probeVideo: async (filePath) => {
+    try {
+      return await ipcRenderer.invoke('video:probe', filePath);
+    } catch (err) {
+      console.error('probeVideo error:', err);
+      return { error: err instanceof Error ? err.message : 'Probe failed' };
+    }
+  },
+  // Errors propagate so the export dialog can tell the user why the picker failed.
+  chooseExportFolder: () => ipcRenderer.invoke('dialog:chooseExportFolder'),
+  clipEncodeStart: async (options) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeStart', options);
+    } catch (err) {
+      console.error('clipEncodeStart error:', err);
+      return { ok: false, error: err instanceof Error ? err.message : 'Encode start failed' };
+    }
+  },
+  clipEncodeFrame: async (jobId, jpeg) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeFrame', jobId, jpeg);
+    } catch (err) {
+      console.error('clipEncodeFrame error:', err);
+      return false;
+    }
+  },
+  clipEncodeFinish: async (jobId) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeFinish', jobId);
+    } catch (err) {
+      console.error('clipEncodeFinish error:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Encode finish failed' };
+    }
+  },
+  clipEncodeCancel: async (jobId) => {
+    try {
+      return await ipcRenderer.invoke('clip:encodeCancel', jobId);
+    } catch (err) {
+      console.error('clipEncodeCancel error:', err);
+    }
+  },
+
   // Project save/load
   saveProject: async (defaultName) => {
     try {

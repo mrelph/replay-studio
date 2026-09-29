@@ -703,7 +703,10 @@ ipcMain.handle('dialog:chooseExportFolder', async () => {
   })
   if (result.canceled || result.filePaths.length === 0) return null
   const real = await canonicalize(result.filePaths[0])
-  if (!real) return null
+  if (!real) {
+    console.error('chooseExportFolder: could not resolve', result.filePaths[0])
+    throw new Error(`Folder not accessible: ${result.filePaths[0]}`)
+  }
   authorizedExportFolders.add(real)
   return real
 })

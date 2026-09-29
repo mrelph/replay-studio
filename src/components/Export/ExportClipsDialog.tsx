@@ -201,8 +201,13 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
   const handleChooseFolder = useCallback(async () => {
     if (!hasElectron) return
-    const chosen = await window.electronAPI.chooseExportFolder()
-    if (chosen) setFolder(chosen)
+    try {
+      const chosen = await window.electronAPI.chooseExportFolder()
+      if (chosen) setFolder(chosen)
+    } catch (err) {
+      console.error('chooseExportFolder failed:', err)
+      toast('error', `Couldn't open the folder picker: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }, [hasElectron])
 
   const canExport = hasElectron && !!probe && !probeError && !!folder && selectedCount > 0 && !exporting
