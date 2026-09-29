@@ -193,6 +193,10 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         )}
         <video
           ref={videoRef}
+          // CORS mode keeps canvases that draw this video readable (audience
+          // stream, magnifier, trackers). local-video:// is a standard scheme
+          // that answers with access-control-allow-origin: *.
+          crossOrigin="anonymous"
           src={src}
           className="max-h-full max-w-full object-contain"
           onClick={() => {
