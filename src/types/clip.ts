@@ -12,6 +12,10 @@ export interface Clip {
   end: number
   /** CSS color used for the timeline bar and list swatch. */
   color: string
+  /** Normalized via src/utils/clipTags.ts: trimmed, whitespace-collapsed, <=24 chars, case-insensitive deduped, <=12 tags. */
+  tags: string[]
+  /** Free-form notes, capped at 2000 chars (src/utils/clipTags.ts). */
+  notes: string
 }
 
 /**

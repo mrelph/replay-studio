@@ -47,7 +47,19 @@ exactly. If you change a default binding in that file, update this doc too.
 | `O` | Set Out point |
 | `[` | Jump to In point |
 | `]` | Jump to Out point |
-| `Shift+C` | Add clip from In/Out (see Clips panel) |
+
+## Clips
+
+| Shortcut | Action |
+|----------|--------|
+| `Shift+C` | Add clip from In/Out |
+| `X` | Mark moment: clip around the playhead (see the Clips panel's "Mark: −Ns / +Ns" setting) |
+
+`X` clips `[playhead − pre-roll, playhead + post-roll]` (defaults 8s/4s, adjustable
+in the Clips panel), clamped to the video's length. It works while playing — it
+reads the exact time the key was pressed and doesn't pause or seek. Any
+**sticky tags** set in the Clips panel are applied to the new clip automatically
+(for both `X` and `Shift+C`).
 
 ## Editing
 

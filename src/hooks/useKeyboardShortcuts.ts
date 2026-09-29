@@ -3,6 +3,7 @@ import { useToolStore, PRESET_COLORS, type ToolType } from '@/stores/toolStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useClipStore } from '@/stores/clipStore'
+import { useClipPrefsStore } from '@/stores/clipPrefsStore'
 import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
 import { fabric } from '@/lib/fabric'
 import { toast } from '@/components/ui'
@@ -159,13 +160,33 @@ export function useKeyboardShortcuts() {
           toast('info', 'Set In (I) and Out (O) first')
           return
         }
-        const clip = useClipStore.getState().addClip(clipIn, clipOut)
+        const stickyTags = useClipPrefsStore.getState().stickyTags
+        const clip = useClipStore.getState().addClip(clipIn, clipOut, undefined, stickyTags)
         if (!clip) {
           toast('error', 'Clip range is too short')
           return
         }
         setInPoint(null)
         setOutPoint(null)
+        return
+      }
+
+      case 'clip.markMoment': {
+        e.preventDefault()
+        // Read time straight off the <video> element rather than the (possibly
+        // one tick stale) store value, so the clip lands on the exact moment
+        // the key was pressed, including while playing. Doesn't pause or seek.
+        const { videoElement: el, currentTime: storeTime, duration: videoDuration } = useVideoStore.getState()
+        const t = el?.currentTime ?? storeTime
+        const { preRoll, postRoll, stickyTags } = useClipPrefsStore.getState()
+        const start = Math.max(0, t - preRoll)
+        const end = Math.min(videoDuration, t + postRoll)
+        const clip = useClipStore.getState().addClip(start, end, undefined, stickyTags)
+        if (!clip) {
+          toast('error', 'Clip range is too short')
+          return
+        }
+        toast('success', `${clip.name} marked (−${preRoll}s / +${postRoll}s)`)
         return
       }
 

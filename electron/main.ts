@@ -76,8 +76,8 @@ const dialogApprovedReadPaths = new Set<string>()
 /** Folders chosen via chooseExportFolder(); writes are authorized under these. */
 const authorizedExportFolders = new Set<string>()
 
-/** Extensions clip export is allowed to write: burned-in/clean video, GIF, project + metadata. */
-const EXPORT_WRITE_EXTENSIONS = new Set(['mp4', 'gif', 'rsproj', 'json'])
+/** Extensions clip export is allowed to write: burned-in/clean video, GIF, project + metadata, clips.csv manifest. */
+const EXPORT_WRITE_EXTENSIONS = new Set(['mp4', 'gif', 'rsproj', 'json', 'csv'])
 
 /**
  * The single place local-video URLs are decoded. Accepts the current

@@ -33,6 +33,7 @@ export type ShortcutAction =
   | 'inout.jumpToOut'
   // Clips
   | 'clip.add'
+  | 'clip.markMoment'
   // Editing
   | 'edit.undo'
   | 'edit.redo'
@@ -96,6 +97,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'inout.jumpToIn', label: 'Jump to In point', category: 'In/Out Points', binding: { key: '[' } },
   { action: 'inout.jumpToOut', label: 'Jump to Out point', category: 'In/Out Points', binding: { key: ']' } },
   { action: 'clip.add', label: 'Add clip from In/Out', category: 'Clips', binding: { key: 'c', shift: true } },
+  { action: 'clip.markMoment', label: 'Mark moment (clip around playhead)', category: 'Clips', binding: { key: 'x' } },
   // Editing
   { action: 'edit.undo', label: 'Undo', category: 'Editing', binding: { key: 'z', ctrl: true } },
   { action: 'edit.redo', label: 'Redo', category: 'Editing', binding: { key: 'y', ctrl: true } },

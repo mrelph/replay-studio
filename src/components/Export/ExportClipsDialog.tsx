@@ -7,6 +7,9 @@ import { toast } from '@/components/ui/Toast'
 import { buildOutputTimeline } from '@/export/outputTimeline'
 import { renderClip } from '@/export/clipRenderer'
 import { buildEditableProject } from '@/export/editableCopy'
+import { buildClipBaseName, orderLabel } from '@/export/clipFilename'
+import { buildClipsCsv, type ClipCsvRow, type ClipCsvStatus } from '@/export/clipsCsv'
+import { hashTagColorClass } from '@/utils/clipTags'
 import { exportProjectToJSON } from '@/utils/projectSerializer'
 import type { Clip, ClipExportQuality, VideoProbe } from '@/types/clip'
 
@@ -28,21 +31,6 @@ interface ExportSummary {
   exportedCount: number
   failedCount: number
   cancelledCount: number
-}
-
-/** Removes filesystem-hostile characters, trims, and caps length for a safe output filename component. */
-function sanitizeName(name: string): string {
-  const cleaned = name
-    // eslint-disable-next-line no-control-regex
-    .replace(/[/\\:*?"<>|\x00-\x1f\x7f]/g, '')
-    .trim()
-  const base = cleaned.length > 0 ? cleaned : 'Clip'
-  return base.slice(0, 80).trim() || 'Clip'
-}
-
-/** `nn` is 1-based order in the clip list. */
-function orderLabel(nn: number): string {
-  return String(nn).padStart(2, '0')
 }
 
 function formatDuration(seconds: number): string {
@@ -112,6 +100,8 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   const [selected, setSelected] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(clips.map((c) => [c.id, true]))
   )
+  /** Lowercased tags currently active in the "Select by tag" row (empty = not filtering). */
+  const [tagFilters, setTagFilters] = useState<Set<string>>(new Set())
   const [quality, setQuality] = useState<ClipExportQuality>('high')
   const [burnIn, setBurnIn] = useState(true)
   const [saveEditableCopy, setSaveEditableCopy] = useState(true)
@@ -190,11 +180,44 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   }, [])
 
   const selectAll = useCallback(() => {
+    setTagFilters(new Set())
     setSelected(Object.fromEntries(clips.map((c) => [c.id, true])))
   }, [clips])
 
   const selectNone = useCallback(() => {
+    setTagFilters(new Set())
     setSelected(Object.fromEntries(clips.map((c) => [c.id, false])))
+  }, [clips])
+
+  // All tags in use across the project's clips, deduped case-insensitively
+  // (keeping the first casing seen), for the "Select by tag" row.
+  const allTags = useMemo(() => {
+    const byKey = new Map<string, string>()
+    for (const clip of clips) {
+      for (const tag of clip.tags) {
+        const key = tag.toLowerCase()
+        if (!byKey.has(key)) byKey.set(key, tag)
+      }
+    }
+    return Array.from(byKey.values())
+  }, [clips])
+
+  // Selects exactly the clips having any of the currently-active tag
+  // filters; toggling back to zero active filters leaves the selection as-is
+  // rather than fighting the individual checkboxes below.
+  const toggleTagFilter = useCallback((tag: string) => {
+    setTagFilters((prev) => {
+      const key = tag.toLowerCase()
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      if (next.size > 0) {
+        setSelected(
+          Object.fromEntries(clips.map((c) => [c.id, c.tags.some((t) => next.has(t.toLowerCase()))]))
+        )
+      }
+      return next
+    })
   }, [clips])
 
   const handleChooseFolder = useCallback(async () => {
@@ -228,17 +251,27 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     setSummary(null)
     setStatuses(Object.fromEntries(selectedClips.map(({ clip }) => [clip.id, { kind: 'pending' } as ClipStatus])))
 
+    // Mirrors `statuses` synchronously (React state updates aren't readable
+    // until the next render) so clips.csv can be built from the true final
+    // status of every clip once the loop below finishes.
+    const statusMap: Record<string, ClipStatus> = {}
+    const baseNameByClipId: Record<string, string> = {}
+    const setStatus = (id: string, status: ClipStatus) => {
+      statusMap[id] = status
+      setStatuses((s) => ({ ...s, [id]: status }))
+    }
+
     let exportedCount = 0
     let failedCount = 0
 
     for (const { clip, nn } of selectedClips) {
       if (controller.signal.aborted) break
 
-      const nnLabel = orderLabel(nn)
-      const sanitized = sanitizeName(clip.name)
-      const outputPath = `${folder}/${nnLabel} - ${sanitized}.mp4`
+      const baseName = buildClipBaseName(nn, clip.name, clip.tags)
+      baseNameByClipId[clip.id] = baseName
+      const outputPath = `${folder}/${baseName}.mp4`
 
-      setStatuses((s) => ({ ...s, [clip.id]: { kind: 'rendering', percent: 0 } }))
+      setStatus(clip.id, { kind: 'rendering', percent: 0 })
 
       try {
         const result = await renderClip({
@@ -250,25 +283,25 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
           outputPath,
           sourcePath,
           onProgress: (percent) => {
-            setStatuses((s) => ({ ...s, [clip.id]: { kind: 'rendering', percent } }))
+            setStatus(clip.id, { kind: 'rendering', percent })
           },
           signal: controller.signal,
         })
 
         if (!result.success) {
           if (result.error === 'Cancelled') {
-            setStatuses((s) => ({ ...s, [clip.id]: { kind: 'cancelled' } }))
+            setStatus(clip.id, { kind: 'cancelled' })
             break
           }
           failedCount += 1
-          setStatuses((s) => ({ ...s, [clip.id]: { kind: 'failed', message: result.error || 'Export failed' } }))
+          setStatus(clip.id, { kind: 'failed', message: result.error || 'Export failed' })
           continue
         }
 
         if (saveEditableCopy) {
-          setStatuses((s) => ({ ...s, [clip.id]: { kind: 'saving-copy' } }))
-          const cleanPath = `${folder}/${nnLabel} - ${sanitized}.clean.mp4`
-          const projectPath = `${folder}/${nnLabel} - ${sanitized}.rsproj`
+          setStatus(clip.id, { kind: 'saving-copy' })
+          const cleanPath = `${folder}/${baseName}.clean.mp4`
+          const projectPath = `${folder}/${baseName}.rsproj`
 
           const cleanResult = await window.electronAPI.exportVideo({
             inputPath: sourcePath,
@@ -282,45 +315,39 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
           if (!cleanResult.success) {
             failedCount += 1
-            setStatuses((s) => ({
-              ...s,
-              [clip.id]: { kind: 'failed', message: cleanResult.error || 'Editable copy export failed' },
-            }))
+            setStatus(clip.id, { kind: 'failed', message: cleanResult.error || 'Editable copy export failed' })
             continue
           }
 
-          const project = buildEditableProject(clip, annotations, cleanPath, sanitized)
+          const project = buildEditableProject(clip, annotations, cleanPath, baseName)
           const writeResult = await window.electronAPI.writeFile(projectPath, exportProjectToJSON(project))
 
           if (!writeResult.success) {
             failedCount += 1
-            setStatuses((s) => ({
-              ...s,
-              [clip.id]: { kind: 'failed', message: writeResult.error || 'Could not save project file' },
-            }))
+            setStatus(clip.id, { kind: 'failed', message: writeResult.error || 'Could not save project file' })
             continue
           }
         }
 
         exportedCount += 1
-        setStatuses((s) => ({ ...s, [clip.id]: { kind: 'done' } }))
+        setStatus(clip.id, { kind: 'done' })
       } catch (err) {
         failedCount += 1
-        setStatuses((s) => ({
-          ...s,
-          [clip.id]: { kind: 'failed', message: err instanceof Error ? err.message : 'Export failed' },
-        }))
+        setStatus(clip.id, { kind: 'failed', message: err instanceof Error ? err.message : 'Export failed' })
       }
     }
 
     // Any clip that never got a chance to start (export was cancelled
-    // before we reached it) is left as 'pending' by the loop above; mark
-    // those as cancelled too so the status list doesn't lie.
+    // before we reached it) is left as 'pending'/unset; mark those as
+    // cancelled too so the status list (and clips.csv below) doesn't lie.
+    for (const { clip } of selectedClips) {
+      if (!statusMap[clip.id] || statusMap[clip.id].kind === 'pending') {
+        statusMap[clip.id] = { kind: 'cancelled' }
+      }
+    }
     setStatuses((s) => {
       const next = { ...s }
-      for (const { clip } of selectedClips) {
-        if (next[clip.id]?.kind === 'pending') next[clip.id] = { kind: 'cancelled' }
-      }
+      for (const { clip } of selectedClips) next[clip.id] = statusMap[clip.id]
       return next
     })
 
@@ -329,6 +356,29 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     setSummary(finalSummary)
     setExporting(false)
     abortControllerRef.current = null
+
+    // Write clips.csv for this run (even a partial one) so the coach has a
+    // manifest of what was produced, its tags/notes, and what didn't make it.
+    const csvStatusFor = (status: ClipStatus): ClipCsvStatus =>
+      status.kind === 'done' ? 'exported' : status.kind === 'failed' ? 'failed' : 'cancelled'
+    const csvRows: ClipCsvRow[] = selectedClips.map(({ clip, nn }) => ({
+      number: nn,
+      name: clip.name,
+      start: clip.start,
+      end: clip.end,
+      tags: clip.tags,
+      notes: clip.notes,
+      file: `${baseNameByClipId[clip.id] ?? buildClipBaseName(nn, clip.name, clip.tags)}.mp4`,
+      status: csvStatusFor(statusMap[clip.id] ?? { kind: 'cancelled' }),
+    }))
+    try {
+      const csvResult = await window.electronAPI.writeFile(`${folder}/clips.csv`, buildClipsCsv(csvRows))
+      if (!csvResult.success) {
+        toast('error', `Couldn't write clips.csv: ${csvResult.error || 'unknown error'}`)
+      }
+    } catch (err) {
+      toast('error', `Couldn't write clips.csv: ${err instanceof Error ? err.message : 'unknown error'}`)
+    }
 
     if (finalSummary.failedCount > 0) {
       toast('error', `Exported ${finalSummary.exportedCount} clip(s), ${finalSummary.failedCount} failed`)
@@ -435,6 +485,29 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
               </button>
             </div>
           </div>
+
+          {allTags.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap mb-2">
+              <span className="text-xs text-text-tertiary mr-0.5">Select by tag:</span>
+              {allTags.map((tag) => {
+                const active = tagFilters.has(tag.toLowerCase())
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTagFilter(tag)}
+                    disabled={exporting}
+                    aria-pressed={active}
+                    className={`px-1.5 py-0.5 rounded-full text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                      active ? 'ring-1 ring-accent ' : ''
+                    }${hashTagColorClass(tag)}`}
+                  >
+                    {tag}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {clips.length === 0 ? (
             <p className="text-sm text-text-tertiary bg-surface-sunken rounded-lg p-3">
