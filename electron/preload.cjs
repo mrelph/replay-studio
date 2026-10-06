@@ -113,6 +113,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('clip:encodeProgress');
   },
 
+  // Highlight reel (see docs/REEL_PLAN.md)
+  reelStart: async (options) => {
+    try {
+      return await ipcRenderer.invoke('reel:start', options);
+    } catch (err) {
+      console.error('reelStart error:', err);
+      return { ok: false, error: err instanceof Error ? err.message : 'Reel start failed' };
+    }
+  },
+  reelAssemble: async (reelId, payload) => {
+    try {
+      return await ipcRenderer.invoke('reel:assemble', reelId, payload);
+    } catch (err) {
+      console.error('reelAssemble error:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Reel assemble failed' };
+    }
+  },
+  reelCancel: async (reelId) => {
+    try {
+      return await ipcRenderer.invoke('reel:cancel', reelId);
+    } catch (err) {
+      console.error('reelCancel error:', err);
+    }
+  },
+  onReelProgress: (callback) => {
+    ipcRenderer.on('reel:progress', (_, progress) => callback(progress));
+  },
+  removeReelProgressListener: () => {
+    ipcRenderer.removeAllListeners('reel:progress');
+  },
+
   // Project save/load
   saveProject: async (defaultName) => {
     try {

@@ -55,6 +55,8 @@ zoomed content ignores fade.
   `MagnifierOp`, `ClipEncodeRunOptions`, `ClipEncodeProgressEvent`,
   `ClipExportResult`. `Clip` now also carries `tags: string[]` and
   `notes: string` (both required — see "Fast clip marking & tags" below).
+  `ClipEncodeStartOptions` gained an optional `reel` (2026-10-06,
+  additive) for highlight-reel parts; see `docs/REEL_PLAN.md`.
 - `src/types/electron.d.ts`: `probeVideo`, `chooseExportFolder`,
   `clipEncodeStart`, `clipEncodeAddOverlay`, `clipEncodeRun`,
   `clipEncodeCancel`, `onClipEncodeProgress`/`removeClipEncodeProgressListener`.

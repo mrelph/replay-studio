@@ -61,6 +61,18 @@ export interface ClipEncodeStartOptions {
   frameCount: number
   quality: ClipExportQuality
   segments: OutputSegment[]
+  /**
+   * Makes this job one part of a highlight reel (see docs/REEL_PLAN.md).
+   * With `keep: false` the main process ignores `outputPath` and writes the
+   * part into the reel's temp dir; with `keep: true` the part is a normal
+   * export at `outputPath` that the reel also uses.
+   */
+  reel?: ClipEncodeReelPart
+}
+
+export interface ClipEncodeReelPart {
+  reelId: string
+  keep: boolean
 }
 
 export type ClipEncodeStartResult =
@@ -136,4 +148,35 @@ export interface ClipEncodeProgressEvent {
 export interface ClipExportResult {
   success: boolean
   error?: string
+}
+
+// ---------------------------------------------------------------------------
+// Highlight reel (docs/REEL_PLAN.md): parts are ordinary clip encode jobs
+// started with `reel`, joined in start order by `reelAssemble`.
+// ---------------------------------------------------------------------------
+
+export interface ReelStartOptions {
+  /** Absolute path of the reel MP4; must be inside an authorized export folder. */
+  outputPath: string
+}
+
+export type ReelStartResult =
+  | { ok: true; reelId: string; /** Free bytes on the temp volume, or null if unknown. */ freeBytes: number | null }
+  | { ok: false; error: string }
+
+/** One MP4 chapter, in reel output frames. Chapters must tile the whole reel. */
+export interface ReelChapter {
+  title: string
+  startFrame: number
+  frameCount: number
+}
+
+export interface ReelAssembleOptions {
+  chapters: ReelChapter[]
+}
+
+export interface ReelProgressEvent {
+  reelId: string
+  /** 0-100, for the join step only. */
+  percent: number
 }

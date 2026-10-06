@@ -5,6 +5,10 @@ import type {
   ClipEncodeAddOverlayResult,
   ClipEncodeRunOptions,
   ClipEncodeProgressEvent,
+  ReelAssembleOptions,
+  ReelProgressEvent,
+  ReelStartOptions,
+  ReelStartResult,
   ClipExportResult,
 } from './clip'
 
@@ -94,6 +98,16 @@ export interface ElectronAPI {
   /** Real-time percent (0-100) while an encode job runs; jobId lets a caller ignore events for other jobs. */
   onClipEncodeProgress: (callback: (progress: ClipEncodeProgressEvent) => void) => void
   removeClipEncodeProgressListener: () => void
+
+  // Highlight reel (see docs/REEL_PLAN.md)
+  /** Registers a reel writing to `outputPath` (inside an authorized export folder). Parts are clip jobs started with `reel`. */
+  reelStart: (options: ReelStartOptions) => Promise<ReelStartResult>
+  /** Joins the reel's finished parts, in start order, into the MP4 with the given chapters. */
+  reelAssemble: (reelId: string, payload: ReelAssembleOptions) => Promise<ClipExportResult>
+  reelCancel: (reelId: string) => Promise<void>
+  /** Percent (0-100) of the join step. */
+  onReelProgress: (callback: (progress: ReelProgressEvent) => void) => void
+  removeReelProgressListener: () => void
 
   // Project save/load
   saveProject: (defaultName: string) => Promise<string | null>

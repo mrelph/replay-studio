@@ -185,6 +185,30 @@ Same modal styling and folder picker as `ExportClipsDialog`.
   tag, reorder, and export with cards on and individual clips on. Check the
   files on disk and the chapters, then play the reel in mpv to look at it.
 
+## Phase 1 status (2026-10-06): done
+
+- `electron/reelExport.ts` with the registry and pure builders. Part
+  reservation happens in `clip:encodeStart` when `options.reel` is set.
+  `clip:encodeRun`/`clip:encodeCancel` mark the part done or failed.
+  `reel:start`/`reel:assemble`/`reel:cancel` and `reel:progress` go through
+  preload and `electron.d.ts`. Quit and window close cancel all reels.
+- **A/V sync, measured.** The concat demuxer aligns each part's earliest
+  timestamp (the AAC priming, −1024 samples) to 0. The copied video therefore
+  starts about 21 ms after the audio (a one-time lead-in), but every cut is
+  in sync to about 1 ms and nothing drifts: checked over 6 joins. A naive
+  `asetpts=PTS-STARTPTS` "fix" makes it *worse* (a 21 ms desync), and the e2e
+  test catches exactly that. `-ss 0`, `inpoint`, `outpoint` and
+  `-avoid_negative_ts make_zero` don't change it. Chapter times are
+  frames ÷ fps, so they sit 21 ms before the frame they name, which can't be
+  seen.
+- `silencedetect` gives silence *ends* to the sample but silence *starts*
+  only to one AAC frame. The e2e test measures onsets tightly (10 ms) and
+  starts loosely.
+- Verified in the dev app over CDP: a plain clip export still works, the
+  denial for a path outside the export folder still works, a two-part reel
+  (one temp part, one kept part) joins with 105/105 frames and two chapters,
+  a quality mismatch is refused, and the temp dirs are removed.
+
 ## Phases
 
 1. **Engine (main):** `reelExport.ts`, the additive `reelId` on clip jobs,

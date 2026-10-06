@@ -14,12 +14,24 @@ import {
   cancelClipEncodeJob,
   cancelAllClipEncodeJobs,
 } from './clipExport'
+import {
+  startReelJob,
+  reserveReelPart,
+  linkReelPartJob,
+  completeReelPartJob,
+  assembleReelJob,
+  cancelReelJob,
+  cancelAllReelJobs,
+} from './reelExport'
 import type {
   ClipEncodeStartOptions,
   ClipEncodeStartResult,
   ClipEncodeAddOverlayResult,
   ClipEncodeRunOptions,
   ClipExportResult,
+  ReelAssembleOptions,
+  ReelStartOptions,
+  ReelStartResult,
 } from '../src/types/clip'
 import { UpdaterController, currentUpdateEnv, type AutoUpdaterLike } from './updater'
 
@@ -518,6 +530,7 @@ function createWindow() {
       audienceWindow.close()
     }
     void cancelAllClipEncodeJobs()
+    void cancelAllReelJobs()
     mainWindow = null
   })
 }
@@ -741,13 +754,26 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
   if (!source || !registeredVideoPaths.has(source)) {
     return { ok: false, error: 'Encode denied: source video is not a registered file' }
   }
-  const output = await canonicalizeTarget(options.outputPath)
-  if (output === source) {
-    return { ok: false, error: 'Encode denied: output would overwrite the source video' }
+  // A reel part (docs/REEL_PLAN.md) either goes to the reel's temp dir, in
+  // which case `outputPath` is ignored, or is also kept as a normal export.
+  const reel = options.reel
+  if (
+    reel !== undefined &&
+    (!reel || typeof reel !== 'object' || typeof reel.reelId !== 'string' || typeof reel.keep !== 'boolean')
+  ) {
+    return { ok: false, error: 'Invalid reel part' }
   }
-  const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
-  if (!output || !outputAuthorized) {
-    return { ok: false, error: 'Encode denied: destination was not chosen in a save dialog or an authorized export folder' }
+
+  let output: string | null = null
+  if (!reel || reel.keep) {
+    output = await canonicalizeTarget(options.outputPath)
+    if (output === source) {
+      return { ok: false, error: 'Encode denied: output would overwrite the source video' }
+    }
+    const outputAuthorized = output && (dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output)))
+    if (!output || !outputAuthorized) {
+      return { ok: false, error: 'Encode denied: destination was not chosen in a save dialog or an authorized export folder' }
+    }
   }
 
   const probe = await probeVideo(source, getFfmpegBinaryPath())
@@ -755,7 +781,22 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
     return { ok: false, error: `Encode denied: could not probe source audio: ${probe.error}` }
   }
 
-  return startClipEncodeJob({ ...options, sourcePath: source, outputPath: output }, probe.hasAudio)
+  let reelPartIndex = -1
+  if (reel) {
+    const reserved = reserveReelPart(
+      reel.reelId,
+      { sourcePath: source, width: options.width, height: options.height, fps: options.fps, quality: options.quality, hasAudio: probe.hasAudio },
+      options.frameCount,
+      output
+    )
+    if (!reserved.ok) return { ok: false, error: reserved.error }
+    output = reserved.outputPath
+    reelPartIndex = reserved.index
+  }
+
+  const started = await startClipEncodeJob({ ...options, sourcePath: source, outputPath: output as string }, probe.hasAudio)
+  if (started.ok && reel) linkReelPartJob(started.jobId, reel.reelId, reelPartIndex)
+  return started
 })
 
 ipcMain.handle(
@@ -776,16 +817,50 @@ ipcMain.handle(
     if (typeof jobId !== 'string' || !payload || typeof payload !== 'object') {
       return { success: false, error: 'Invalid arguments' }
     }
-    return runClipEncodeJob(jobId, payload, getFfmpegBinaryPath(), (percent) => {
+    const result = await runClipEncodeJob(jobId, payload, getFfmpegBinaryPath(), (percent) => {
       mainWindow?.webContents.send('clip:encodeProgress', { jobId, percent })
     })
+    completeReelPartJob(jobId, result.success)
+    return result
   }
 )
 
 ipcMain.handle('clip:encodeCancel', async (event, jobId: string) => {
   if (!isFromMainWindow(event.sender)) return
   if (typeof jobId !== 'string') return
+  completeReelPartJob(jobId, false)
   await cancelClipEncodeJob(jobId)
+})
+
+// Highlight reel (see docs/REEL_PLAN.md): parts are clip encode jobs started
+// with `reel`; this joins them.
+
+ipcMain.handle('reel:start', async (event, options: ReelStartOptions): Promise<ReelStartResult> => {
+  if (!isFromMainWindow(event.sender)) return { ok: false, error: 'Reel denied: caller is not the main window' }
+  if (!options || typeof options !== 'object') return { ok: false, error: 'Invalid options' }
+  const output = await canonicalizeTarget(options.outputPath)
+  if (!output || path.extname(output).toLowerCase() !== '.mp4' || registeredVideoPaths.has(output)) {
+    return { ok: false, error: 'Reel denied: invalid destination' }
+  }
+  const outputAuthorized = dialogApprovedWritePaths.has(output) || (await isInsideAuthorizedExportFolder(output))
+  if (!outputAuthorized) {
+    return { ok: false, error: 'Reel denied: destination was not chosen in a save dialog or an authorized export folder' }
+  }
+  return startReelJob(output)
+})
+
+ipcMain.handle('reel:assemble', async (event, reelId: string, payload: ReelAssembleOptions): Promise<ClipExportResult> => {
+  if (!isFromMainWindow(event.sender)) return { success: false, error: 'Reel denied: caller is not the main window' }
+  if (typeof reelId !== 'string' || !payload || typeof payload !== 'object') return { success: false, error: 'Invalid arguments' }
+  return assembleReelJob(reelId, payload, getFfmpegBinaryPath(), (percent) => {
+    mainWindow?.webContents.send('reel:progress', { reelId, percent })
+  })
+})
+
+ipcMain.handle('reel:cancel', async (event, reelId: string) => {
+  if (!isFromMainWindow(event.sender)) return
+  if (typeof reelId !== 'string') return
+  await cancelReelJob(reelId)
 })
 
 // Auto-update IPC (see electron/updater.ts). Both channels are also reachable
@@ -863,5 +938,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void cancelAllClipEncodeJobs()
+  void cancelAllReelJobs()
   updaterController.stop()
 })
