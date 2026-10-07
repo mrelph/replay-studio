@@ -18,8 +18,8 @@ interface VideoState {
   reverseRate: number
   /** playbackRate to restore when a forward shuttle (L L…) is stopped; null when not shuttling. */
   shuttleBaseRate: number | null
-  /** While on, each pause → resume records a hold of the paused length at that frame. */
-  isRecordingHolds: boolean
+  /** Set while Freeze is timing a freeze on the stopped frame (where and when it started); resuming records it. */
+  freezeTiming: { time: number; at: number } | null
 
   // Actions
   setVideoElement: (element: HTMLVideoElement | null) => void
@@ -33,7 +33,10 @@ interface VideoState {
   setOutPoint: (time: number | null) => void
   setIsLooping: (looping: boolean) => void
   setFps: (fps: number) => void
-  setIsRecordingHolds: (recording: boolean) => void
+  /** Play | Freeze: stop on this frame and start timing a freeze, or resume (which records it). */
+  toggleFreeze: () => void
+  /** Stops timing without recording anything. */
+  cancelFreezeTiming: () => void
   play: () => void
   pause: () => void
   togglePlay: () => void
@@ -80,9 +83,9 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   fps: DEFAULT_FPS,
   reverseRate: 0,
   shuttleBaseRate: null,
-  isRecordingHolds: false,
+  freezeTiming: null,
 
-  setVideoElement: (element) => set({ videoElement: element }),
+  setVideoElement: (element) => set({ videoElement: element, freezeTiming: null }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration }),
@@ -111,7 +114,19 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   setInPoint: (time) => set({ inPoint: time }),
   setOutPoint: (time) => set({ outPoint: time }),
   setIsLooping: (looping) => set({ isLooping: looping }),
-  setIsRecordingHolds: (recording) => set({ isRecordingHolds: recording }),
+  toggleFreeze: () => {
+    const { videoElement, freezeTiming, reverseRate, shuttleBaseRate } = get()
+    if (!videoElement) return
+    if (freezeTiming) {
+      // The 'play' handler in VideoPlayer records the freeze.
+      videoElement.play()
+      return
+    }
+    if (reverseRate > 0 || shuttleBaseRate !== null) get().shuttleStop()
+    else if (!videoElement.paused) videoElement.pause()
+    set({ freezeTiming: { time: videoElement.currentTime, at: performance.now() } })
+  },
+  cancelFreezeTiming: () => set({ freezeTiming: null }),
   setFps: (fps) => set({ fps: Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_FPS }),
 
   play: () => {

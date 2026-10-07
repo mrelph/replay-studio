@@ -28,6 +28,7 @@ exactly. If you change a default binding in that file, update this doc too.
 | Shortcut | Action |
 |----------|--------|
 | `Space` | Play / Pause |
+| `H` | Freeze: stop on this frame and time it; press again (or Play) to resume and record the freeze. Also the ❄ button beside Play |
 | `→` | Next frame |
 | `←` | Previous frame |
 | `L` | Shuttle forward — tap again for 2x / 4x / 8x |
@@ -67,8 +68,6 @@ Upgrading from v1.2 or earlier: the old `J`/`L` skip bindings move to
 |----------|--------|
 | `Shift+C` | Add clip from In/Out |
 | `X` | Mark moment: clip around the playhead (see the Clips panel's "Mark: −Ns / +Ns" setting) |
-| `H` | Add a hold (freeze) on the paused frame; press again to remove it |
-| `Shift+H` | Record pauses as holds (on / off) — also the **HOLDS** button by the loop toggle |
 
 `X` clips `[playhead − pre-roll, playhead + post-roll]` (defaults 8s/4s, adjustable
 in the Clips panel), clamped to the video's length. It works while playing — it
@@ -123,24 +122,28 @@ Shortcuts are rebindable: open the shortcuts help modal (`?`) and click
 for it. Click the pencil next to any shortcut, press the new key combo, and
 confirm. Use **Reset to Defaults** to restore the bindings listed above.
 
-## Holds (freeze frames)
+## Freeze frames
 
-A hold freezes one frame for a few seconds. Exported clips include every hold
-inside their range: the frame repeats for that long, with silence, so a
-10 s clip with a 3 s hold exports at 13 s. Holds also play back live in the app.
+A freeze holds one frame for a few seconds. Exported clips include every
+freeze inside their range: the frame repeats for that long, with silence, so a
+10 s clip with a 3 s freeze exports at 13 s. Freezes also play back live in the app.
 
-- **`H`** (while paused) adds a hold on the frame you're looking at, using the
-  length set in the snowflake (freeze) button on the drawing toolbar (default
-  3 s). Press `H` again on the same frame to remove it.
-- **Record pauses (`Shift+H`)**: while recording is on, each time you pause and
-  then resume, a hold is added at that frame **for as long as you paused**. So you
-  can talk through a play in real time, and the clip picks up your pauses.
-  - Stepping a few frames while paused (up to about ½ s) is fine: the hold goes
-    on the frame you resume from.
-  - A pause is **not** recorded if you rewind or scrub away before resuming, if
-    it lasts under 0.3 s (a double-tap), or if it's the app's own stop (the Out
-    point, a hold playing back, or the J reverse shuttle).
-  - Long pauses are capped at 30 s. You can edit any hold's length in the
-    annotation details on the timeline.
-  - Pausing again on a frame that already has a hold replaces that hold's length.
+**Freeze (`H`, or the ❄ button beside Play)** is the alternate to Pause. It stops
+on the current frame and starts a timer on the button. When you resume, with
+Freeze again or with Play, a freeze of that length is recorded on that frame.
+So you hold the frame live while you talk or draw, and that becomes the freeze.
+Plain Pause never records anything.
+
+- It works while playing or already paused. Stepping a few frames while timing
+  (up to about ½ s) is fine: the freeze goes on the frame you resume from.
+- Seeking or scrubbing further away cancels the freeze. A freeze shorter than
+  0.3 s (a double-tap) isn't recorded.
+- Freezes are capped at 30 s. Freezing a frame that already has one replaces
+  its length, including while an existing freeze is playing back.
+- To change a freeze's length or delete it, use its marker in the annotation
+  details on the timeline.
+
+Up to v1.3, a "hold" (`H` and Shift+H **HOLDS**) and the toolbar snowflake were
+three ways of making the same thing. They're all Freeze now. A custom key you
+gave to the hold toggle carries over to Freeze.
 

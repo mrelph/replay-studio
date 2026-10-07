@@ -28,6 +28,7 @@ export type ShortcutAction =
   | 'video.toggleLoop'
   | 'video.shuttleForward'
   | 'video.shuttleReverse'
+  | 'video.freeze'
   // In/Out points
   | 'inout.setIn'
   | 'inout.setOut'
@@ -40,8 +41,6 @@ export type ShortcutAction =
   // Clips
   | 'clip.add'
   | 'clip.markMoment'
-  | 'clip.toggleHold'
-  | 'clip.recordHolds'
   // Editing
   | 'edit.undo'
   | 'edit.redo'
@@ -89,6 +88,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'tool.erase', label: 'Eraser tool', category: 'Tools', binding: { key: 'e' } },
   // Video
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },
+  { action: 'video.freeze', label: 'Freeze: stop on this frame and time it; resume to record the freeze', category: 'Video Playback', binding: { key: 'h' } },
   { action: 'video.stepForward', label: 'Next frame', category: 'Video Playback', binding: { key: 'arrowright' } },
   { action: 'video.stepBackward', label: 'Previous frame', category: 'Video Playback', binding: { key: 'arrowleft' } },
   { action: 'video.shuttleReverse', label: 'Shuttle reverse (tap again: faster; hold K: prev frame)', category: 'Video Playback', binding: { key: 'j' } },
@@ -112,8 +112,6 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'trim.outForward', label: 'Nudge Out 1 frame later (selected clip, else Out point)', category: 'In/Out Points', binding: { key: 'arrowright', alt: true, shift: true } },
   { action: 'clip.add', label: 'Add clip from In/Out', category: 'Clips', binding: { key: 'c', shift: true } },
   { action: 'clip.markMoment', label: 'Mark moment (clip around playhead)', category: 'Clips', binding: { key: 'x' } },
-  { action: 'clip.toggleHold', label: 'Add / remove a hold (freeze) on this frame', category: 'Clips', binding: { key: 'h' } },
-  { action: 'clip.recordHolds', label: 'Record pauses as holds (on / off)', category: 'Clips', binding: { key: 'h', shift: true } },
   // Editing
   { action: 'edit.undo', label: 'Undo', category: 'Editing', binding: { key: 'z', ctrl: true } },
   { action: 'edit.redo', label: 'Redo', category: 'Editing', binding: { key: 'y', ctrl: true } },
@@ -203,16 +201,28 @@ const V0_SKIP_DEFAULTS: Partial<Record<ShortcutAction, string>> = {
   'video.skipBackward': 'j',
 }
 
+// v1 had a fixed-length hold toggle (H) and a record-pauses mode (Shift+H);
+// v2 merges both into Freeze, which keeps the hold toggle's binding. The
+// record mode's binding is dropped by `merge` like any removed action.
+const V1_RENAMED: Record<string, ShortcutAction> = {
+  'clip.toggleHold': 'video.freeze',
+}
+
 export function migrateShortcuts(persisted: unknown, version: number): unknown {
   const state = persisted as Partial<ShortcutsState> | undefined
-  if (version >= 1 || !Array.isArray(state?.shortcuts)) return persisted
-  return {
-    ...state,
-    shortcuts: state.shortcuts.filter((s) => {
+  if (version >= 2 || !Array.isArray(state?.shortcuts)) return persisted
+  let shortcuts = state.shortcuts
+  if (version < 1) {
+    shortcuts = shortcuts.filter((s) => {
       const b = s.binding
       return !(V0_SKIP_DEFAULTS[s.action] === b.key && !b.ctrl && !b.shift && !b.alt)
-    }),
+    })
   }
+  shortcuts = shortcuts.map((s) => {
+    const renamed = V1_RENAMED[s.action as string]
+    return renamed ? { ...s, action: renamed } : s
+  })
+  return { ...state, shortcuts }
 }
 
 export const useShortcutsStore = create<ShortcutsState>()(
@@ -252,7 +262,7 @@ export const useShortcutsStore = create<ShortcutsState>()(
     }),
     {
       name: 'replay-studio-shortcuts',
-      version: 1,
+      version: 2,
       migrate: (persisted, version) => migrateShortcuts(persisted, version),
       // Reconcile saved bindings with the current defaults: keep the user's
       // bindings for known actions, drop removed actions, add new ones.
