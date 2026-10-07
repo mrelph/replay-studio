@@ -4,7 +4,7 @@ import { useDrawingStore } from '@/stores/drawingStore'
 import VideoControls from './VideoControls'
 import { toast } from '@/components/ui'
 import { formatTimecode } from '@/utils/frames'
-import { recordedHold, setFreezeAt } from '@/utils/freezeMarkers'
+import { MAX_PAUSE_DRIFT_SECONDS, recordedHold, setFreezeAt } from '@/utils/freezeMarkers'
 
 interface VideoPlayerProps {
   src: string
@@ -35,10 +35,6 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   // True while the freeze logic's own snap-to-frame seek is in flight, so
   // 'seeking' doesn't treat it as a user seek (which cancels the resume timer).
   const isFreezeSeekRef = useRef(false)
-  // Same, for the pause that enforces the Out point.
-  const isOutPointPauseRef = useRef(false)
-  // Hold recording: where and when the coach last paused (null = nothing to record on resume).
-  const pauseStartRef = useRef<{ time: number; at: number } | null>(null)
 
   // Reset triggered freezes when user seeks or pauses
   const resetFreezes = useCallback(() => {
@@ -81,7 +77,6 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           video.currentTime = inPoint ?? 0
         } else {
           video.currentTime = outPoint
-          if (!video.paused) isOutPointPauseRef.current = true
           video.pause()
         }
       }
@@ -145,15 +140,25 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       }
       resetFreezes()
       lastTimeRef.current = video.currentTime
+      // Stepping a few frames while timing a freeze picks the exact frame;
+      // seeking away means the coach moved on.
+      const timing = useVideoStore.getState().freezeTiming
+      if (timing && Math.abs(video.currentTime - timing.time) > MAX_PAUSE_DRIFT_SECONDS) {
+        useVideoStore.getState().cancelFreezeTiming()
+        toast('info', 'Freeze cancelled: the playhead moved')
+      }
     }
 
     const handlePlay = () => {
       setIsPlaying(true)
-      const pause = pauseStartRef.current
-      pauseStartRef.current = null
-      if (!pause || !useVideoStore.getState().isRecordingHolds) return
-      const hold = recordedHold(pause.time, video.currentTime, (performance.now() - pause.at) / 1000)
-      if (!hold.record) return
+      const timing = useVideoStore.getState().freezeTiming
+      if (!timing) return
+      useVideoStore.getState().cancelFreezeTiming()
+      const hold = recordedHold(timing.time, video.currentTime, (performance.now() - timing.at) / 1000)
+      if (!hold.record) {
+        if (hold.reason === 'too-short') toast('info', 'Freeze too short: nothing recorded')
+        return
+      }
       const { fps } = useVideoStore.getState()
       const id = setFreezeAt(video.currentTime, hold.seconds, fps)
       if (!id) return
@@ -161,17 +166,10 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       // live, so don't let the new freeze fire again right now.
       triggeredFreezesRef.current.add(id)
       const stamp = formatTimecode(video.currentTime, fps)
-      toast('success', hold.capped ? `Hold recorded at ${stamp} (capped at ${hold.seconds}s)` : `${hold.seconds}s hold recorded at ${stamp}`)
+      toast('success', hold.capped ? `Freeze recorded at ${stamp} (capped at ${hold.seconds}s)` : `${hold.seconds}s freeze recorded at ${stamp}`)
     }
     const handlePause = () => {
       setIsPlaying(false)
-      const systemPause = isFreezePauseRef.current || isOutPointPauseRef.current
-      isOutPointPauseRef.current = false
-      // Only a coach's own pause is a hold candidate — not a freeze firing,
-      // the Out point stopping playback, or the reverse shuttle taking over.
-      pauseStartRef.current = systemPause || useVideoStore.getState().reverseRate > 0
-        ? null
-        : { time: video.currentTime, at: performance.now() }
       if (isFreezePauseRef.current) {
         // This pause was triggered by the freeze-frame logic itself — leave
         // the pending resume timer alone.
@@ -207,9 +205,13 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     video.addEventListener('error', handleError)
     video.addEventListener('canplay', handleCanPlay)
     video.addEventListener('seeking', handleSeeking)
-    // Reverse shuttling (J) moves the playhead; whatever pause preceded it isn't a hold.
-    const unsubscribeReverse = useVideoStore.subscribe((state) => {
-      if (state.reverseRate > 0) pauseStartRef.current = null
+    // Pressing Freeze while an existing freeze is playing out takes it over:
+    // stop the auto-resume so the coach's own timing replaces its length.
+    const unsubscribeFreeze = useVideoStore.subscribe((state, prev) => {
+      if (state.freezeTiming && !prev.freezeTiming && freezeTimeoutRef.current) {
+        clearTimeout(freezeTimeoutRef.current)
+        freezeTimeoutRef.current = null
+      }
     })
 
     return () => {
@@ -221,7 +223,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       video.removeEventListener('error', handleError)
       video.removeEventListener('canplay', handleCanPlay)
       video.removeEventListener('seeking', handleSeeking)
-      unsubscribeReverse()
+      unsubscribeFreeze()
     }
   }, [setCurrentTime, setDuration, setIsPlaying, resetFreezes])
 

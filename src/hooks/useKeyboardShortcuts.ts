@@ -7,8 +7,7 @@ import { useClipPrefsStore } from '@/stores/clipPrefsStore'
 import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
 import { fabric } from '@/lib/fabric'
 import { toast } from '@/components/ui'
-import { stepFrames, formatTimecode } from '@/utils/frames'
-import { clearFreezeAt, setFreezeAt } from '@/utils/freezeMarkers'
+import { stepFrames } from '@/utils/frames'
 
 /**
  * Moves an In or Out edge by whole frames: the selected clip's edge when a
@@ -253,31 +252,14 @@ export function useKeyboardShortcuts() {
         return
       }
 
-      case 'clip.toggleHold': {
+      case 'video.freeze': {
         e.preventDefault()
         if (e.repeat) return
-        const { videoElement: el, fps } = useVideoStore.getState()
-        const t = el && el.paused ? el.currentTime : null
-        if (t === null) {
-          // A hold is a frame choice; mid-playback the frame is a guess.
-          toast('info', el ? 'Pause on the frame to hold first' : 'Open a video first')
+        if (!useVideoStore.getState().videoElement) {
+          toast('info', 'Open a video first')
           return
         }
-        const stamp = formatTimecode(t, fps)
-        if (clearFreezeAt(t, fps)) {
-          toast('info', `Hold removed at ${stamp}`)
-          return
-        }
-        const seconds = useClipPrefsStore.getState().holdSeconds
-        if (setFreezeAt(t, seconds, fps)) toast('success', `${seconds}s hold at ${stamp}`)
-        return
-      }
-      case 'clip.recordHolds': {
-        e.preventDefault()
-        if (e.repeat) return
-        const { isRecordingHolds, setIsRecordingHolds } = useVideoStore.getState()
-        setIsRecordingHolds(!isRecordingHolds)
-        toast('info', isRecordingHolds ? 'Stopped recording pauses' : 'Recording pauses — each pause becomes a hold')
+        useVideoStore.getState().toggleFreeze()
         return
       }
 

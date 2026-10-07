@@ -1,7 +1,7 @@
 import {
   SkipBack, RotateCcw, ChevronLeft, Play, Pause, ChevronRight,
   RotateCw, SkipForward, ChevronsLeft, ChevronsRight, Repeat2,
-  Volume2, Volume1, VolumeX, Maximize, Minimize
+  Volume2, Volume1, VolumeX, Maximize, Minimize, Snowflake
 } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useState, useRef, useEffect } from 'react'
@@ -11,6 +11,48 @@ import { formatTimecode } from '@/utils/frames'
 
 // 4x/8x are reachable by tapping the forward shuttle (L), so the picker must be able to show them.
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8]
+
+/**
+ * The alternate to Play/Pause: Freeze stops on this frame and times a
+ * freeze; resuming (Freeze again, or Play) records it at that length.
+ */
+function FreezeButton({ keyLabel }: { keyLabel: string }) {
+  const freezeTiming = useVideoStore((s) => s.freezeTiming)
+  const toggleFreeze = useVideoStore((s) => s.toggleFreeze)
+  const hasVideo = useVideoStore((s) => s.duration > 0)
+  const [now, setNow] = useState(() => performance.now())
+
+  useEffect(() => {
+    if (!freezeTiming) return
+    const id = window.setInterval(() => setNow(performance.now()), 100)
+    return () => window.clearInterval(id)
+  }, [freezeTiming])
+
+  const active = freezeTiming !== null
+  const elapsed = active ? Math.max(0, (now - freezeTiming.at) / 1000) : 0
+
+  return (
+    <button
+      type="button"
+      onClick={toggleFreeze}
+      disabled={!hasVideo}
+      aria-pressed={active}
+      title={
+        active
+          ? `Resume and record this ${elapsed.toFixed(1)}s freeze (${keyLabel})`
+          : `Freeze: stop on this frame and time it; resume to record the freeze (${keyLabel})`
+      }
+      className={`h-9 min-w-9 px-2 mr-1 flex items-center justify-center gap-1.5 rounded-full text-xs font-semibold tabular-nums transition-colors disabled:opacity-25 disabled:cursor-not-allowed ${
+        active
+          ? 'bg-sky-500 text-white shadow-md ring-2 ring-sky-300/60'
+          : 'text-text-secondary hover:text-sky-500 hover:bg-surface-elevated'
+      }`}
+    >
+      <Snowflake className={`w-4 h-4 ${active ? 'animate-pulse' : ''}`} />
+      {active && <span>{elapsed.toFixed(1)}s</span>}
+    </button>
+  )
+}
 
 export default function VideoControls() {
   const {
@@ -25,8 +67,6 @@ export default function VideoControls() {
     isLooping,
     fps,
     reverseRate,
-    isRecordingHolds,
-    setIsRecordingHolds,
     togglePlay,
     seek,
     stepFrame,
@@ -55,7 +95,7 @@ export default function VideoControls() {
   // Tooltip key labels, read from the shortcuts store so they can't drift
   // from the actual bindings if they're ever rebound.
   const loopKeyLabel = useShortcutKeyLabel('video.toggleLoop')
-  const recordHoldsKeyLabel = useShortcutKeyLabel('clip.recordHolds')
+  const freezeKeyLabel = useShortcutKeyLabel('video.freeze')
   const muteKeyLabel = useShortcutKeyLabel('video.toggleMute')
   const fullscreenKeyLabel = useShortcutKeyLabel('video.toggleFullscreen')
   const playPauseKeyLabel = useShortcutKeyLabel('video.playPause')
@@ -195,6 +235,7 @@ export default function VideoControls() {
           >
             {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
           </button>
+          <FreezeButton keyLabel={freezeKeyLabel} />
 
           <IconButton onClick={() => stepFrame('forward')} title={`Next Frame (${stepForwardKeyLabel})`} size="sm">
             <ChevronRight className="w-4 h-4" />
@@ -303,22 +344,6 @@ export default function VideoControls() {
           >
             <Repeat2 className="w-4 h-4" />
           </IconButton>
-
-          {/* Record pauses as holds */}
-          <button
-            type="button"
-            onClick={() => setIsRecordingHolds(!isRecordingHolds)}
-            title={`${isRecordingHolds ? 'Stop recording pauses' : 'Record pauses as holds: each pause → resume freezes that frame for as long as you paused'} (${recordHoldsKeyLabel})`}
-            aria-pressed={isRecordingHolds}
-            className={`ml-0.5 h-7 px-2 flex items-center gap-1.5 text-[10px] font-semibold tracking-wide rounded-lg transition-colors ${
-              isRecordingHolds
-                ? 'bg-error/15 text-error ring-1 ring-error/40'
-                : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
-            }`}
-          >
-            <span className={`w-2 h-2 rounded-full bg-error ${isRecordingHolds ? 'animate-pulse' : 'opacity-50'}`} />
-            HOLDS
-          </button>
 
           {/* Divider */}
           <div className="w-px h-5 bg-border-subtle mx-1.5" />

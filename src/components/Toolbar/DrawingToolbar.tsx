@@ -1,14 +1,10 @@
 import { useState } from 'react'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
-  Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser, Snowflake
+  Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser
 } from 'lucide-react'
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
-import { useVideoStore } from '@/stores/videoStore'
-import { useClipPrefsStore } from '@/stores/clipPrefsStore'
-import { useShortcutKeyLabel } from '@/stores/shortcutsStore'
-import { setFreezeAt } from '@/utils/freezeMarkers'
 import { Modal, Button } from '@/components/ui'
 
 interface ToolButtonProps {
@@ -70,13 +66,8 @@ const COLOR_NAMES: Record<string, string> = {
 
 export default function DrawingToolbar() {
   const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth } = useToolStore()
-  const { undo, redo, clearAnnotations, undoStack, redoStack, annotations, selectedAnnotationId, updateAnnotation } = useDrawingStore()
-  const { currentTime, duration, fps } = useVideoStore()
+  const { undo, redo, clearAnnotations, undoStack, redoStack, annotations } = useDrawingStore()
   const [showClearConfirm, setShowClearConfirm] = useState(false)
-  const [showFreezePopover, setShowFreezePopover] = useState(false)
-  const freezeSeconds = useClipPrefsStore((st) => st.holdSeconds)
-  const setFreezeSeconds = useClipPrefsStore((st) => st.setHoldSeconds)
-  const holdKeyLabel = useShortcutKeyLabel('clip.toggleHold')
 
   return (
     <div role="toolbar" aria-label="Drawing tools" className="h-12 bg-surface-elevated/95 border-t border-border-subtle flex items-center px-3 gap-1 backdrop-blur-sm flex-shrink-0 overflow-x-auto">
@@ -180,51 +171,6 @@ export default function DrawingToolbar() {
         >
           <Redo2 className="w-4 h-4" />
         </button>
-        <div className="relative">
-          <button
-            onClick={() => setShowFreezePopover(!showFreezePopover)}
-            disabled={duration === 0}
-            className={`w-8 h-8 flex items-center justify-center rounded-md transition-all ${
-              showFreezePopover
-                ? 'bg-accent text-accent-text shadow-md'
-                : 'hover:bg-surface-sunken text-text-secondary hover:text-text-primary'
-            } disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent`}
-            title={`Mark Freeze Frame (${holdKeyLabel})`}
-          >
-            <Snowflake className="w-4 h-4" />
-          </button>
-          {showFreezePopover && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-surface-elevated rounded-lg shadow-xl border border-border-subtle p-3 z-50">
-              <p className="text-xs text-text-secondary mb-2">Freeze video at current time for:</p>
-              <div className="flex items-center gap-2 mb-3">
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  step="0.5"
-                  value={freezeSeconds}
-                  onChange={(e) => setFreezeSeconds(parseFloat(e.target.value))}
-                  className="flex-1 h-1 accent-[var(--color-accent)]"
-                />
-                <span className="text-xs text-text-primary font-medium w-8 text-right">{freezeSeconds}s</span>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (selectedAnnotationId) {
-                    // Apply freeze to selected annotation
-                    updateAnnotation(selectedAnnotationId, { freezeDuration: freezeSeconds })
-                  } else {
-                    setFreezeAt(currentTime, freezeSeconds, fps)
-                  }
-                  setShowFreezePopover(false)
-                }}
-              >
-                {selectedAnnotationId ? 'Apply to Selected' : 'Mark Freeze'}
-              </Button>
-            </div>
-          )}
-        </div>
         <button
           onClick={() => {
             if (annotations.length === 0) return

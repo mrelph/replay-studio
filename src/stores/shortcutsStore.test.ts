@@ -136,3 +136,31 @@ describe('migrateShortcuts (v0 → v1: J/L become the shuttle)', () => {
     }
   })
 })
+
+describe('migrateShortcuts (v1 → v2: hold + record-pauses become Freeze)', () => {
+  const v1 = (bindings: Array<[string, ShortcutDefinition['binding']]>) => ({
+    shortcuts: bindings.map(([action, binding]) => ({ action, label: '', category: '', binding })),
+  })
+
+  it('gives Freeze the hold key and drops the record-pauses mode', () => {
+    const migrated = migrateShortcuts(v1([
+      ['clip.toggleHold', { key: 'h' }],
+      ['clip.recordHolds', { key: 'h', shift: true }],
+    ]), 1) as { shortcuts: ShortcutDefinition[] }
+    const merged = mergeShortcuts(migrated.shortcuts, DEFAULT_SHORTCUTS)
+    expect(merged.find((s) => s.action === 'video.freeze')?.binding).toEqual({ key: 'h' })
+    expect(merged.some((s) => (s.action as string) === 'clip.recordHolds')).toBe(false)
+    expect(merged.some((s) => (s.action as string) === 'clip.toggleHold')).toBe(false)
+  })
+
+  it('carries a customized hold binding over to Freeze', () => {
+    const migrated = migrateShortcuts(v1([['clip.toggleHold', { key: 'g', alt: true }]]), 1) as { shortcuts: ShortcutDefinition[] }
+    const merged = mergeShortcuts(migrated.shortcuts, DEFAULT_SHORTCUTS)
+    expect(merged.find((s) => s.action === 'video.freeze')?.binding).toEqual({ key: 'g', alt: true })
+  })
+
+  it('still applies the v0 skip cleanup when jumping from v0', () => {
+    const migrated = migrateShortcuts(v1([['video.skipForward', { key: 'l' }]]), 0) as { shortcuts: ShortcutDefinition[] }
+    expect(migrated.shortcuts).toHaveLength(0)
+  })
+})
