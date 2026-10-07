@@ -35,6 +35,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
   // Reference dimensions for zoom-based scaling (set once on init)
   const refDimsRef = useRef<{ width: number; height: number } | null>(null)
+  // The canvas wrapper, and the layout last applied to it (see syncToVideo).
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const appliedRef = useRef<{ width: number; height: number; offsetX: number; offsetY: number; refWidth: number; refHeight: number } | null>(null)
 
   // Track drawing state for shapes
   const isDrawingRef = useRef(false)
@@ -94,6 +97,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     fabricRef.current = canvas
     setCanvas(canvas)
     setDimensions(dims)
+    appliedRef.current = { ...dims, refWidth: nativeW, refHeight: nativeH }
 
     // Initialize tool instances
     playerTrackerRef.current = new PlayerTracker(canvas)
@@ -108,48 +112,90 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoElement, setCanvas])
 
-  // Update canvas display dimensions on resize/layout changes.
-  // Only the zoom changes — object coordinates stay in video-native space.
+  // Keep the canvas exactly over the video. Tools store pointer positions
+  // relative to the canvas's top-left (canvas.getPointer), so if the canvas
+  // drifts from the video, drawings still look right on screen but are saved
+  // offset by the drift, and exports (which use the true video frame) show it.
+  // The video can move without resizing (a side panel opening, the window
+  // being retiled, the controls row changing height), so size alone isn't
+  // enough to watch: compare the full rect. Returns true if it had to move.
+  const syncToVideo = useCallback((): boolean => {
+    const canvas = fabricRef.current
+    if (!canvas || !refDimsRef.current || !videoElement) return false
+
+    const dims = calcDimensions()
+    if (dims.width === 0) return false
+
+    // Update ref dims if video metadata arrived after init
+    if (videoElement.videoWidth && videoElement.videoHeight) {
+      refDimsRef.current = { width: videoElement.videoWidth, height: videoElement.videoHeight }
+    }
+    const ref = refDimsRef.current
+    const applied = appliedRef.current
+    const close = (a: number, b: number) => Math.abs(a - b) < 0.5
+    if (
+      applied &&
+      close(applied.width, dims.width) &&
+      close(applied.height, dims.height) &&
+      close(applied.offsetX, dims.offsetX) &&
+      close(applied.offsetY, dims.offsetY) &&
+      applied.refWidth === ref.width &&
+      applied.refHeight === ref.height
+    ) {
+      return false
+    }
+
+    applyZoom(canvas, dims.width, dims.height)
+    // Move the wrapper now rather than on React's next render, so a pointer
+    // event already in flight (see the pointerdown listener) sees the new position.
+    if (wrapperRef.current) {
+      wrapperRef.current.style.left = `${dims.offsetX}px`
+      wrapperRef.current.style.top = `${dims.offsetY}px`
+    }
+    appliedRef.current = { ...dims, refWidth: ref.width, refHeight: ref.height }
+    setDimensions(dims)
+    canvas.renderAll()
+    return true
+  }, [videoElement, calcDimensions, applyZoom])
+
   useEffect(() => {
     if (!videoElement) return
 
     let resizeTimer: ReturnType<typeof setTimeout>
-
-    const updateDimensions = () => {
+    const scheduleSync = () => {
       clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(() => {
-        const canvas = fabricRef.current
-        if (!canvas || !refDimsRef.current) return
-
-        const dims = calcDimensions()
-        if (dims.width === 0) return
-
-        // Update ref dims if video metadata arrived after init
-        if (videoElement.videoWidth && videoElement.videoHeight) {
-          refDimsRef.current = {
-            width: videoElement.videoWidth,
-            height: videoElement.videoHeight,
-          }
-        }
-
-        applyZoom(canvas, dims.width, dims.height)
-        setDimensions(dims)
-        canvas.renderAll()
-      }, 50) // Debounce resize
+      resizeTimer = setTimeout(syncToVideo, 50) // Debounce resize
     }
 
-    // Use ResizeObserver to detect all layout changes (panel toggle, window resize, etc.)
-    const ro = new ResizeObserver(updateDimensions)
+    // Size changes of the video or of the area it's centred in (panel
+    // toggles, splitter drags, window resize)...
+    const ro = new ResizeObserver(scheduleSync)
     ro.observe(videoElement)
+    if (containerRef.current) ro.observe(containerRef.current)
+    window.addEventListener('resize', scheduleSync)
+    videoElement.addEventListener('loadedmetadata', scheduleSync)
+    // ...plus a cheap periodic check for moves no observer reports.
+    const poll = setInterval(syncToVideo, 250)
 
-    videoElement.addEventListener('loadedmetadata', updateDimensions)
+    // And always right before a stroke starts, so its first point is stored
+    // against the canvas's true position over the video. This listens for the
+    // DOM pointerdown on the wrapper in the capture phase: it runs before
+    // Fabric's own mousedown handling computes (and caches) the pointer.
+    const wrapper = wrapperRef.current
+    const syncBeforeDraw = () => {
+      syncToVideo()
+    }
+    wrapper?.addEventListener('pointerdown', syncBeforeDraw, true)
 
     return () => {
       clearTimeout(resizeTimer)
+      clearInterval(poll)
       ro.disconnect()
-      videoElement.removeEventListener('loadedmetadata', updateDimensions)
+      window.removeEventListener('resize', scheduleSync)
+      videoElement.removeEventListener('loadedmetadata', scheduleSync)
+      wrapper?.removeEventListener('pointerdown', syncBeforeDraw, true)
     }
-  }, [videoElement, calcDimensions, applyZoom])
+  }, [videoElement, syncToVideo])
 
   // Update canvas settings when tool changes
   useEffect(() => {
@@ -1057,6 +1103,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       className="absolute inset-0 pointer-events-none z-10"
     >
       <div
+        ref={wrapperRef}
         className="relative"
         style={{
           position: 'absolute',
