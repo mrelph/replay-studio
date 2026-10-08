@@ -238,6 +238,41 @@ Same modal styling and folder picker as `ExportClipsDialog`.
   About 18 s for 11.5 s of 720p output, since every part is its own ffmpeg
   run.
 
+## Phase 3 status (2026-10-08): done
+
+- `src/components/Export/ReelDialog.tsx`, opened by **Export reel…** in the
+  Clips panel and seeded with the panel's active tag filter. It has a name
+  field (the default follows the filter until edited), tag chips, and an
+  ordered list with checkboxes, drag handles and ↑/↓ buttons. Rows show the
+  reel number and each clip's length including freezes. Below that: title
+  cards with their length, "also save individual clips" plus editable
+  copies, quality and folder. The footer reads "N clips · m:ss with title
+  cards". During export the progress says "Title card 3 of 7…", "Clip 3 of
+  7…" or "Joining reel…" with a percent and Cancel. At the end there's
+  **Show in folder**, a low-space warning when it applies, per-clip ticks
+  for saved individual clips, and `clips.csv` when individual clips are
+  saved.
+- Shared pieces pulled out of Export Clips: `useVideoProbe` and
+  `saveEditableCopy`. Pure helpers live in `src/export/reelSelection.ts`.
+  The remembered settings (`reelTitleCards`, `reelCardSeconds`,
+  `reelSaveIndividual`) are in `clipPrefsStore`.
+- New IPC `shell:showExportedFile`, allowed only for files inside an
+  authorized export folder.
+- No keyboard shortcut. The plan's Ctrl+Shift+E was optional; it's left out
+  for now.
+- Verified in the built app over CDP with a throwaway profile:
+  1. Made 3 clips and tagged two of them PK.
+  2. Filtered the panel by PK and opened the dialog. It started with exactly
+     those two clips and the name "PK".
+  3. Moved the last clip to the top and turned on cards and individual
+     clips, then exported. The progress steps appeared in order.
+  4. The output: `Reel - PK.mp4` with 240/240 frames and 2 chapters in the
+     new order, both individual clips with editable copies, and `clips.csv`
+     numbered in reel order.
+  5. "Show in folder" refused paths outside the export folder.
+  Drag reordering wasn't automated, since synthetic HTML5 drag events are
+  unreliable over CDP. ↑/↓ use the same `moveInOrder`.
+
 ## Phases
 
 1. **Engine (main):** `reelExport.ts`, the additive `reelId` on clip jobs,

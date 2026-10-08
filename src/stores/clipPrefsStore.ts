@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { normalizeTag, normalizeTags } from '@/utils/clipTags'
+import { clampCardSeconds, DEFAULT_CARD_SECONDS } from '@/export/reelPlan'
 
 const MIN_ROLL_SECONDS = 0
 const MAX_ROLL_SECONDS = 60
@@ -19,6 +20,13 @@ interface ClipPrefsState {
   postRoll: number
   /** Tags auto-applied to clips created via "Add clip" (Shift+C) or "Mark moment" (X). */
   stickyTags: string[]
+  /** Highlight reel dialog: title card before each clip, its length, and whether clips are also saved individually. */
+  reelTitleCards: boolean
+  reelCardSeconds: number
+  reelSaveIndividual: boolean
+  setReelTitleCards: (on: boolean) => void
+  setReelCardSeconds: (seconds: number) => void
+  setReelSaveIndividual: (on: boolean) => void
   setPreRoll: (seconds: number) => void
   setPostRoll: (seconds: number) => void
   setStickyTags: (tags: string[]) => void
@@ -36,6 +44,13 @@ export const useClipPrefsStore = create<ClipPrefsState>()(
       preRoll: DEFAULT_PRE_ROLL,
       postRoll: DEFAULT_POST_ROLL,
       stickyTags: [],
+      reelTitleCards: false,
+      reelCardSeconds: DEFAULT_CARD_SECONDS,
+      reelSaveIndividual: false,
+
+      setReelTitleCards: (on) => set({ reelTitleCards: on }),
+      setReelCardSeconds: (seconds) => set({ reelCardSeconds: clampCardSeconds(seconds) }),
+      setReelSaveIndividual: (on) => set({ reelSaveIndividual: on }),
       setPreRoll: (seconds) => set({ preRoll: clampRoll(seconds) }),
       setPostRoll: (seconds) => set({ postRoll: clampRoll(seconds) }),
       setStickyTags: (tags) => set({ stickyTags: normalizeTags(tags) }),

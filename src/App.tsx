@@ -8,6 +8,7 @@ import ShortcutsEditor from './components/ShortcutsEditor'
 import AnnotationTimeline from './components/Timeline/AnnotationTimeline'
 import ExportDialog from './components/Export/ExportDialog'
 import ExportClipsDialog from './components/Export/ExportClipsDialog'
+import ReelDialog from './components/Export/ReelDialog'
 import LayerPanel from './components/LayerPanel/LayerPanel'
 import ClipPanel from './components/Clips/ClipPanel'
 import UpdateBanner from './components/UpdateBanner'
@@ -68,6 +69,8 @@ function App() {
   const [showShortcutsEditor, setShowShortcutsEditor] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [showExportClips, setShowExportClips] = useState(false)
+  /** Tags to start the reel dialog from; null when it's closed. */
+  const [reelDialogTags, setReelDialogTags] = useState<string[] | null>(null)
   const [showLayerPanel, setShowLayerPanel] = useState(true)
   const [showClipPanel, setShowClipPanel] = useState(true)
   const [dragOver, setDragOver] = useState(false)
@@ -519,6 +522,7 @@ function App() {
                   isOpen={showClipPanel}
                   onToggle={() => setShowClipPanel(!showClipPanel)}
                   onExportClips={() => setShowExportClips(true)}
+                  onExportReel={(tags) => setReelDialogTags(tags)}
                 />
               </div>
               <div className="relative flex-shrink-0">
@@ -625,6 +629,9 @@ function App() {
       )}
       {showExportClips && videoSrc && (
         <ExportClipsDialog onClose={() => setShowExportClips(false)} videoSrc={videoSrc} />
+      )}
+      {reelDialogTags && videoSrc && (
+        <ReelDialog onClose={() => setReelDialogTags(null)} videoSrc={videoSrc} initialTags={reelDialogTags} />
       )}
 
       <ToastContainer />

@@ -108,6 +108,8 @@ export interface ElectronAPI {
   /** Percent (0-100) of the join step. */
   onReelProgress: (callback: (progress: ReelProgressEvent) => void) => void
   removeReelProgressListener: () => void
+  /** Reveals an exported file (inside an authorized export folder) in the file manager. */
+  showExportedFile: (filePath: string) => Promise<boolean>
 
   // Project save/load
   saveProject: (defaultName: string) => Promise<string | null>

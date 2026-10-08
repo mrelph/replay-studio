@@ -143,6 +143,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeReelProgressListener: () => {
     ipcRenderer.removeAllListeners('reel:progress');
   },
+  showExportedFile: async (filePath) => {
+    try {
+      return await ipcRenderer.invoke('shell:showExportedFile', filePath);
+    } catch (err) {
+      console.error('showExportedFile error:', err);
+      return false;
+    }
+  },
 
   // Project save/load
   saveProject: async (defaultName) => {

@@ -40,6 +40,12 @@ Replay Studio is an Electron-based application that allows users to load video f
   `[tag1, tag2]` when a clip has tags), each with an optional editable copy
   (clean video + `.rsproj`), plus a `clips.csv` manifest of the run (name, times,
   tags, notes, output file, and exported/failed/cancelled status per clip)
+- **Highlight reels**: "Export reel…" in the Clips panel joins chosen clips into one
+  `Reel - Name.mp4`. Start from the panel's tag filter, uncheck or reorder clips
+  (drag or ↑/↓), and optionally add a title card before each clip ("n / N", name,
+  tags). Drawings, zoom lenses and freezes are always included, each clip is an MP4
+  chapter, and the same run can also save the individual clips (with editable
+  copies and `clips.csv`)
 
 ### Annotation Features
 - Color picker with 10 preset colors

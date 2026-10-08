@@ -6,12 +6,12 @@ import { Modal, Button, Select } from '@/components/ui'
 import { toast } from '@/components/ui/Toast'
 import { buildOutputTimeline } from '@/export/outputTimeline'
 import { renderClip } from '@/export/clipRenderer'
-import { buildEditableProject } from '@/export/editableCopy'
+import { saveEditableCopy as saveEditableCopyFiles } from '@/export/saveEditableCopy'
 import { buildClipBaseName, orderLabel } from '@/export/clipFilename'
 import { buildClipsCsv, type ClipCsvRow, type ClipCsvStatus } from '@/export/clipsCsv'
 import { hashTagColorClass } from '@/utils/clipTags'
-import { exportProjectToJSON } from '@/utils/projectSerializer'
-import type { Clip, ClipExportQuality, VideoProbe } from '@/types/clip'
+import type { Clip, ClipExportQuality } from '@/types/clip'
+import { useVideoProbe } from './useVideoProbe'
 
 export interface ExportClipsDialogProps {
   onClose: () => void
@@ -92,10 +92,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   const clips = useClipStore((s) => s.clips)
   const annotations = useDrawingStore((s) => s.annotations)
 
-  const [sourcePath, setSourcePath] = useState<string | null>(null)
-  const [probe, setProbe] = useState<VideoProbe | null>(null)
-  const [probeError, setProbeError] = useState<string | null>(null)
-  const [loadingProbe, setLoadingProbe] = useState(true)
+  const { sourcePath, probe, error: probeError, loading: loadingProbe } = useVideoProbe(videoSrc)
 
   const [selected, setSelected] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(clips.map((c) => [c.id, true]))
@@ -113,44 +110,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const hasElectron = typeof window !== 'undefined' && !!window.electronAPI
-
-  // Probe the source video once, up front, so per-clip duration estimates
-  // and the encoder job (width/height/fps) are known before export starts.
-  useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      if (!hasElectron) {
-        setLoadingProbe(false)
-        setProbeError('Export requires the desktop application')
-        return
-      }
-      setLoadingProbe(true)
-      setProbeError(null)
-      try {
-        const path = await window.electronAPI.resolveVideoPath(videoSrc)
-        if (cancelled) return
-        setSourcePath(path)
-        const result = await window.electronAPI.probeVideo(path)
-        if (cancelled) return
-        if ('error' in result) {
-          setProbeError(result.error)
-        } else {
-          setProbe(result)
-        }
-      } catch (err) {
-        if (!cancelled) setProbeError(err instanceof Error ? err.message : 'Failed to read video info')
-      } finally {
-        if (!cancelled) setLoadingProbe(false)
-      }
-    }
-
-    load()
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoSrc])
 
   // Keep selection in sync if the clip list changes (e.g. a clip removed
   // while this dialog is open) without clobbering the user's choices.
@@ -300,31 +259,18 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
         if (saveEditableCopy) {
           setStatus(clip.id, { kind: 'saving-copy' })
-          const cleanPath = `${folder}/${baseName}.clean.mp4`
-          const projectPath = `${folder}/${baseName}.rsproj`
-
-          const cleanResult = await window.electronAPI.exportVideo({
-            inputPath: sourcePath,
-            outputPath: cleanPath,
-            startTime: clip.start,
-            endTime: clip.end,
+          const copyResult = await saveEditableCopyFiles({
+            clip,
+            annotations,
+            sourcePath,
+            folder,
+            baseName,
             quality,
             fps: probe.fps,
-            format: 'mp4',
           })
-
-          if (!cleanResult.success) {
+          if (!copyResult.success) {
             failedCount += 1
-            setStatus(clip.id, { kind: 'failed', message: cleanResult.error || 'Editable copy export failed' })
-            continue
-          }
-
-          const project = buildEditableProject(clip, annotations, cleanPath, baseName)
-          const writeResult = await window.electronAPI.writeFile(projectPath, exportProjectToJSON(project))
-
-          if (!writeResult.success) {
-            failedCount += 1
-            setStatus(clip.id, { kind: 'failed', message: writeResult.error || 'Could not save project file' })
+            setStatus(clip.id, { kind: 'failed', message: copyResult.error || 'Editable copy export failed' })
             continue
           }
         }

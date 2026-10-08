@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  Pencil, Trash2, Play, Repeat, Plus, Download, Scissors,
+  Pencil, Trash2, Play, Repeat, Plus, Download, Scissors, Clapperboard,
   Settings2, StickyNote, Tag, X,
 } from 'lucide-react'
 import { useClipStore } from '@/stores/clipStore'
@@ -468,9 +468,11 @@ interface ClipPanelProps {
   isOpen: boolean
   onToggle: () => void
   onExportClips: () => void
+  /** Opens the highlight reel dialog, starting from the panel's active tag filter. */
+  onExportReel: (tags: string[]) => void
 }
 
-export default function ClipPanel({ isOpen, onToggle, onExportClips }: ClipPanelProps) {
+export default function ClipPanel({ isOpen, onToggle, onExportClips, onExportReel }: ClipPanelProps) {
   const {
     clips, selectedClipId, addClip, updateClip, removeClip, moveClip, selectClip,
     addClipTag, removeClipTag, setClipNotes,
@@ -621,6 +623,17 @@ export default function ClipPanel({ isOpen, onToggle, onExportClips }: ClipPanel
         >
           <Download className="w-3.5 h-3.5" />
           Export clips&hellip;
+        </Button>
+        <Button
+          onClick={() => onExportReel(allTags.filter((tag) => filterTags.has(tag.toLowerCase())))}
+          disabled={clips.length === 0}
+          variant="secondary"
+          size="sm"
+          title={clips.length === 0 ? 'Add at least one clip first' : 'Join clips into one highlight reel'}
+          aria-label="Export highlight reel"
+        >
+          <Clapperboard className="w-3.5 h-3.5" />
+          Export reel&hellip;
         </Button>
       </div>
     </div>

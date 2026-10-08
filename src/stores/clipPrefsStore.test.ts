@@ -49,3 +49,23 @@ describe('clipPrefsStore', () => {
     expect(useClipPrefsStore.getState().stickyTags).toEqual(['Offense', 'PP'])
   })
 })
+
+describe('reel prefs', () => {
+  it('defaults to no title cards (2 s when on) and no individual clips', () => {
+    useClipPrefsStore.setState({ reelTitleCards: false, reelCardSeconds: 2, reelSaveIndividual: false })
+    const s = useClipPrefsStore.getState()
+    expect([s.reelTitleCards, s.reelCardSeconds, s.reelSaveIndividual]).toEqual([false, 2, false])
+  })
+
+  it('remembers the toggles and clamps card length to 1-5 s', () => {
+    const s = useClipPrefsStore.getState()
+    s.setReelTitleCards(true)
+    s.setReelSaveIndividual(true)
+    s.setReelCardSeconds(12)
+    expect(useClipPrefsStore.getState().reelCardSeconds).toBe(5)
+    s.setReelCardSeconds(0)
+    expect(useClipPrefsStore.getState().reelCardSeconds).toBe(1)
+    const saved = JSON.parse(localStorage.getItem('replay-studio-clip-prefs') ?? '{}').state
+    expect(saved).toMatchObject({ reelTitleCards: true, reelSaveIndividual: true, reelCardSeconds: 1 })
+  })
+})

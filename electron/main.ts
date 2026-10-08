@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, screen, type WebContents } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, screen, shell, type WebContents } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import fs from 'fs'
@@ -855,6 +855,16 @@ ipcMain.handle('reel:assemble', async (event, reelId: string, payload: ReelAssem
   return assembleReelJob(reelId, payload, getFfmpegBinaryPath(), (percent) => {
     mainWindow?.webContents.send('reel:progress', { reelId, percent })
   })
+})
+
+// Reveals an exported file in the system file manager. Only files inside a
+// folder authorized by chooseExportFolder() this session.
+ipcMain.handle('shell:showExportedFile', async (event, filePath: string) => {
+  if (!isFromMainWindow(event.sender)) return false
+  const target = await canonicalize(filePath)
+  if (!target || !(await isInsideAuthorizedExportFolder(target))) return false
+  shell.showItemInFolder(target)
+  return true
 })
 
 ipcMain.handle('reel:cancel', async (event, reelId: string) => {
