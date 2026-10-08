@@ -1,7 +1,7 @@
 import { fabric } from '@/lib/fabric'
 import type { Annotation } from '@/stores/drawingStore'
 import { deserializeFabricObject, serializeFabricObject } from '@/utils/projectSerializer'
-import type { Clip, ClipExportQuality, ClipExportResult, OverlaySpan, VideoProbe } from '@/types/clip'
+import type { Clip, ClipEncodeReelPart, ClipExportQuality, ClipExportResult, OverlaySpan, VideoProbe } from '@/types/clip'
 import { buildOutputTimeline } from './outputTimeline'
 import { buildDrawingSpans, signatureKey, type DrawingSpan, type SpanAnnotationLike } from './spanBuilder'
 import { buildMagnifierOps, computeMagnifierSampleRect, MAGNIFIER_ZOOM_LEVEL, type MagnifierAnnotationLike } from './magnifierOps'
@@ -23,6 +23,8 @@ export interface RenderClipOptions {
   /** 0-100; the first ~5% covers rendering drawing-layer PNGs, the rest tracks ffmpeg's own progress. */
   onProgress: (percent: number) => void
   signal: AbortSignal
+  /** Makes this export a part of a highlight reel (see docs/REEL_PLAN.md). */
+  reel?: ClipEncodeReelPart
 }
 
 export type RenderClipResult = ClipExportResult
@@ -104,7 +106,7 @@ async function renderSpanRgba(
  * created at exactly `probe.width x probe.height` with no zoom applied.
  */
 export async function renderClip(opts: RenderClipOptions): Promise<RenderClipResult> {
-  const { clip, probe, annotations, includeDrawings, quality, outputPath, sourcePath, onProgress, signal } = opts
+  const { clip, probe, annotations, includeDrawings, quality, outputPath, sourcePath, onProgress, signal, reel } = opts
 
   const { segments, frameCount } = buildOutputTimeline(clip, annotations, probe.fps)
 
@@ -119,6 +121,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
     frameCount,
     quality,
     segments,
+    ...(reel ? { reel } : {}),
   })
   if (!startResult.ok) return { success: false, error: startResult.error }
   const { jobId } = startResult

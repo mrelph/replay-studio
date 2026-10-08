@@ -209,6 +209,35 @@ Same modal styling and folder picker as `ExportClipsDialog`.
   (one temp part, one kept part) joins with 105/105 frames and two chapters,
   a quality mismatch is refused, and the temp dirs are removed.
 
+## Phase 2 status (2026-10-07): done
+
+- `src/export/reelPlan.ts` (pure): `buildReelPlan` (parts in the given
+  order, a card before each clip when on, clip parts built with
+  `buildOutputTimeline` so freezes match single-clip export, chapters from
+  cumulative frame counts), `defaultReelName`, `buildReelBaseName`,
+  `clampCardSeconds`, `estimateEncodeBytes` (rough, for the free-space
+  warning).
+- `src/export/titleCard.ts`: `layoutTitleCard` (pure; text measurement
+  injected) with word wrap to two lines and an ellipsis, up to six tag chips
+  then `+k`, wrapping to at most two rows. `renderTitleCardRgba` draws it
+  with Canvas 2D at the video's native size after `document.fonts.ready`.
+  The look: an 80% black scrim, a muted "n / N", a short blue rule, the
+  name in bold white, and outlined chips.
+- `src/export/reelRenderer.ts`: `renderReel` encodes each part in order
+  (cards through the job API with one full-frame span, clips through
+  `renderClip` with `reel`), weights progress by frames (the join is the
+  last 5%), names the failing part in errors, cancels the whole reel on
+  failure or abort, and reports each kept clip's outcome. Dependencies are
+  injectable for tests.
+- `renderClip` passes an optional `reel` through to `clipEncodeStart`.
+- Verified in the dev app (Vite dev server, modules imported over CDP): a
+  reel of 3 clips at 29.97 with cards, a burned-in rectangle and a 1 s
+  freeze, with one clip kept. Result: 345/345 frames, 3 chapters with full
+  titles, cards rendered in Inter with ellipsis and `+2`, the drawing at
+  its exact position, the kept clip on disk and the temp dirs removed.
+  About 18 s for 11.5 s of 720p output, since every part is its own ffmpeg
+  run.
+
 ## Phases
 
 1. **Engine (main):** `reelExport.ts`, the additive `reelId` on clip jobs,
