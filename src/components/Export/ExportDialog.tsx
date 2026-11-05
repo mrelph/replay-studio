@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from 'react'
-import { CheckCircle, AlertTriangle, Info } from 'lucide-react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { CheckCircle, AlertTriangle } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { Modal, Button, Select } from '@/components/ui'
-import type { ExportOptions, ExportProgress } from '@/types/electron'
+import { renderClip } from '@/export/clipRenderer'
+import { buildOutputTimeline } from '@/export/outputTimeline'
 
 interface ExportDialogProps {
   onClose: () => void
@@ -38,10 +39,16 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
   const [error, setError] = useState<string | null>(null)
   const [ffmpegVersion, setFfmpegVersion] = useState<string | null>(null)
   const [ffmpegChecked, setFfmpegChecked] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const startTime = settings.useInOutPoints && inPoint !== null ? inPoint : 0
   const endTime = settings.useInOutPoints && outPoint !== null ? outPoint : duration
   const clipDuration = endTime - startTime
+  const outputDuration = buildOutputTimeline(
+    { start: startTime, end: endTime },
+    settings.includeAnnotations ? annotations : [],
+    settings.fps
+  ).duration
 
   // Check FFmpeg availability on mount
   useEffect(() => {
@@ -55,18 +62,8 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
     }
   }, [])
 
-  // Listen for export progress updates
-  useEffect(() => {
-    if (!window.electronAPI?.onExportProgress) return
-
-    window.electronAPI.onExportProgress((progressData: ExportProgress) => {
-      setProgress(progressData.percent)
-    })
-
-    return () => {
-      window.electronAPI?.removeExportProgressListener?.()
-    }
-  }, [])
+  // Opening another video can unmount the dialog during an encode.
+  useEffect(() => () => abortControllerRef.current?.abort(), [])
 
   const handleExport = useCallback(async () => {
     if (!window.electronAPI) {
@@ -74,46 +71,51 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
       return
     }
 
-    const defaultName = `replay-export-${Date.now()}.${settings.format}`
-    const savePath = await window.electronAPI.saveFile(defaultName)
-
-    if (!savePath) return
-
+    if (abortControllerRef.current) return
+    const controller = new AbortController()
+    abortControllerRef.current = controller
     setIsExporting(true)
     setProgress(0)
     setError(null)
 
     try {
+      const defaultName = `replay-export-${Date.now()}.${settings.format}`
+      const savePath = await window.electronAPI.saveFile(defaultName)
+      if (!savePath || controller.signal.aborted) return
+
       // Resolve the video path from the local-video:// protocol
       const inputPath = await window.electronAPI.resolveVideoPath(videoSrc)
+      const probe = await window.electronAPI.probeVideo(inputPath)
+      if ('error' in probe) throw new Error(probe.error)
+      if (controller.signal.aborted) return
 
-      const exportOptions: ExportOptions = {
-        inputPath,
+      const result = await renderClip({
+        clip: { start: startTime, end: settings.useInOutPoints ? endTime : probe.duration },
+        probe,
+        annotations: settings.includeAnnotations ? annotations : [],
+        includeDrawings: settings.includeAnnotations && annotations.length > 0,
+        sourcePath: inputPath,
         outputPath: savePath,
-        startTime: settings.useInOutPoints ? startTime : undefined,
-        endTime: settings.useInOutPoints ? endTime : undefined,
         quality: settings.quality,
         fps: settings.fps,
         format: settings.format,
-      }
-
-      const result = await window.electronAPI.exportVideo(exportOptions)
+        signal: controller.signal,
+        onProgress: setProgress,
+      })
 
       if (result.success) {
         setProgress(100)
-        // Show success and close dialog
-        setTimeout(() => {
-          onClose()
-        }, 500)
+        onClose()
       } else {
         setError(result.error || 'Export failed')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
     } finally {
+      abortControllerRef.current = null
       setIsExporting(false)
     }
-  }, [settings, startTime, endTime, videoSrc, onClose])
+  }, [settings, startTime, endTime, videoSrc, onClose, annotations])
 
   const getQualitySettings = (quality: ExportQuality) => {
     switch (quality) {
@@ -249,11 +251,20 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
           </div>
         )}
 
-        {/* Include annotations info */}
+        {/* Burn drawings into the exported video by default. */}
         {annotations.length > 0 && (
-          <div className="flex items-center gap-2 text-sm text-text-tertiary">
-            <Info className="w-4 h-4" />
-            <span>Note: Annotations overlay export coming soon</span>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="includeAnnotations"
+              checked={settings.includeAnnotations}
+              onChange={(e) => setSettings({ ...settings, includeAnnotations: e.target.checked })}
+              disabled={isExporting}
+              className="w-4 h-4 rounded border-border bg-surface-sunken text-accent focus:ring-accent"
+            />
+            <label htmlFor="includeAnnotations" className="text-sm text-text-secondary">
+              Include annotations
+            </label>
           </div>
         )}
 
@@ -261,7 +272,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
         <div className="bg-surface-sunken rounded-lg p-3 text-sm">
           <div className="flex justify-between text-text-tertiary">
             <span>Duration:</span>
-            <span className="text-text-primary">{formatDuration(settings.useInOutPoints ? clipDuration : duration)}</span>
+            <span className="text-text-primary">{formatDuration(outputDuration)}</span>
           </div>
           <div className="flex justify-between text-text-tertiary mt-1">
             <span>Resolution:</span>
@@ -270,7 +281,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
           <div className="flex justify-between text-text-tertiary mt-1">
             <span>Est. size:</span>
             <span className="text-text-primary">
-              {estimateFileSize(settings.useInOutPoints ? clipDuration : duration, qualityInfo.bitrate, settings.format)}
+              {estimateFileSize(outputDuration, qualityInfo.bitrate, settings.format)}
             </span>
           </div>
         </div>

@@ -411,6 +411,14 @@ function validOptions(): ClipEncodeStartOptions {
 }
 
 describe('validateClipEncodeOptions', () => {
+  it('only accepts MP4 or GIF, caps GIF fps, and keeps reel parts as MP4', () => {
+    expect(validateClipEncodeOptions({ ...validOptions(), format: 'gif', fps: 15 })).toBeNull()
+    expect(validateClipEncodeOptions({ ...validOptions(), format: 'gif', fps: 30 })).toMatch(/frame rate/i)
+    expect(validateClipEncodeOptions({ ...validOptions(), format: 'gif', fps: 15, reel: { reelId: 'r', keep: false } })).toMatch(/MP4/)
+    // @ts-expect-error deliberately invalid for the test
+    expect(validateClipEncodeOptions({ ...validOptions(), format: 'avi' })).toMatch(/format/i)
+  })
+
   it('accepts well-formed options', () => {
     expect(validateClipEncodeOptions(validOptions())).toBeNull()
   })
@@ -592,6 +600,70 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
   afterAll(async () => {
     await fsp.rm(tmpDir, { recursive: true, force: true })
   })
+
+  it.each(['mp4', 'gif'] as const)('burns timed annotations into %s across a trimmed range and freeze, at a different output fps', async (format) => {
+    const bin = ffmpegPath as string
+    const source = path.join(tmpDir, `blue-${format}.mp4`)
+    const output = path.join(tmpDir, `annotated.${format}`)
+    const width = 320
+    const height = 180
+    const fps = format === 'gif' ? 10 : 24
+    const generated = spawnSync(bin, [
+      '-y', '-f', 'lavfi', '-i', `color=blue:size=${width}x${height}:rate=30:duration=4`,
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=4',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', source,
+    ])
+    expect(generated.status).toBe(0)
+    const started = await startClipEncodeJob({
+      outputPath: output, sourcePath: source, width, height, fps, format,
+      frameCount: Math.round(2.5 * fps), quality: 'high',
+      segments: [
+        { kind: 'play', srcStart: 1, srcEnd: 2 },
+        { kind: 'hold', srcTime: 2, duration: 0.5 },
+        { kind: 'play', srcStart: 2, srcEnd: 3 },
+      ],
+    }, true, 30)
+    expect(started.ok).toBe(true)
+    if (!started.ok) return
+    const clear = await addOverlayToJob(started.jobId, Buffer.alloc(width * height * 4))
+    const red = Buffer.alloc(width * height * 4)
+    for (let y = 40; y < 100; y++) {
+      for (let x = 40; x < 100; x++) {
+        red[(y * width + x) * 4] = 255
+        red[(y * width + x) * 4 + 3] = 255
+      }
+    }
+    const drawing = await addOverlayToJob(started.jobId, red)
+    expect(clear.ok && drawing.ok).toBe(true)
+    if (!clear.ok || !drawing.ok) return
+    const result = await runClipEncodeJob(started.jobId, {
+      magnifiers: [],
+      spans: [
+        { overlayIndex: clear.index, frameStart: 0, frameCount: fps / 2 },
+        { overlayIndex: drawing.index, frameStart: fps / 2, frameCount: fps * 1.5 },
+        { overlayIndex: clear.index, frameStart: fps * 2, frameCount: fps / 2 },
+      ],
+    }, bin)
+    expect(result, result.error).toEqual({ success: true })
+    const probe = await probeVideo(output, bin)
+    expect(probe).not.toHaveProperty('error')
+    if ('error' in probe) return
+    expect(probe.width).toBe(width)
+    expect(probe.height).toBe(height)
+    expect(probe.fps).toBe(fps)
+    expect(probe.duration).toBeCloseTo(2.5, 1)
+    expect(probe.hasAudio).toBe(format === 'mp4')
+    for (const time of [0.2, 2.3]) {
+      const pixel = await samplePixel(bin, output, time, 70, 70)
+      expect(pixel[2]).toBeGreaterThan(200)
+      expect(pixel[0]).toBeLessThan(60)
+    }
+    for (const time of [0.8, 1.3]) {
+      const pixel = await samplePixel(bin, output, time, 70, 70)
+      expect(pixel[0]).toBeGreaterThan(200)
+      expect(pixel[2]).toBeLessThan(60)
+    }
+  }, 30_000)
 
   it('generates fixtures, runs the job API directly, and produces a frame/pixel-accurate composite', async () => {
     const bin = ffmpegPath as string

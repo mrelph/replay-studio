@@ -262,9 +262,13 @@ what auto-update looks like from the user's side.
 5. Choose whether to include annotations
 6. Click "Export" and select save location
 
+"Include annotations" is enabled by default. Drawings, their timing and fades,
+zoom lenses, and freeze frames are burned into both MP4 and GIF exports. GIFs
+are capped at 15 fps; MP4 exports retain the source audio. Turn annotations off
+to export the video without drawings or annotation freeze frames.
+
 ## Known Limitations
 
-- Export functionality uses a simplified implementation; full FFmpeg integration is planned for future releases
 - Magnifier tool has a basic implementation
 - No support for audio-only annotations
 - Limited video codec support (depends on Chromium/Electron support)

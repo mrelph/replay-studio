@@ -794,7 +794,7 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
     reelPartIndex = reserved.index
   }
 
-  const started = await startClipEncodeJob({ ...options, sourcePath: source, outputPath: output as string }, probe.hasAudio)
+  const started = await startClipEncodeJob({ ...options, sourcePath: source, outputPath: output as string }, probe.hasAudio, probe.fps)
   if (started.ok && reel) linkReelPartJob(started.jobId, reel.reelId, reelPartIndex)
   return started
 })

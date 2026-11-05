@@ -1,7 +1,7 @@
 import { fabric } from '@/lib/fabric'
 import type { Annotation } from '@/stores/drawingStore'
 import { deserializeFabricObject, serializeFabricObject } from '@/utils/projectSerializer'
-import type { Clip, ClipEncodeReelPart, ClipExportQuality, ClipExportResult, OverlaySpan, VideoProbe } from '@/types/clip'
+import type { Clip, ClipEncodeReelPart, ClipExportFormat, ClipExportQuality, ClipExportResult, OverlaySpan, VideoProbe } from '@/types/clip'
 import { buildOutputTimeline } from './outputTimeline'
 import { buildDrawingSpans, signatureKey, type DrawingSpan, type SpanAnnotationLike } from './spanBuilder'
 import { buildMagnifierOps, computeMagnifierSampleRect, MAGNIFIER_ZOOM_LEVEL, type MagnifierAnnotationLike } from './magnifierOps'
@@ -12,8 +12,11 @@ export { computeMagnifierSampleRect, MAGNIFIER_ZOOM_LEVEL }
 export type { MagnifierSampleRect } from './magnifierOps'
 
 export interface RenderClipOptions {
-  clip: Clip
+  clip: Pick<Clip, 'start' | 'end'>
   probe: VideoProbe
+  /** Output rate; defaults to the source rate. GIF is capped at 15 fps. */
+  fps?: number
+  format?: ClipExportFormat
   /** Live annotations from `useDrawingStore` (not touched — everything is cloned). */
   annotations: Annotation[]
   includeDrawings: boolean
@@ -107,8 +110,10 @@ async function renderSpanRgba(
  */
 export async function renderClip(opts: RenderClipOptions): Promise<RenderClipResult> {
   const { clip, probe, annotations, includeDrawings, quality, outputPath, sourcePath, onProgress, signal, reel } = opts
+  const format = opts.format ?? 'mp4'
+  const fps = format === 'gif' ? Math.min(opts.fps ?? probe.fps, 15) : opts.fps ?? probe.fps
 
-  const { segments, frameCount } = buildOutputTimeline(clip, annotations, probe.fps)
+  const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps)
 
   if (signal.aborted) return { success: false, error: 'Cancelled' }
 
@@ -117,9 +122,10 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
     sourcePath,
     width: probe.width,
     height: probe.height,
-    fps: probe.fps,
+    fps,
     frameCount,
     quality,
+    format,
     segments,
     ...(reel ? { reel } : {}),
   })
@@ -156,7 +162,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
       fadeOut: a.fadeOut,
     }))
 
-    const spans = buildDrawingSpans(segments, spanAnnotations, probe.fps)
+    const spans = buildDrawingSpans(segments, spanAnnotations, fps)
 
     // No retina scaling: the layer must be exactly the video's native pixel size.
     staticCanvas = new fabric.StaticCanvas(null, { width: probe.width, height: probe.height, enableRetinaScaling: false })
@@ -204,7 +210,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
         },
       }
     })
-    const magnifiers = buildMagnifierOps(clip, segments, magnifierLikes, probe.fps, probe)
+    const magnifiers = buildMagnifierOps(clip, segments, magnifierLikes, fps, probe)
 
     onProgress(5)
     if (signal.aborted) throw new Error('Cancelled')

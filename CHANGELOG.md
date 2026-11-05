@@ -8,13 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Full FFmpeg integration for production-quality video export
 - Audio waveform visualization in timeline
 - Annotation data import/export (JSON format)
 - Customizable keyboard shortcuts
 - Plugin system for custom drawing tools
 - Collaborative annotation features
 - Cloud storage integration
+
+## [1.5.1] - 2026-11-05
+
+### Fixed
+- The regular Export Video dialog now burns annotations into MP4 and GIF files,
+  including timed fades, zoom lenses, and freeze frames. Annotations are included
+  by default and can be turned off for a clean export.
+- Source cut points stay aligned to source frames when the selected export frame
+  rate differs from the video's frame rate.
 
 ## [1.0.0] - 2024-XX-XX
 

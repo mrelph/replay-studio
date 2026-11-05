@@ -38,6 +38,7 @@ export interface VideoProbe {
 }
 
 export type ClipExportQuality = 'high' | 'medium' | 'low'
+export type ClipExportFormat = 'mp4' | 'gif'
 
 /**
  * Starts an ffmpeg-driven encode job for one clip: ffmpeg decodes
@@ -60,6 +61,8 @@ export interface ClipEncodeStartOptions {
   /** Total output frame count; also the frame the video stream is capped to. */
   frameCount: number
   quality: ClipExportQuality
+  /** Defaults to MP4 for clip/reel exports. GIF callers must use fps <= 15. */
+  format?: ClipExportFormat
   segments: OutputSegment[]
   /**
    * Makes this job one part of a highlight reel (see docs/REEL_PLAN.md).

@@ -26,6 +26,7 @@ import zlib from 'zlib'
 import type {
   ClipEncodeStartOptions,
   ClipEncodeStartResult,
+  ClipExportFormat,
   ClipExportQuality,
   ClipExportResult,
   MagnifierOp,
@@ -144,6 +145,9 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
     return 'Invalid frame count'
   }
   if (!QUALITIES.includes(quality)) return 'Invalid quality'
+  if (options.format !== undefined && options.format !== 'mp4' && options.format !== 'gif') return 'Invalid format'
+  if (options.format === 'gif' && fps > 15) return 'GIF frame rate must be at most 15 fps'
+  if (options.reel && options.format === 'gif') return 'Reel parts must use MP4'
   if (!Array.isArray(segments) || segments.length === 0) {
     return 'Invalid segments: at least one required'
   }
@@ -302,8 +306,11 @@ export interface BuildClipEncodeFilterGraphInput {
   outputPath: string
   sourcePath: string
   fps: number
+  /** Used to align source cuts independently of the selected output rate. */
+  sourceFps?: number
   frameCount: number
   quality: ClipExportQuality
+  format?: ClipExportFormat
   segments: OutputSegment[]
   hasAudio: boolean
   /** Present iff there is at least one overlay span (drawings are being burned in). */
@@ -319,7 +326,10 @@ export interface BuildClipEncodeFilterGraphInput {
  */
 export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInput): string[] {
   const { outputPath, sourcePath, fps, frameCount, quality, hasAudio, overlayConcatListPath, magnifiers } = input
-  const segments = alignSegmentsToFrames(input.segments, fps)
+  const sourceFps = input.sourceFps ?? fps
+  const isGif = input.format === 'gif'
+  const includeAudio = hasAudio && !isGif
+  const segments = alignSegmentsToFrames(input.segments, sourceFps)
   const { crf, preset } = QUALITY_SETTINGS[quality]
   const segFrameCounts = segmentFrameCountsForBuilder(segments, fps)
   const seekOffset = computeSeekOffset(segments)
@@ -334,7 +344,7 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
       filterParts.push(`[0:v]trim=start=${fmt(start)}:end=${fmt(end)},setpts=PTS-STARTPTS[v${i}]`)
     } else {
       const t = segment.srcTime - seekOffset
-      const oneFrame = 1 / fps
+      const oneFrame = 1 / sourceFps
       const holdFrames = Math.max(1, segFrameCounts[i])
       // `tpad`'s `stop_duration` can't infer per-frame spacing from a
       // single-frame input (there's no previous frame to diff against), so
@@ -396,10 +406,16 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
   }
 
   // --- Quality scale, after compositing. ---
-  filterParts.push(`[${running}]${videoScaleFilter(quality)}[vout]`)
+  if (isGif) {
+    filterParts.push(`[${running}]${videoScaleFilter(quality)},split[gif0][gif1]`)
+    filterParts.push('[gif0]palettegen=max_colors=256[palette]')
+    filterParts.push('[gif1][palette]paletteuse=dither=bayer[vout]')
+  } else {
+    filterParts.push(`[${running}]${videoScaleFilter(quality)}[vout]`)
+  }
 
   // --- Audio: same source input (seeked identically), so times use the same offset. ---
-  if (hasAudio) {
+  if (includeAudio) {
     segments.forEach((segment, i) => {
       if (segment.kind === 'play') {
         const start = segment.srcStart - seekOffset
@@ -429,21 +445,24 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
 
   args.push('-filter_complex', filterParts.join(';'))
   args.push('-map', '[vout]')
-  if (hasAudio) {
+  if (includeAudio) {
     args.push('-map', '[aout]')
   }
 
-  args.push(
-    '-r', fmt(fps),
-    '-frames:v', String(frameCount),
-    '-c:v', 'libx264',
-    '-preset', preset,
-    '-crf', String(crf),
-    '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart'
-  )
+  args.push('-r', fmt(fps), '-frames:v', String(frameCount))
+  if (isGif) {
+    args.push('-an', '-loop', '0', '-f', 'gif')
+  } else {
+    args.push(
+      '-c:v', 'libx264',
+      '-preset', preset,
+      '-crf', String(crf),
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart'
+    )
+  }
 
-  if (hasAudio) {
+  if (includeAudio) {
     args.push('-c:a', 'aac', '-b:a', '128k')
   }
 
@@ -515,8 +534,10 @@ interface EncodeJob {
   width: number
   height: number
   fps: number
+  sourceFps: number
   frameCount: number
   quality: ClipExportQuality
+  format: ClipExportFormat
   segments: OutputSegment[]
   hasAudio: boolean
   tmpDir: string
@@ -530,7 +551,8 @@ const jobs = new Map<string, EncodeJob>()
 /** Registers a job (creating its temp dir for overlay PNGs) without spawning ffmpeg yet. */
 export async function startClipEncodeJob(
   options: ClipEncodeStartOptions,
-  hasAudio: boolean
+  hasAudio: boolean,
+  sourceFps = options.fps
 ): Promise<ClipEncodeStartResult> {
   const validationError = validateClipEncodeOptions(options)
   if (validationError) return { ok: false, error: validationError }
@@ -548,8 +570,10 @@ export async function startClipEncodeJob(
     width: options.width,
     height: options.height,
     fps: options.fps,
+    sourceFps,
     frameCount: options.frameCount,
     quality: options.quality,
+    format: options.format ?? 'mp4',
     segments: options.segments,
     hasAudio,
     tmpDir,
@@ -659,8 +683,10 @@ export async function runClipEncodeJob(
     outputPath: job.outputPath,
     sourcePath: job.sourcePath,
     fps: job.fps,
+    sourceFps: job.sourceFps,
     frameCount: job.frameCount,
     quality: job.quality,
+    format: job.format,
     segments: job.segments,
     hasAudio: job.hasAudio,
     overlayConcatListPath,
