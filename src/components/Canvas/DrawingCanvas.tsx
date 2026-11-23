@@ -7,6 +7,8 @@ import { useAudienceStore } from '@/stores/audienceStore'
 import { PlayerTracker } from './tools/PlayerTracker'
 import { getToolDefaults } from '@/utils/annotationDefaults'
 import { annotationStateAt } from '@/export/annotationTiming'
+import { stripReveal } from '@/export/reveal'
+import { useLiveReveal } from '@/hooks/useLiveReveal'
 
 /** Fabric object carrying the magnifier id this component stamps on it. */
 type MagnifierTaggedObject = fabric.Object & { magnifierId?: string }
@@ -339,15 +341,22 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   useEffect(() => {
     const canvas = fabricRef.current
     if (!canvas) return
+    // While the video plays or an automatic hold runs, useLiveReveal owns
+    // visibility, opacity and reveal.
+    const { autoHold } = useVideoStore.getState()
+    if (!videoElement.paused || (autoHold !== null && autoHold.endedAt === null)) return
 
     annotations.forEach((annotation) => {
       const { visible, opacity } = annotationStateAt(annotation, currentTime)
       annotation.object.visible = visible
       annotation.object.opacity = opacity
+      stripReveal(annotation.object)
     })
 
     canvas.renderAll()
-  }, [currentTime, annotations])
+  }, [currentTime, annotations, videoElement])
+
+  useLiveReveal(fabricRef, videoElement)
 
   // Clean up magnifier refs when annotations are removed
   useEffect(() => {
