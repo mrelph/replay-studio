@@ -6,7 +6,7 @@ import {
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { Modal, Button } from '@/components/ui'
-import { restyleObject, type AnnotationStyle } from '@/utils/annotationStyle'
+import { restyleObject, STYLED_TOOL_TYPES, type AnnotationStyle } from '@/utils/annotationStyle'
 
 const ANNOTATION_STYLES: { value: AnnotationStyle; label: string; title: string }[] = [
   { value: 'outline', label: 'Outline', title: 'Dark outline: readable on bright ice' },
@@ -80,7 +80,7 @@ export default function DrawingToolbar() {
     const { canvas, annotations: all, saveState } = useDrawingStore.getState()
     if (!canvas) return
     const selected = new Set(canvas.getActiveObjects())
-    const targets = all.filter((a) => selected.has(a.object))
+    const targets = all.filter((a) => selected.has(a.object) && STYLED_TOOL_TYPES.has(a.toolType))
     if (targets.length === 0) return
     saveState()
     targets.forEach((a) => restyleObject(a.object, a.toolType, style))

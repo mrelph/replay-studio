@@ -456,3 +456,33 @@ describe('serializeFabricObject / deserializeFabricObject round-trip (real fabri
     expect(restored.height).toBe(50)
   })
 })
+
+describe('shadow persistence', () => {
+  it('round-trips an outline line', () => {
+    const line = new fabric.Line([0, 0, 10, 0], { stroke: '#FFCC00', shadow: new fabric.Shadow({ color: 'rgba(0,0,0,0.85)', blur: 3, offsetX: 0, offsetY: 0 }) })
+    const restored = deserializeFabricObject(fabric, serializeFabricObject(line))
+    expect(restored.shadow).toMatchObject({ color: 'rgba(0,0,0,0.85)', blur: 3 })
+  })
+
+  it('round-trips a clean line with no shadow', () => {
+    const line = new fabric.Line([0, 0, 10, 0], { stroke: '#FFCC00' })
+    const data = serializeFabricObject(line)
+    expect(data.shadow).toBeNull()
+    expect(deserializeFabricObject(fabric, data).shadow).toBeFalsy()
+  })
+
+  it('round-trips both parts of an arrow group', () => {
+    const shaft = new fabric.Line([0, 0, 10, 0], { stroke: '#f00', shadow: new fabric.Shadow({ color: 'rgba(0,0,0,0.85)', blur: 3 }) })
+    const head = new fabric.Triangle({ fill: '#f00', stroke: '#f00', shadow: new fabric.Shadow({ color: '#f00', blur: 15 }) })
+    const restored = deserializeFabricObject(fabric, serializeFabricObject(new fabric.Group([shaft, head])))
+    const [s, h] = restored.getObjects()
+    expect(s.shadow).toMatchObject({ color: 'rgba(0,0,0,0.85)', blur: 3 })
+    expect(h.shadow).toMatchObject({ color: '#f00', blur: 15 })
+  })
+
+  it('keeps the legacy glow when the file has no shadow key', () => {
+    const data = serializeFabricObject(new fabric.Line([0, 0, 10, 0], { stroke: '#FFCC00' }))
+    delete data.shadow
+    expect(deserializeFabricObject(fabric, data).shadow).toMatchObject({ color: '#FFCC00', blur: 12 })
+  })
+})

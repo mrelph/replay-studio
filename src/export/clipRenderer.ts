@@ -53,6 +53,7 @@ function cloneAnnotationObject(object: fabric.Object): Promise<fabric.Object> {
  */
 function cloneMagnifierRing(object: fabric.Object): fabric.Object {
   const data = serializeFabricObject(object)
+  delete data.shadow
   const clone = deserializeFabricObject(fabric, data) as fabric.Object
   clone.set({ fill: 'rgba(0,0,0,0)' })
   return clone

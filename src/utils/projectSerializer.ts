@@ -33,6 +33,8 @@ export interface SerializedAnnotation {
     scaleX?: number
     scaleY?: number
     opacity?: number
+    /** Absent in files saved before styles existed; null means no shadow. */
+    shadow?: { color: string; blur: number; offsetX: number; offsetY: number } | null
     // For lines
     x1?: number
     y1?: number
@@ -86,6 +88,12 @@ type SerializableFabricObject = fabric.Object & {
   _objects?: SerializableFabricObject[]
 }
 
+function serializeShadow(shadow: unknown): { color: string; blur: number; offsetX: number; offsetY: number } | null {
+  if (!shadow || typeof shadow !== 'object') return null
+  const sh = shadow as { color?: string; blur?: number; offsetX?: number; offsetY?: number }
+  return { color: sh.color ?? 'rgb(0,0,0)', blur: sh.blur ?? 0, offsetX: sh.offsetX ?? 0, offsetY: sh.offsetY ?? 0 }
+}
+
 // Serialize a Fabric.js object to plain JSON
 export function serializeFabricObject(input: fabric.Object): SerializedAnnotation['fabricData'] {
   const obj = input as SerializableFabricObject
@@ -100,6 +108,7 @@ export function serializeFabricObject(input: fabric.Object): SerializedAnnotatio
     fill: typeof obj.fill === 'string' ? obj.fill : undefined,
     stroke: obj.stroke,
     strokeWidth: obj.strokeWidth,
+    shadow: serializeShadow(obj.shadow),
   }
 
   switch (obj.type) {
@@ -262,8 +271,10 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
     evented: true,
   }
 
-  // Add shadow for broadcast style
-  const shadow = data.stroke ? new fabric.Shadow({
+  // Files saved with a stored shadow rebuild exactly that; older files keep the legacy glow.
+  const hasStoredShadow = data.shadow !== undefined
+  const storedShadow = data.shadow ? new fabric.Shadow(data.shadow) : undefined
+  const shadow = hasStoredShadow ? storedShadow : data.stroke ? new fabric.Shadow({
     color: data.stroke,
     blur: 12,
     offsetX: 0,
@@ -312,6 +323,7 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
         ...commonProps,
         fontSize: data.fontSize,
         fontFamily: data.fontFamily,
+        ...(hasStoredShadow ? { shadow } : {}),
       })
 
     case 'triangle':
