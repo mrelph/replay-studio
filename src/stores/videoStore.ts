@@ -20,6 +20,8 @@ interface VideoState {
   shuttleBaseRate: number | null
   /** Set while Freeze is timing a freeze on the stopped frame (where and when it started); resuming records it. */
   freezeTiming: { time: number; at: number } | null
+  /** Set while the player holds on an automatic freeze frame (not a user pause); endedAt is set once the hold has finished. */
+  autoHold: { time: number; startedAt: number; endedAt: number | null } | null
 
   // Actions
   setVideoElement: (element: HTMLVideoElement | null) => void
@@ -37,6 +39,9 @@ interface VideoState {
   toggleFreeze: () => void
   /** Stops timing without recording anything. */
   cancelFreezeTiming: () => void
+  beginAutoHold: (time: number) => void
+  endAutoHold: () => void
+  clearAutoHold: () => void
   play: () => void
   pause: () => void
   togglePlay: () => void
@@ -84,8 +89,9 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   reverseRate: 0,
   shuttleBaseRate: null,
   freezeTiming: null,
+  autoHold: null,
 
-  setVideoElement: (element) => set({ videoElement: element, freezeTiming: null }),
+  setVideoElement: (element) => set({ videoElement: element, freezeTiming: null, autoHold: null }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration }),
@@ -127,6 +133,10 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     set({ freezeTiming: { time: videoElement.currentTime, at: performance.now() } })
   },
   cancelFreezeTiming: () => set({ freezeTiming: null }),
+  beginAutoHold: (time) => set({ autoHold: { time, startedAt: performance.now(), endedAt: null } }),
+  endAutoHold: () =>
+    set((state) => (state.autoHold ? { autoHold: { ...state.autoHold, endedAt: performance.now() } } : state)),
+  clearAutoHold: () => set({ autoHold: null }),
   setFps: (fps) => set({ fps: Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_FPS }),
 
   play: () => {

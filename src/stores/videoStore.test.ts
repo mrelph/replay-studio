@@ -58,3 +58,32 @@ describe('toggleFreeze', () => {
     expect(useVideoStore.getState().freezeTiming).toBeNull()
   })
 })
+
+describe('autoHold', () => {
+  beforeEach(() => {
+    useVideoStore.setState({ videoElement: null, autoHold: null })
+  })
+
+  it('tracks an automatic hold', () => {
+    const s = useVideoStore.getState()
+    expect(s.autoHold).toBeNull()
+    s.beginAutoHold(3.2)
+    expect(useVideoStore.getState().autoHold).toMatchObject({ time: 3.2, endedAt: null })
+    useVideoStore.getState().endAutoHold()
+    expect(useVideoStore.getState().autoHold!.endedAt).not.toBeNull()
+    useVideoStore.getState().clearAutoHold()
+    expect(useVideoStore.getState().autoHold).toBeNull()
+  })
+
+  it('endAutoHold with no hold is a no-op', () => {
+    useVideoStore.getState().clearAutoHold()
+    useVideoStore.getState().endAutoHold()
+    expect(useVideoStore.getState().autoHold).toBeNull()
+  })
+
+  it('setVideoElement clears a hold', () => {
+    useVideoStore.getState().beginAutoHold(1)
+    useVideoStore.getState().setVideoElement(null)
+    expect(useVideoStore.getState().autoHold).toBeNull()
+  })
+})

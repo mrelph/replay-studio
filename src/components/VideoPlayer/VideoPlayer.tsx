@@ -40,6 +40,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   const resetFreezes = useCallback(() => {
     triggeredFreezesRef.current.clear()
     lastTimeRef.current = 0
+    useVideoStore.getState().clearAutoHold()
     if (freezeTimeoutRef.current) {
       clearTimeout(freezeTimeoutRef.current)
       freezeTimeoutRef.current = null
@@ -96,6 +97,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           if (prevTime <= ann.startTime && curTime >= ann.startTime) {
             triggeredFreezesRef.current.add(ann.id)
             isFreezePauseRef.current = true
+            useVideoStore.getState().beginAutoHold(ann.startTime)
             if (video.currentTime !== ann.startTime) {
               isFreezeSeekRef.current = true
               video.currentTime = ann.startTime
@@ -103,6 +105,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
             video.pause()
             freezeTimeoutRef.current = setTimeout(() => {
               freezeTimeoutRef.current = null
+              useVideoStore.getState().endAutoHold()
               // Don't auto-resume past the out point; respect looping instead.
               const { outPoint, isLooping, inPoint } = useVideoStore.getState()
               if (outPoint !== null && video.currentTime >= outPoint) {
@@ -179,6 +182,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         // scheduled auto-resume so playback stays paused.
         clearTimeout(freezeTimeoutRef.current)
         freezeTimeoutRef.current = null
+        useVideoStore.getState().clearAutoHold()
       }
     }
     const handleEnded = () => {
@@ -211,6 +215,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       if (state.freezeTiming && !prev.freezeTiming && freezeTimeoutRef.current) {
         clearTimeout(freezeTimeoutRef.current)
         freezeTimeoutRef.current = null
+        useVideoStore.getState().clearAutoHold()
       }
     })
 
