@@ -9,6 +9,7 @@ import { getToolDefaults } from '@/utils/annotationDefaults'
 import { annotationStateAt } from '@/export/annotationTiming'
 import { stripReveal } from '@/export/reveal'
 import { useLiveReveal } from '@/hooks/useLiveReveal'
+import { shadowForStyle } from '@/utils/annotationStyle'
 
 /** Fabric object carrying the magnifier id this component stamps on it. */
 type MagnifierTaggedObject = fabric.Object & { magnifierId?: string }
@@ -29,7 +30,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // Track magnifiers for live video zoom updates
   const magnifiersRef = useRef<Map<string, { circle: fabric.Circle, centerX: number, centerY: number, radius: number }>>(new Map())
 
-  const { currentTool, strokeColor, strokeWidth, setIsDrawing } = useToolStore()
+  const { currentTool, strokeColor, strokeWidth, annotationStyle, setIsDrawing } = useToolStore()
   const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
   const laserColor = useAudienceStore((s) => s.laserColor)
   const { setCanvas, addAnnotation, annotations } = useDrawingStore()
@@ -231,9 +232,11 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       const brush = new fabric.PencilBrush(canvas)
       brush.color = strokeColor
       brush.width = strokeWidth
+      const brushShadow = shadowForStyle(annotationStyle, strokeColor)
+      if (brushShadow) brush.shadow = brushShadow
       canvas.freeDrawingBrush = brush
     }
-  }, [currentTool, strokeColor, strokeWidth])
+  }, [currentTool, strokeColor, strokeWidth, annotationStyle])
 
   // Update trackers when video time changes
   useEffect(() => {
@@ -485,12 +488,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             stroke: strokeColor,
             strokeWidth: Math.max(strokeWidth, 3),
             strokeLineCap: 'round',
-            shadow: new fabric.Shadow({
-              color: strokeColor,
-              blur: 10,
-              offsetX: 0,
-              offsetY: 0,
-            }),
+            shadow: shadowForStyle(annotationStyle, strokeColor),
             selectable: false,
             evented: false,
           })
@@ -504,12 +502,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             strokeWidth: Math.max(strokeWidth, 4),
             fill: 'transparent',
             strokeLineCap: 'round',
-            shadow: new fabric.Shadow({
-              color: strokeColor,
-              blur: 15,
-              offsetX: 0,
-              offsetY: 0,
-            }),
+            shadow: shadowForStyle(annotationStyle, strokeColor, 15),
             selectable: false,
             evented: false,
           })
@@ -523,12 +516,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             stroke: strokeColor,
             strokeWidth: Math.max(strokeWidth, 4),
             strokeLineCap: 'round',
-            shadow: new fabric.Shadow({
-              color: strokeColor,
-              blur: 15,
-              offsetX: 0,
-              offsetY: 0,
-            }),
+            shadow: shadowForStyle(annotationStyle, strokeColor, 15),
             selectable: false,
             evented: false,
           })
@@ -544,12 +532,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             fill: 'transparent',
             stroke: strokeColor,
             strokeWidth: Math.max(strokeWidth, 3),
-            shadow: new fabric.Shadow({
-              color: strokeColor,
-              blur: 12,
-              offsetX: 0,
-              offsetY: 0,
-            }),
+            shadow: shadowForStyle(annotationStyle, strokeColor, 12),
             selectable: false,
             evented: false,
           })
@@ -565,12 +548,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             fill: 'transparent',
             stroke: strokeColor,
             strokeWidth: Math.max(strokeWidth, 3),
-            shadow: new fabric.Shadow({
-              color: strokeColor,
-              blur: 12,
-              offsetX: 0,
-              offsetY: 0,
-            }),
+            shadow: shadowForStyle(annotationStyle, strokeColor, 12),
             selectable: false,
             evented: false,
           })
@@ -730,6 +708,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             fontSize: 24,
             fill: strokeColor,
             fontFamily: 'Arial',
+            shadow: shadowForStyle(annotationStyle, strokeColor),
           })
           canvas.add(text)
           canvas.setActiveObject(text)
@@ -797,12 +776,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             strokeWidth: Math.max(strokeWidth, 4),
             fill: 'transparent',
             strokeLineCap: 'round',
-            shadow: new fabric.Shadow({
-              color: strokeColor,
-              blur: 15,
-              offsetX: 0,
-              offsetY: 0,
-            }),
+            shadow: shadowForStyle(annotationStyle, strokeColor, 15),
             selectable: false,
             evented: false,
           }
@@ -920,12 +894,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             strokeWidth: Math.max(strokeWidth, 4),
             fill: 'transparent',
             strokeLineCap: 'round',
-            shadow: new fabric.Shadow({
-              color: strokeColor,
-              blur: 15,
-              offsetX: 0,
-              offsetY: 0,
-            }),
+            shadow: shadowForStyle(annotationStyle, strokeColor, 15),
             selectable: false,
             evented: false,
           }
@@ -942,12 +911,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           angle: (angle * 180 / Math.PI) + 90,
           originX: 'center',
           originY: 'bottom',
-          shadow: new fabric.Shadow({
-            color: strokeColor,
-            blur: 15,
-            offsetX: 0,
-            offsetY: 0,
-          }),
+          shadow: shadowForStyle(annotationStyle, strokeColor, 15),
         })
 
         const arcGroup = new fabric.Group([finalPath, arrowHead], {
@@ -987,12 +951,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           angle: (angle * 180 / Math.PI) + 90,
           originX: 'center',
           originY: 'bottom',
-          shadow: new fabric.Shadow({
-            color: strokeColor,
-            blur: 15,
-            offsetX: 0,
-            offsetY: 0,
-          }),
+          shadow: shadowForStyle(annotationStyle, strokeColor, 15),
         })
 
         // Remove the line and create a group with both line and arrowhead
@@ -1021,7 +980,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       canvas.off('mouse:move', handleMouseMove)
       canvas.off('mouse:up', handleMouseUp)
     }
-  }, [currentTool, strokeColor, strokeWidth, setIsDrawing, createAnnotation])
+  }, [currentTool, strokeColor, strokeWidth, annotationStyle, setIsDrawing, createAnnotation])
 
   // Update brush when path is created (for pen tool)
   useEffect(() => {

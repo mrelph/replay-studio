@@ -6,6 +6,13 @@ import {
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { Modal, Button } from '@/components/ui'
+import { restyleObject, type AnnotationStyle } from '@/utils/annotationStyle'
+
+const ANNOTATION_STYLES: { value: AnnotationStyle; label: string; title: string }[] = [
+  { value: 'outline', label: 'Outline', title: 'Dark outline: readable on bright ice' },
+  { value: 'glow', label: 'Glow', title: 'Soft glow in the shape colour' },
+  { value: 'clean', label: 'Clean', title: 'No shadow' },
+]
 
 interface ToolButtonProps {
   tool: ToolType
@@ -65,8 +72,20 @@ const COLOR_NAMES: Record<string, string> = {
 }
 
 export default function DrawingToolbar() {
-  const { strokeColor, strokeWidth, setStrokeColor, setStrokeWidth } = useToolStore()
+  const { strokeColor, strokeWidth, annotationStyle, setStrokeColor, setStrokeWidth, setAnnotationStyle } = useToolStore()
   const { undo, redo, clearAnnotations, undoStack, redoStack, annotations } = useDrawingStore()
+
+  const chooseAnnotationStyle = (style: AnnotationStyle) => {
+    setAnnotationStyle(style)
+    const { canvas, annotations: all, saveState } = useDrawingStore.getState()
+    if (!canvas) return
+    const selected = new Set(canvas.getActiveObjects())
+    const targets = all.filter((a) => selected.has(a.object))
+    if (targets.length === 0) return
+    saveState()
+    targets.forEach((a) => restyleObject(a.object, a.toolType, style))
+    canvas.requestRenderAll()
+  }
   const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   return (
@@ -147,6 +166,27 @@ export default function DrawingToolbar() {
                 height: Math.min(width, 6),
               }}
             />
+          </button>
+        ))}
+      </ToolGroup>
+
+      <VerticalDivider />
+
+      {/* Contrast style */}
+      <ToolGroup label="Style">
+        {ANNOTATION_STYLES.map(({ value, label, title }) => (
+          <button
+            key={value}
+            onClick={() => chooseAnnotationStyle(value)}
+            className={`px-2 h-7 rounded text-xs transition-all ${
+              annotationStyle === value
+                ? 'bg-accent-subtle ring-1 ring-accent'
+                : 'hover:bg-surface-sunken'
+            }`}
+            title={title}
+            aria-pressed={annotationStyle === value}
+          >
+            {label}
           </button>
         ))}
       </ToolGroup>

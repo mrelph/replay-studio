@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { AnnotationStyle } from '@/utils/annotationStyle'
 
 export type ToolType =
   | 'select'
@@ -22,6 +23,7 @@ interface ToolState {
   strokeWidth: number
   fontSize: number
   isDrawing: boolean
+  annotationStyle: AnnotationStyle
 
   // Actions
   setCurrentTool: (tool: ToolType) => void
@@ -30,6 +32,7 @@ interface ToolState {
   setStrokeWidth: (width: number) => void
   setFontSize: (size: number) => void
   setIsDrawing: (drawing: boolean) => void
+  setAnnotationStyle: (style: AnnotationStyle) => void
 }
 
 export const useToolStore = create<ToolState>((set) => ({
@@ -39,6 +42,7 @@ export const useToolStore = create<ToolState>((set) => ({
   strokeWidth: 4,
   fontSize: 24,
   isDrawing: false,
+  annotationStyle: 'outline',
 
   setCurrentTool: (tool) => set({ currentTool: tool }),
   setStrokeColor: (color) => set({ strokeColor: color }),
@@ -46,6 +50,7 @@ export const useToolStore = create<ToolState>((set) => ({
   setStrokeWidth: (width) => set({ strokeWidth: width }),
   setFontSize: (size) => set({ fontSize: size }),
   setIsDrawing: (drawing) => set({ isDrawing: drawing }),
+  setAnnotationStyle: (style) => set({ annotationStyle: style }),
 }))
 
 // Broadcast-standard color palette (desaturated, brightness-balanced)
