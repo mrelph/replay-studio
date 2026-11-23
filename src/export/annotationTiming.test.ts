@@ -1,5 +1,33 @@
 import { describe, it, expect } from 'vitest'
-import { annotationStateAt } from './annotationTiming'
+import { annotationStateAt, revealElapsed, revealFraction } from './annotationTiming'
+
+describe('revealFraction', () => {
+  it('is 1 with no drawIn', () => {
+    expect(revealFraction(0, undefined)).toBe(1)
+    expect(revealFraction(0, 0)).toBe(1)
+    expect(revealFraction(0, -1)).toBe(1)
+    expect(revealFraction(0, NaN)).toBe(1)
+  })
+  it('runs 0 → 1 with ease-out', () => {
+    expect(revealFraction(0, 0.4)).toBe(0)
+    expect(revealFraction(0.2, 0.4)).toBeCloseTo(0.875)
+    expect(revealFraction(0.4, 0.4)).toBe(1)
+    expect(revealFraction(9, 0.4)).toBe(1)
+  })
+})
+
+describe('revealElapsed', () => {
+  it('adds hold time to source time', () => {
+    expect(revealElapsed(5, 5, 0.3)).toBeCloseTo(0.3)
+    expect(revealElapsed(5, 5.1, 0.3)).toBeCloseTo(0.4)
+    expect(revealElapsed(5, 4, 0)).toBe(0)
+  })
+})
+
+it('drops the fade-in floor when drawIn is set', () => {
+  expect(annotationStateAt({ startTime: 5, endTime: 10, fadeIn: 0.2, drawIn: 0.4 }, 5).opacity).toBe(1)
+  expect(annotationStateAt({ startTime: 5, endTime: 10, fadeIn: 0.2 }, 5).opacity).toBe(0.5)
+})
 
 describe('annotationStateAt', () => {
   it('is hidden before startTime', () => {

@@ -8,6 +8,12 @@
  * each output frame's source time). Keeping the two in lockstep is the whole
  * point: whatever a coach sees in the live view during scrubbing is exactly
  * what gets burned into the exported clip.
+ *
+ * Presentation time: draw-on reveal runs on its own clock, not the video's.
+ * `revealElapsed` is source seconds since the annotation started plus any
+ * hold time (video paused or frozen while the shape keeps drawing), and
+ * `revealFraction` maps that onto 0..1 with an ease-out curve. Annotations
+ * without a positive `drawIn` are always fully revealed.
  */
 
 export interface AnnotationTimingInput {
@@ -15,6 +21,17 @@ export interface AnnotationTimingInput {
   endTime: number
   fadeIn?: number
   fadeOut?: number
+  drawIn?: number
+}
+
+export function revealElapsed(startTime: number, t: number, holdElapsed: number): number {
+  return Math.max(0, t - startTime) + holdElapsed
+}
+
+export function revealFraction(elapsed: number, drawIn: number | undefined): number {
+  if (drawIn === undefined || !(drawIn > 0)) return 1
+  const x = Math.min(1, Math.max(0, elapsed / drawIn))
+  return 1 - Math.pow(1 - x, 3)
 }
 
 export interface AnnotationTimingState {
@@ -34,7 +51,7 @@ export interface AnnotationTimingState {
  *   (matches the original `else if`).
  */
 export function annotationStateAt(annotation: AnnotationTimingInput, t: number): AnnotationTimingState {
-  const { startTime, endTime, fadeIn = 0, fadeOut = 0 } = annotation
+  const { startTime, endTime, fadeIn = 0, fadeOut = 0, drawIn = 0 } = annotation
   const isInTimeRange = t >= startTime && t <= endTime
 
   if (!isInTimeRange) {
@@ -46,7 +63,7 @@ export function annotationStateAt(annotation: AnnotationTimingInput, t: number):
 
   let opacity = 1
 
-  if (fadeIn > 0 && timeInRange < fadeIn) {
+  if (fadeIn > 0 && !(drawIn > 0) && timeInRange < fadeIn) {
     opacity = Math.max(0.5, timeInRange / fadeIn)
   } else if (fadeOut > 0 && timeToEnd < fadeOut) {
     opacity = Math.max(0.2, timeToEnd / fadeOut)
