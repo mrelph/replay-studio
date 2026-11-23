@@ -3,7 +3,8 @@ import type { Annotation } from '@/stores/drawingStore'
 import { deserializeFabricObject, serializeFabricObject } from '@/utils/projectSerializer'
 import type { Clip, ClipEncodeReelPart, ClipExportFormat, ClipExportQuality, ClipExportResult, OverlaySpan, VideoProbe } from '@/types/clip'
 import { buildOutputTimeline } from './outputTimeline'
-import { buildDrawingSpans, signatureKey, type DrawingSpan, type SpanAnnotationLike } from './spanBuilder'
+import { buildDrawingSpansWithinBudget, signatureKey, type DrawingSpan, type SpanAnnotationLike } from './spanBuilder'
+import { applyReveal } from './reveal'
 import { buildMagnifierOps, computeMagnifierSampleRect, MAGNIFIER_ZOOM_LEVEL, type MagnifierAnnotationLike } from './magnifierOps'
 
 // Re-exported for `clipRenderer.test.ts` and any other caller that imported
@@ -59,24 +60,26 @@ function cloneMagnifierRing(object: fabric.Object): fabric.Object {
 
 interface ClonedAnnotation {
   annotationId: string
+  toolType: string
   clone: fabric.Object
 }
 
-/** Applies one span's visibility/opacity to every clone, renders, and encodes a transparent PNG. */
+/** Applies one span's visibility/opacity/draw-on reveal to every clone, renders, and encodes a transparent PNG. */
 async function renderSpanRgba(
   staticCanvas: fabric.StaticCanvas,
   clones: ClonedAnnotation[],
   signature: DrawingSpan['signature']
 ): Promise<Uint8Array> {
-  const bucketById = new Map(signature.map((s) => [s.id, s.opacityBucket]))
-  for (const { annotationId, clone } of clones) {
-    const bucket = bucketById.get(annotationId)
-    if (bucket === undefined) {
+  const stateById = new Map(signature.map((s) => [s.id, s]))
+  for (const { annotationId, toolType, clone } of clones) {
+    const state = stateById.get(annotationId)
+    if (state === undefined) {
       clone.visible = false
       clone.opacity = 0
     } else {
       clone.visible = true
-      clone.opacity = bucket
+      clone.opacity = state.opacityBucket
+      if (toolType !== 'magnifier') applyReveal(clone, toolType, state.revealBucket / state.revealSteps)
     }
   }
   staticCanvas.renderAll()
@@ -160,9 +163,11 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
       endTime: a.endTime,
       fadeIn: a.fadeIn,
       fadeOut: a.fadeOut,
+      drawIn: a.drawIn,
+      toolType: a.toolType,
     }))
 
-    const spans = buildDrawingSpans(segments, spanAnnotations, fps)
+    const spans = buildDrawingSpansWithinBudget(segments, spanAnnotations, fps, { sourceFps: probe.fps })
 
     // No retina scaling: the layer must be exactly the video's native pixel size.
     staticCanvas = new fabric.StaticCanvas(null, { width: probe.width, height: probe.height, enableRetinaScaling: false })
@@ -171,7 +176,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
       const isMagnifier = annotation.toolType === 'magnifier'
       const clone = isMagnifier ? cloneMagnifierRing(annotation.object) : await cloneAnnotationObject(annotation.object)
       staticCanvas.add(clone)
-      clones.push({ annotationId: annotation.id, clone })
+      clones.push({ annotationId: annotation.id, toolType: annotation.toolType, clone })
     }
 
     // Render each distinct signature once (dedup: a static drawing costs one PNG for its whole "on" span).
@@ -203,6 +208,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
         endTime: a.endTime,
         fadeIn: a.fadeIn,
         fadeOut: a.fadeOut,
+        drawIn: a.drawIn,
         circle: {
           left: circleObject.left || 0,
           top: circleObject.top || 0,

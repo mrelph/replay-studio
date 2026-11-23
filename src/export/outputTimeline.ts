@@ -139,3 +139,33 @@ export function frameSourceTimes(segments: OutputSegment[], fps: number): number
 
   return times
 }
+
+export interface FramePresentation {
+  srcTime: number
+  segmentIndex: number
+  /** Seconds into the current hold segment (`f / fps` on its f-th frame); 0 on play frames. */
+  holdElapsed: number
+}
+
+/**
+ * `frameSourceTimes` plus, per output frame, which segment it belongs to and
+ * how far into a hold it is, so draw-on reveals can keep animating while the
+ * source frame is frozen. Same order and length as `frameSourceTimes`.
+ */
+export function framePresentations(segments: OutputSegment[], fps: number): FramePresentation[] {
+  const counts = segmentFrameCounts(segments, fps)
+  const times = frameSourceTimes(segments, fps)
+  const presentations: FramePresentation[] = []
+
+  segments.forEach((seg, segmentIndex) => {
+    for (let f = 0; f < counts[segmentIndex]; f++) {
+      presentations.push({
+        srcTime: times[presentations.length],
+        segmentIndex,
+        holdElapsed: seg.kind === 'hold' ? f / fps : 0,
+      })
+    }
+  })
+
+  return presentations
+}

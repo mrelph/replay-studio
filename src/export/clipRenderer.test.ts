@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest'
-import { computeMagnifierSampleRect } from './clipRenderer'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { fabric } from '@/lib/fabric'
+import type { Annotation } from '@/stores/drawingStore'
+import type { VideoProbe } from '@/types/clip'
+import { computeMagnifierSampleRect, renderClip } from './clipRenderer'
 
 describe('computeMagnifierSampleRect', () => {
   it('matches updateMagnifierContent\'s math when ref and video dims are equal (1:1, no scaling)', () => {
@@ -57,5 +60,73 @@ describe('computeMagnifierSampleRect', () => {
     )
     expect(rect.sourceX + rect.sourceWidth).toBeLessThanOrEqual(videoDims.width)
     expect(rect.sourceY + rect.sourceHeight).toBeLessThanOrEqual(videoDims.height)
+  })
+})
+
+describe('renderClip draw-on', () => {
+  const probe: VideoProbe = { width: 64, height: 36, fps: 30, duration: 10, hasAudio: false }
+  const originalGetContext = HTMLCanvasElement.prototype.getContext
+
+  // jsdom has no 2D canvas; stub a permissive context whose readback is an empty frame.
+  beforeAll(() => {
+    const mockContext = new Proxy({} as Record<string, unknown>, {
+      get(target, prop: string) {
+        if (prop in target) return target[prop]
+        if (prop === 'getImageData') return (_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) })
+        if (prop === 'measureText') return (text: string) => ({ width: (text?.length || 0) * 8 })
+        if (prop === 'canvas') return { width: 0, height: 0 }
+        if (prop === 'getContextAttributes') return () => ({})
+        return () => undefined
+      },
+      set(target, prop: string, value) {
+        target[prop] = value
+        return true
+      },
+    })
+    HTMLCanvasElement.prototype.getContext = (() => mockContext) as unknown as HTMLCanvasElement['getContext']
+  })
+  afterAll(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext
+  })
+
+  async function overlayCallsFor(drawIn: number | undefined): Promise<number> {
+    const clipEncodeAddOverlay = vi.fn().mockImplementation(async () => ({ ok: true, index: clipEncodeAddOverlay.mock.calls.length - 1 }))
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        clipEncodeStart: vi.fn().mockResolvedValue({ ok: true, jobId: 'job' }),
+        clipEncodeAddOverlay,
+        clipEncodeRun: vi.fn().mockResolvedValue({ success: true }),
+        clipEncodeCancel: vi.fn().mockResolvedValue(undefined),
+        onClipEncodeProgress: vi.fn(),
+        removeClipEncodeProgressListener: vi.fn(),
+      },
+    })
+    const annotation = {
+      id: 'a',
+      toolType: 'line',
+      startTime: 0,
+      endTime: 2,
+      drawIn,
+      object: new fabric.Line([0, 0, 40, 20], { stroke: '#f00', strokeWidth: 4 }),
+    } as unknown as Annotation
+    const result = await renderClip({
+      clip: { start: 0, end: 2 },
+      probe,
+      annotations: [annotation],
+      includeDrawings: true,
+      quality: 'high',
+      outputPath: '/out.mp4',
+      sourcePath: '/src.mp4',
+      onProgress: () => {},
+      signal: new AbortController().signal,
+    })
+    expect(result).toEqual({ success: true })
+    return clipEncodeAddOverlay.mock.calls.length
+  }
+
+  it('burns a draw-on into several overlays, and a static drawing into one', async () => {
+    expect(await overlayCallsFor(0.4)).toBeGreaterThan(2)
+    expect(await overlayCallsFor(undefined)).toBe(1)
   })
 })

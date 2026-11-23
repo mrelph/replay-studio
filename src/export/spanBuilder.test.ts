@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { buildDrawingSpans, computeFrameSignature, signatureKey, type SpanAnnotationLike } from './spanBuilder'
+import {
+  buildDrawingSpans,
+  buildDrawingSpansWithinBudget,
+  computeFrameSignature,
+  MAX_DISTINCT_OVERLAYS,
+  signatureKey,
+  type SpanAnnotationLike,
+} from './spanBuilder'
 import type { OutputSegment } from '@/types/clip'
 
 describe('signatureKey / computeFrameSignature', () => {
@@ -9,14 +16,14 @@ describe('signatureKey / computeFrameSignature', () => {
       { id: 'a', startTime: 0, endTime: 10 },
     ]
     const sig = computeFrameSignature(annotations, 5)
-    expect(signatureKey(sig)).toBe('a:1.00|b:1.00')
+    expect(signatureKey(sig)).toBe('a:1.00:12/12|b:1.00:12/12')
   })
 
   it('excludes annotations outside their time range', () => {
     const annotations: SpanAnnotationLike[] = [{ id: 'a', startTime: 2, endTime: 4 }]
     expect(computeFrameSignature(annotations, 1)).toEqual([])
     expect(computeFrameSignature(annotations, 5)).toEqual([])
-    expect(computeFrameSignature(annotations, 3)).toEqual([{ id: 'a', opacityBucket: 1 }])
+    expect(computeFrameSignature(annotations, 3)).toEqual([{ id: 'a', opacityBucket: 1, revealBucket: 12, revealSteps: 12 }])
   })
 })
 
@@ -30,7 +37,7 @@ describe('buildDrawingSpans', () => {
 
     expect(spans).toHaveLength(3)
     expect(spans[0]).toMatchObject({ signature: [], frameStart: 0, frameCount: 3 })
-    expect(spans[1].signature).toEqual([{ id: 'a', opacityBucket: 1 }])
+    expect(spans[1].signature).toEqual([{ id: 'a', opacityBucket: 1, revealBucket: 12, revealSteps: 12 }])
     expect(spans[1].frameStart).toBe(3)
     expect(spans[1].frameCount).toBe(5) // frames at t=3..7 inclusive
     expect(spans[2]).toMatchObject({ signature: [], frameStart: 8, frameCount: 2 })
@@ -106,9 +113,9 @@ describe('buildDrawingSpans', () => {
     // [0,4): only a. [4,6]: a+b. [7,10): only b (b's own endTime is inclusive at 10 but frames stop at 9).
     const keys = spans.map((s) => signatureKey(s.signature))
     expect(keys).toEqual([
-      'a:1.00', // t=0..3
-      'a:1.00|b:1.00', // t=4..6
-      'b:1.00', // t=7..9
+      'a:1.00:12/12', // t=0..3
+      'a:1.00:12/12|b:1.00:12/12', // t=4..6
+      'b:1.00:12/12', // t=7..9
     ])
     expect(spans[0].frameCount).toBe(4)
     expect(spans[1].frameCount).toBe(3)
@@ -122,12 +129,63 @@ describe('buildDrawingSpans', () => {
     const annotations: SpanAnnotationLike[] = [{ id: 'mag-1', startTime: 0, endTime: 10 }]
     const spans = buildDrawingSpans(PLAY_10S, annotations, 1)
     expect(spans).toHaveLength(1)
-    expect(spans[0].signature).toEqual([{ id: 'mag-1', opacityBucket: 1 }])
+    expect(spans[0].signature).toEqual([{ id: 'mag-1', opacityBucket: 1, revealBucket: 12, revealSteps: 12 }])
   })
 
   it('a clip with no annotations produces a single empty-signature span', () => {
     const spans = buildDrawingSpans(PLAY_10S, [], 1)
     expect(spans).toHaveLength(1)
     expect(spans[0]).toEqual({ signature: [], frameStart: 0, frameCount: 10 })
+  })
+})
+
+describe('draw-on reveal buckets', () => {
+  const play = (a: number, b: number): OutputSegment => ({ kind: 'play', srcStart: a, srcEnd: b })
+
+  it('static annotations still dedupe to one span', () => {
+    const spans = buildDrawingSpans([play(0, 2)], [{ id: 'a', startTime: 0, endTime: 2, toolType: 'line' }], 30)
+    expect(spans).toHaveLength(1)
+    expect(spans[0].signature[0]).toMatchObject({ revealBucket: 12, revealSteps: 12 })
+  })
+  it('a draw-on produces rising buckets then one finished span', () => {
+    const spans = buildDrawingSpans([play(0, 2)], [{ id: 'a', startTime: 0, endTime: 2, drawIn: 0.4, toolType: 'line' }], 30)
+    const buckets = spans.map((s) => s.signature[0].revealBucket)
+    expect(buckets[0]).toBe(0)
+    expect(buckets).toEqual([...buckets].sort((x, y) => x - y))
+    expect(buckets[buckets.length - 1]).toBe(12)
+    expect(spans.length).toBeLessThanOrEqual(13)
+  })
+  it('reveals during a hold on the start frame', () => {
+    const segs: OutputSegment[] = [{ kind: 'hold', srcTime: 1, duration: 1 }, play(1, 2)]
+    const spans = buildDrawingSpans(segs, [{ id: 'a', startTime: 1, endTime: 2, drawIn: 0.4, toolType: 'pen' }], 30)
+    const holdSpans = spans.filter((s) => s.frameStart < 30)
+    expect(holdSpans.length).toBeGreaterThan(1)
+    expect(holdSpans[holdSpans.length - 1].signature[0].revealBucket).toBe(12)
+  })
+  it('matches a hold a sub-frame before the drawing by frame index', () => {
+    const segs: OutputSegment[] = [play(0.9, 1.0), { kind: 'hold', srcTime: 1.0, duration: 1 }, play(1.0, 2)]
+    const spans = buildDrawingSpans(segs, [{ id: 'a', startTime: 1.004, endTime: 2, drawIn: 0.4, toolType: 'pen' }], 30, { sourceFps: 30 })
+    const first = spans.find((s) => s.signature.length > 0)!
+    expect(first.signature[0].revealBucket).toBe(12) // the whole hold counts as elapsed
+  })
+  it('a clip starting after the annotation shows it finished (Review Focus 1)', () => {
+    const spans = buildDrawingSpans([play(5, 6)], [{ id: 'a', startTime: 4, endTime: 8, drawIn: 0.4, toolType: 'line' }], 30)
+    expect(spans).toHaveLength(1)
+    expect(spans[0].signature[0].revealBucket).toBe(12)
+  })
+  it('15 fps output of 60 fps source still finishes the reveal (Review Focus 4)', () => {
+    const segs: OutputSegment[] = [{ kind: 'hold', srcTime: 1, duration: 0.5 }, play(1, 2)]
+    const spans = buildDrawingSpans(segs, [{ id: 'a', startTime: 1.001, endTime: 2, drawIn: 0.4, toolType: 'line' }], 15, { sourceFps: 60 })
+    expect(spans.some((s) => s.signature[0]?.revealBucket === 12)).toBe(true)
+  })
+  it('respects maxRevealSteps', () => {
+    const spans = buildDrawingSpans([play(0, 2)], [{ id: 'a', startTime: 0, endTime: 2, drawIn: 0.4, toolType: 'line' }], 60, { maxRevealSteps: 3 })
+    expect(new Set(spans.map((s) => signatureKey(s.signature))).size).toBeLessThanOrEqual(4)
+  })
+  it('falls back to fewer steps to stay within the overlay budget', () => {
+    const anns = Array.from({ length: 60 }, (_, i) => ({ id: `a${i}`, startTime: i, endTime: i + 0.9, drawIn: 0.4, toolType: 'line' }))
+    expect(new Set(buildDrawingSpans([play(0, 60)], anns, 30).map((s) => signatureKey(s.signature))).size).toBeGreaterThan(MAX_DISTINCT_OVERLAYS)
+    const spans = buildDrawingSpansWithinBudget([play(0, 60)], anns, 30)
+    expect(new Set(spans.map((s) => signatureKey(s.signature))).size).toBeLessThanOrEqual(MAX_DISTINCT_OVERLAYS)
   })
 })

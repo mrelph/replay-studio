@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildOutputTimeline, frameSourceTimes, segmentFrameCounts } from './outputTimeline'
+import { buildOutputTimeline, framePresentations, frameSourceTimes, segmentFrameCounts } from './outputTimeline'
 import type { OutputSegment } from '@/types/clip'
 
 describe('buildOutputTimeline', () => {
@@ -181,5 +181,16 @@ describe('frameSourceTimes', () => {
     )
     const times = frameSourceTimes(segments, 29.97)
     expect(times).toHaveLength(frameCount)
+  })
+})
+
+describe('framePresentations', () => {
+  it('framePresentations tracks hold progress', () => {
+    const segs: OutputSegment[] = [{ kind: 'play', srcStart: 0, srcEnd: 1 }, { kind: 'hold', srcTime: 1, duration: 0.5 }, { kind: 'play', srcStart: 1, srcEnd: 2 }]
+    const p = framePresentations(segs, 10)
+    expect(p.map((x) => x.srcTime)).toEqual(frameSourceTimes(segs, 10))
+    expect(p[10]).toEqual({ srcTime: 1, segmentIndex: 1, holdElapsed: 0 })
+    expect(p[14].holdElapsed).toBeCloseTo(0.4)
+    expect(p[15]).toEqual({ srcTime: 1, segmentIndex: 2, holdElapsed: 0 })
   })
 })
