@@ -16,10 +16,13 @@ export interface LiveRevealInput {
   autoHold: { time: number; startedAt: number; endedAt: number | null } | null
   now: number
   fps: number
-  armed: Set<string>
+  armed: Map<string, number>
 }
 
-/** Returns the reveal fraction for every annotation id (1 = finished). */
+/**
+ * Returns the reveal fraction for every annotation id (1 = finished).
+ * `armed` maps each armed id to its peak fraction so far.
+ */
 export function stepLiveReveal(input: LiveRevealInput): Map<string, number> {
   const { annotations, prevTime, time, playing, autoHold, now, fps, armed } = input
   const result = new Map<string, number>()
@@ -45,16 +48,21 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, number> {
     const holdOnStart = holdFrame !== null && holdFrame === frameIndexAt(startTime, fps)
     const arrived = playing && prevTime < startTime && startTime <= time && time - prevTime < 1
     const heldOnStart = holdActive && holdOnStart && time >= startTime - frameTolerance
-    if (arrived || heldOnStart) armed.add(id)
+    if ((arrived || heldOnStart) && !armed.has(id)) armed.set(id, 0)
     if (time < startTime - frameTolerance || time > endTime) armed.delete(id)
 
-    if (!armed.has(id)) {
+    const peak = armed.get(id)
+    if (peak === undefined) {
       result.set(id, 1)
       continue
     }
 
+    // A freeze snaps playback back to the start frame after it ran a little
+    // past it; never let an armed shape un-draw.
     const holdElapsed = holdOnStart && autoHold ? ((autoHold.endedAt ?? now) - autoHold.startedAt) / 1000 : 0
-    result.set(id, revealFraction(revealElapsed(startTime, time, holdElapsed), drawIn))
+    const fraction = Math.max(peak, revealFraction(revealElapsed(startTime, time, holdElapsed), drawIn))
+    armed.set(id, fraction)
+    result.set(id, fraction)
   }
 
   return result
