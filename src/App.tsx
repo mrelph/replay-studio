@@ -235,6 +235,7 @@ function App() {
         toolType: serializedAnn.toolType,
         fadeIn: serializedAnn.fadeIn,
         fadeOut: serializedAnn.fadeOut,
+        drawIn: serializedAnn.drawIn,
         freezeDuration: serializedAnn.freezeDuration,
         name: serializedAnn.name,
       }))

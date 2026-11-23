@@ -398,6 +398,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       toolType,
       fadeIn: defaults.fadeIn,
       fadeOut: defaults.fadeOut,
+      drawIn: defaults.drawIn,
     })
 
     return annotationId

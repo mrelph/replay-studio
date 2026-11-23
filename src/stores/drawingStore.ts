@@ -10,6 +10,7 @@ export interface Annotation {
   toolType: string
   fadeIn?: number
   fadeOut?: number
+  drawIn?: number
   name?: string
   freezeDuration?: number  // seconds to hold video at this annotation's startTime
 }
@@ -31,6 +32,7 @@ interface AnnotationSnapshot {
   toolType: string
   fadeIn?: number
   fadeOut?: number
+  drawIn?: number
   name?: string
   freezeDuration?: number
 }
@@ -97,6 +99,7 @@ function snapshotMetadata(annotation: Annotation): AnnotationSnapshot {
     toolType: annotation.toolType,
     fadeIn: annotation.fadeIn,
     fadeOut: annotation.fadeOut,
+    drawIn: annotation.drawIn,
     name: annotation.name,
     freezeDuration: annotation.freezeDuration,
   }

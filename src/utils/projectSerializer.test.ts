@@ -297,6 +297,25 @@ describe('clips round-trip and validation', () => {
   })
 })
 
+describe('drawIn persistence', () => {
+  it('round-trips drawIn through serializeProject and JSON', () => {
+    const object = new fabric.Rect({ left: 1, top: 2, width: 10, height: 10 })
+    const project = serializeProject(
+      [{ id: 'a1', object, startTime: 0, endTime: 2, layer: 0, toolType: 'arrow', drawIn: 0.35 }],
+      '/videos/test.mp4', null, null, 'Test'
+    )
+
+    const imported = importProjectFromJSON(exportProjectToJSON(project))
+    expect(imported.annotations[0].drawIn).toBe(0.35)
+  })
+
+  it('loads an annotation saved without drawIn as undefined', () => {
+    const project = makeProject([makeAnnotation()])
+    const imported = importProjectFromJSON(exportProjectToJSON(project))
+    expect(imported.annotations[0].drawIn).toBeUndefined()
+  })
+})
+
 describe('serializeFabricObject / deserializeFabricObject round-trip (real fabric objects)', () => {
   it('round-trips a rect', () => {
     const rect = new fabric.Rect({
