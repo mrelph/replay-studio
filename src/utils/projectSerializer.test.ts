@@ -8,6 +8,7 @@ import {
   type ProjectData,
   type SerializedAnnotation,
 } from './projectSerializer'
+import { applyReveal } from '@/export/reveal'
 import type { Clip } from '@/types/clip'
 import { CLIP_COLORS } from '@/stores/clipStore'
 
@@ -163,6 +164,16 @@ describe('clips round-trip and validation', () => {
     // Deep copy: mutating the input must not reach the serialized project.
     clips[0].name = 'Mutated'
     expect(project.clips?.[0].name).toBe('First half')
+  })
+
+  it('does not save mid-reveal dash state', () => {
+    const line = new fabric.Line([0, 0, 100, 0], { stroke: '#f00' })
+    const annotation = { id: 'a', object: line, startTime: 0, endTime: 1, layer: 0, toolType: 'line' }
+    const before = serializeProject([annotation], '/v.mp4', null, null, 'T').annotations[0].fabricData
+    applyReveal(line, 'line', 0.4)
+    const after = serializeProject([annotation], '/v.mp4', null, null, 'T').annotations[0].fabricData
+    expect(after).toEqual(before)
+    expect((after as Record<string, unknown>).strokeDashArray).toBeUndefined()
   })
 
   it('round-trips a project with clips through JSON', () => {

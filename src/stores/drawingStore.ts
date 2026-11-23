@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { fabric } from 'fabric'
+import { stripReveal } from '@/export/reveal'
 
 export interface Annotation {
   id: string
@@ -113,7 +114,10 @@ function snapshotMetadata(annotation: Annotation): AnnotationSnapshot {
 function createSnapshot(canvas: fabric.Canvas, annotations: Annotation[]): UndoSnapshot {
   const annotationIds = new Set(annotations.map((annotation) => annotation.id))
 
-  annotations.forEach((annotation) => tagObject(annotation.object, annotation.id))
+  annotations.forEach((annotation) => {
+    stripReveal(annotation.object)
+    tagObject(annotation.object, annotation.id)
+  })
 
   const canvasData = canvas.toJSON([ANNOTATION_ID_PROPERTY]) as unknown as {
     objects?: Array<Record<string, unknown>>

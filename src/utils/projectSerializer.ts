@@ -1,6 +1,7 @@
 import type { Annotation } from '@/stores/drawingStore'
 import type { Clip } from '@/types/clip'
 import { CLIP_COLORS } from '@/stores/clipStore'
+import { stripReveal } from '@/export/reveal'
 import { normalizeTags, clampNotes } from './clipTags'
 
 export interface SerializedAnnotation {
@@ -146,20 +147,23 @@ export function serializeProject(
     videoPath,
     inPoint: inPoint ?? null,
     outPoint: outPoint ?? null,
-    annotations: annotations.map(ann => ({
-      id: ann.id,
-      type: ann.object?.type || 'unknown',
-      startTime: ann.startTime,
-      endTime: ann.endTime,
-      layer: ann.layer,
-      toolType: ann.toolType,
-      fadeIn: ann.fadeIn,
-      fadeOut: ann.fadeOut,
-      drawIn: ann.drawIn,
-      name: ann.name,
-      freezeDuration: ann.freezeDuration,
-      fabricData: serializeFabricObject(ann.object)
-    })),
+    annotations: annotations.map(ann => {
+      if (ann.object) stripReveal(ann.object)
+      return {
+        id: ann.id,
+        type: ann.object?.type || 'unknown',
+        startTime: ann.startTime,
+        endTime: ann.endTime,
+        layer: ann.layer,
+        toolType: ann.toolType,
+        fadeIn: ann.fadeIn,
+        fadeOut: ann.fadeOut,
+        drawIn: ann.drawIn,
+        name: ann.name,
+        freezeDuration: ann.freezeDuration,
+        fabricData: serializeFabricObject(ann.object)
+      }
+    }),
     // Deep-copied so mutating the store afterwards can't reach back into a
     // project that has already been serialized (e.g. while a save is pending).
     clips: (clips ?? []).map((clip) => ({ ...clip })),
