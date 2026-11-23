@@ -6,6 +6,10 @@ export const STYLED_TOOL_TYPES: ReadonlySet<string> = new Set([
   'pen', 'path', 'line', 'arrow', 'arc-arrow', 'rectangle', 'circle', 'text',
 ])
 
+export function arrowHeadSize(strokeWidth: number): { length: number; width: number } {
+  return { length: Math.max(25, strokeWidth * 4), width: Math.max(12, strokeWidth * 2) }
+}
+
 export function shadowForStyle(style: AnnotationStyle, color: string, glowBlur?: number): fabric.Shadow | undefined {
   if (style === 'outline') {
     return new fabric.Shadow({ color: 'rgba(0,0,0,0.85)', blur: 3, offsetX: 0, offsetY: 0 })

@@ -9,7 +9,7 @@ import { getToolDefaults } from '@/utils/annotationDefaults'
 import { annotationStateAt } from '@/export/annotationTiming'
 import { stripReveal } from '@/export/reveal'
 import { useLiveReveal } from '@/hooks/useLiveReveal'
-import { shadowForStyle } from '@/utils/annotationStyle'
+import { shadowForStyle, arrowHeadSize } from '@/utils/annotationStyle'
 
 /** Fabric object carrying the magnifier id this component stamps on it. */
 type MagnifierTaggedObject = fabric.Object & { magnifierId?: string }
@@ -882,8 +882,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
 
         // Arrowhead angle from tangent at endpoint = direction from control point to endpoint
         const angle = Math.atan2(end.y - cp.y, end.x - cp.x)
-        const headLength = 25
-        const headWidth = 12
+        const shaftWidth = Math.max(strokeWidth, 4)
+        const { length: headLength, width: headWidth } = arrowHeadSize(shaftWidth)
 
         canvas.remove(shape)
 
@@ -891,7 +891,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           `M ${start.x} ${start.y} Q ${cp.x} ${cp.y} ${end.x} ${end.y}`,
           {
             stroke: strokeColor,
-            strokeWidth: Math.max(strokeWidth, 4),
+            strokeWidth: shaftWidth,
             fill: 'transparent',
             strokeLineCap: 'round',
             shadow: shadowForStyle(annotationStyle, strokeColor, 15),
@@ -936,8 +936,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
         const y2 = (shape as fabric.Line).y2 || 0
 
         const angle = Math.atan2(y2 - y1, x2 - x1)
-        const headLength = 25  // Larger arrowhead
-        const headWidth = 12   // Width of arrowhead base
+        const { length: headLength, width: headWidth } = arrowHeadSize((shape as fabric.Line).strokeWidth || 4)
 
         // Create filled triangle arrowhead
         const arrowHead = new fabric.Triangle({

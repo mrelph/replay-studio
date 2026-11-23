@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { fabric } from '@/lib/fabric'
-import { shadowForStyle, restyleObject } from './annotationStyle'
+import { shadowForStyle, restyleObject, arrowHeadSize } from './annotationStyle'
 import { useToolStore } from '@/stores/toolStore'
 
 describe('annotationStyle', () => {
@@ -29,4 +29,6 @@ describe('annotationStyle', () => {
     expect((e.shadow as fabric.Shadow).blur).toBe(25)
   })
   it('toolStore defaults to outline', () => expect(useToolStore.getState().annotationStyle).toBe('outline'))
+  it.each([[2, 25, 12], [4, 25, 12], [8, 32, 16], [16, 64, 32]])('stroke %i → head %i x %i', (w, length, width) =>
+    expect(arrowHeadSize(w)).toEqual({ length, width }))
 })
