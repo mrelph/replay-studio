@@ -24,6 +24,7 @@ export function useLiveReveal(canvasRef: RefObject<fabric.Canvas | null>, videoE
     const start = () => {
       if (stop) return
       const armed = new Map<string, number>()
+      let applied = new Map<string, { object: unknown; visible: boolean; opacity: number; fraction: number }>()
       // Annotations created while the loop runs (drawn during playback or a
       // hold) stay finished until playback leaves them.
       const known = new Set(useDrawingStore.getState().annotations.map((a) => a.id))
@@ -74,13 +75,22 @@ export function useLiveReveal(canvasRef: RefObject<fabric.Canvas | null>, videoE
           armed,
         })
 
+        const next = new Map<string, { object: unknown; visible: boolean; opacity: number; fraction: number }>()
+        let changed = applied.size !== annotations.length
         for (const annotation of annotations) {
           const { visible, opacity } = annotationStateAt(annotation, time)
+          const fraction = fractions.get(annotation.id) ?? 1
           annotation.object.visible = visible
           annotation.object.opacity = opacity
-          applyReveal(annotation.object, annotation.toolType, fractions.get(annotation.id) ?? 1)
+          applyReveal(annotation.object, annotation.toolType, fraction)
+          const last = applied.get(annotation.id)
+          if (!last || last.object !== annotation.object || last.visible !== visible || last.opacity !== opacity || last.fraction !== fraction || fraction < 1) {
+            changed = true
+          }
+          next.set(annotation.id, { object: annotation.object, visible, opacity, fraction })
         }
-        canvasRef.current?.requestRenderAll()
+        applied = next
+        if (changed) canvasRef.current?.requestRenderAll()
 
         prevTime = time
         frame = requestAnimationFrame(tick)

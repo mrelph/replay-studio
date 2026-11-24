@@ -2,6 +2,7 @@ import type { OutputSegment } from '@/types/clip'
 import { frameIndexAt } from '@/utils/frames'
 import { annotationStateAt, revealElapsed, revealFraction, type AnnotationTimingInput } from './annotationTiming'
 import { framePresentations } from './outputTimeline'
+import { revealKind } from './reveal'
 
 /**
  * The fields `computeFrameSignature`/`buildDrawingSpans` need from a live
@@ -75,7 +76,8 @@ export function computeFrameSignature(
   for (const annotation of annotations) {
     const { visible, opacity } = annotationStateAt(annotation, t)
     if (!visible || opacity <= 0) continue
-    const fraction = revealFraction(revealElapsed(annotation.startTime, t, holdElapsedFor(annotation)), annotation.drawIn)
+    const noReveal = annotation.toolType !== undefined && revealKind(annotation.toolType) === 'none'
+    const fraction = noReveal || revealSteps <= 1 ? 1 : revealFraction(revealElapsed(annotation.startTime, t, holdElapsedFor(annotation)), annotation.drawIn)
     const revealBucket = fraction >= 1 ? revealSteps : Math.floor(fraction * revealSteps)
     states.push({ id: annotation.id, opacityBucket: quantizeOpacity(opacity), revealBucket, revealSteps })
   }

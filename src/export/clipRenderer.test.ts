@@ -3,6 +3,7 @@ import { fabric } from '@/lib/fabric'
 import type { Annotation } from '@/stores/drawingStore'
 import type { VideoProbe } from '@/types/clip'
 import { computeMagnifierSampleRect, renderClip } from './clipRenderer'
+import { applyReveal } from './reveal'
 
 describe('computeMagnifierSampleRect', () => {
   it('matches updateMagnifierContent\'s math when ref and video dims are equal (1:1, no scaling)', () => {
@@ -89,7 +90,7 @@ describe('renderClip draw-on', () => {
     HTMLCanvasElement.prototype.getContext = originalGetContext
   })
 
-  async function overlayCallsFor(drawIn: number | undefined): Promise<number> {
+  async function overlayCallsFor(drawIn: number | undefined, preReveal = false): Promise<number> {
     const clipEncodeAddOverlay = vi.fn().mockImplementation(async () => ({ ok: true, index: clipEncodeAddOverlay.mock.calls.length - 1 }))
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
@@ -102,13 +103,15 @@ describe('renderClip draw-on', () => {
         removeClipEncodeProgressListener: vi.fn(),
       },
     })
+    const object = new fabric.Line([0, 0, 40, 20], { stroke: '#f00', strokeWidth: 4 })
+    if (preReveal) applyReveal(object, 'line', 0.4)
     const annotation = {
       id: 'a',
       toolType: 'line',
       startTime: 0,
       endTime: 2,
       drawIn,
-      object: new fabric.Line([0, 0, 40, 20], { stroke: '#f00', strokeWidth: 4 }),
+      object,
     } as unknown as Annotation
     const result = await renderClip({
       clip: { start: 0, end: 2 },
@@ -128,5 +131,21 @@ describe('renderClip draw-on', () => {
   it('burns a draw-on into several overlays, and a static drawing into one', async () => {
     expect(await overlayCallsFor(0.4)).toBeGreaterThan(2)
     expect(await overlayCallsFor(undefined)).toBe(1)
+  })
+
+  it('does not bake a mid-reveal live object into the export', async () => {
+    const rendered: Array<number[] | null | undefined> = []
+    const original = fabric.Line.prototype.render
+    fabric.Line.prototype.render = function (this: fabric.Line, ctx: CanvasRenderingContext2D) {
+      rendered.push(this.strokeDashArray)
+      return original.call(this, ctx)
+    }
+    try {
+      await overlayCallsFor(undefined, true)
+    } finally {
+      fabric.Line.prototype.render = original
+    }
+    expect(rendered.length).toBeGreaterThan(0)
+    expect(rendered.every((d) => !d)).toBe(true)
   })
 })

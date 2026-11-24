@@ -51,6 +51,9 @@ export function strokeLength(object: fabric.Object): number {
     const h = ((rx - ry) / (rx + ry)) ** 2
     return Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)))
   }
+  if (object instanceof fabric.Circle) {
+    return 2 * Math.PI * (object.radius ?? 0)
+  }
   if (object instanceof fabric.Rect) {
     return 2 * ((object.width ?? 0) + (object.height ?? 0))
   }

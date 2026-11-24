@@ -4,7 +4,7 @@ import { deserializeFabricObject, serializeFabricObject } from '@/utils/projectS
 import type { Clip, ClipEncodeReelPart, ClipExportFormat, ClipExportQuality, ClipExportResult, OverlaySpan, VideoProbe } from '@/types/clip'
 import { buildOutputTimeline } from './outputTimeline'
 import { buildDrawingSpansWithinBudget, signatureKey, type DrawingSpan, type SpanAnnotationLike } from './spanBuilder'
-import { applyReveal } from './reveal'
+import { applyReveal, stripReveal } from './reveal'
 import { buildMagnifierOps, computeMagnifierSampleRect, MAGNIFIER_ZOOM_LEVEL, type MagnifierAnnotationLike } from './magnifierOps'
 
 // Re-exported for `clipRenderer.test.ts` and any other caller that imported
@@ -175,6 +175,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
     const clones: ClonedAnnotation[] = []
     for (const annotation of annotations) {
       const isMagnifier = annotation.toolType === 'magnifier'
+      stripReveal(annotation.object)
       const clone = isMagnifier ? cloneMagnifierRing(annotation.object) : await cloneAnnotationObject(annotation.object)
       staticCanvas.add(clone)
       clones.push({ annotationId: annotation.id, toolType: annotation.toolType, clone })

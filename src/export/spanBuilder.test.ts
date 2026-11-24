@@ -155,6 +155,16 @@ describe('draw-on reveal buckets', () => {
     expect(buckets[buckets.length - 1]).toBe(12)
     expect(spans.length).toBeLessThanOrEqual(13)
   })
+  it('treats the 1-step fallback as finished for every visible frame', () => {
+    const spans = buildDrawingSpans([play(0, 2)], [{ id: 'a', startTime: 0, endTime: 2, drawIn: 0.4, toolType: 'line' }], 30, { maxRevealSteps: 1 })
+    expect(spans).toHaveLength(1)
+    expect(spans[0].signature[0]).toMatchObject({ revealBucket: 1, revealSteps: 1 })
+  })
+  it('gives a tool with no reveal a single span even with a drawIn', () => {
+    const spans = buildDrawingSpans([play(0, 2)], [{ id: 'a', startTime: 0, endTime: 2, drawIn: 0.4, toolType: 'text' }], 30)
+    expect(spans).toHaveLength(1)
+    expect(spans[0].signature[0]).toMatchObject({ revealBucket: 12, revealSteps: 12 })
+  })
   it('reveals during a hold on the start frame', () => {
     const segs: OutputSegment[] = [{ kind: 'hold', srcTime: 1, duration: 1 }, play(1, 2)]
     const spans = buildDrawingSpans(segs, [{ id: 'a', startTime: 1, endTime: 2, drawIn: 0.4, toolType: 'pen' }], 30)

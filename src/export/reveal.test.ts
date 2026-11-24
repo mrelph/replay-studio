@@ -94,4 +94,8 @@ describe('reveal', () => {
     expect(strokeLength(new fabric.Rect({ width: 50, height: 30 }))).toBe(160)
     expect(strokeLength(new fabric.Ellipse({ rx: 10, ry: 10 }))).toBeCloseTo(2 * Math.PI * 10, 1)
   })
+
+  it('strokeLength of a legacy circle', () => {
+    expect(strokeLength(new fabric.Circle({ radius: 10 }))).toBeCloseTo(2 * Math.PI * 10, 5)
+  })
 })
