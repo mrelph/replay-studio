@@ -45,9 +45,11 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, number> {
       continue
     }
 
-    const holdOnStart = holdFrame !== null && holdFrame === frameIndexAt(startTime, fps)
+    // A freeze is often recorded a frame or two after the drawing's start frame;
+    // every hold from the start frame onward counts toward its presentation time.
+    const holdCounts = holdFrame !== null && holdFrame >= frameIndexAt(startTime, fps) && holdFrame <= frameIndexAt(time, fps)
     const arrived = playing && prevTime < startTime && startTime <= time && time - prevTime < 1
-    const heldOnStart = holdActive && holdOnStart && time >= startTime - frameTolerance
+    const heldOnStart = holdActive && holdCounts && time >= startTime - frameTolerance && time <= endTime
     if ((arrived || heldOnStart) && !armed.has(id)) armed.set(id, 0)
     if (time < startTime - frameTolerance || time > endTime) armed.delete(id)
 
@@ -59,7 +61,7 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, number> {
 
     // A freeze snaps playback back to the start frame after it ran a little
     // past it; never let an armed shape un-draw.
-    const holdElapsed = holdOnStart && autoHold ? ((autoHold.endedAt ?? now) - autoHold.startedAt) / 1000 : 0
+    const holdElapsed = holdCounts && autoHold ? ((autoHold.endedAt ?? now) - autoHold.startedAt) / 1000 : 0
     const fraction = Math.max(peak, revealFraction(revealElapsed(startTime, time, holdElapsed), drawIn))
     armed.set(id, fraction)
     result.set(id, fraction)

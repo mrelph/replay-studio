@@ -178,6 +178,20 @@ describe('draw-on reveal buckets', () => {
     const first = spans.find((s) => s.signature.length > 0)!
     expect(first.signature[0].revealBucket).toBe(12) // the whole hold counts as elapsed
   })
+  it('keeps revealing through a freeze recorded a frame after the drawing started', () => {
+    const segs: OutputSegment[] = [play(2.5, 3.0567), { kind: 'hold', srcTime: 3.0567, duration: 2.7 }, play(3.0567, 5)]
+    const spans = buildDrawingSpans(segs, [{ id: 'a', startTime: 3.011, endTime: 5.5, drawIn: 0.4, toolType: 'pen' }], 30, { sourceFps: 30 })
+    const holdLastFrame = Math.round(0.5567 * 30) + Math.round(2.7 * 30) - 1
+    expect(spans.some((s) => s.frameStart < holdLastFrame && s.signature[0]?.revealBucket === 12)).toBe(true)
+    const buckets = spans.filter((s) => s.signature.length > 0).map((s) => s.signature[0].revealBucket)
+    expect(buckets).toEqual([...buckets].sort((x, y) => x - y))
+  })
+  it('does not count a hold before the start frame', () => {
+    const segs: OutputSegment[] = [{ kind: 'hold', srcTime: 2.0, duration: 1 }, play(2.0, 4)]
+    const spans = buildDrawingSpans(segs, [{ id: 'a', startTime: 3.0, endTime: 4, drawIn: 0.4, toolType: 'pen' }], 30, { sourceFps: 30 })
+    const first = spans.find((s) => s.signature.length > 0)!
+    expect(first.signature[0].revealBucket).toBe(0)
+  })
   it('a clip starting after the annotation shows it finished (Review Focus 1)', () => {
     const spans = buildDrawingSpans([play(5, 6)], [{ id: 'a', startTime: 4, endTime: 8, drawIn: 0.4, toolType: 'line' }], 30)
     expect(spans).toHaveLength(1)

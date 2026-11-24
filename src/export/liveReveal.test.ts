@@ -52,6 +52,17 @@ describe('stepLiveReveal', () => {
     expect(stepLiveReveal({ ...base, annotations: ann, prevTime: 5.2, time: 5.0, playing: false, autoHold: hold, now: 1000, armed }).get('a')).toBeCloseTo(0.875)
     expect(stepLiveReveal({ ...base, annotations: ann, prevTime: 5.0, time: 5.0, playing: false, autoHold: hold, now: 1400, armed }).get('a')).toBe(1)
   })
+  it('counts a hold recorded a frame after the start frame', () => {
+    const armed = new Map([['a', 0]])
+    const hold = { time: 5.05, startedAt: 1000, endedAt: null }
+    expect(stepLiveReveal({ ...base, annotations: ann, prevTime: 5.05, time: 5.05, playing: false, autoHold: hold, now: 1100, armed }).get('a')).toBeCloseTo(revealFraction(0.05 + 0.1, 0.4))
+    expect(stepLiveReveal({ ...base, annotations: ann, prevTime: 5.05, time: 5.05, playing: false, autoHold: hold, now: 1500, armed }).get('a')).toBe(1)
+  })
+  it('ignores a hold on an earlier frame', () => {
+    const armed = new Map([['a', 0]])
+    const hold = { time: 4.9, startedAt: 1000, endedAt: 1400 }
+    expect(stepLiveReveal({ ...base, annotations: ann, prevTime: 5.0, time: 5.1, playing: true, autoHold: hold, now: 9999, armed }).get('a')).toBeCloseTo(revealFraction(0.1, 0.4))
+  })
   it('replays from the start after disarming', () => {
     const armed = new Map<string, number>()
     stepLiveReveal({ ...base, annotations: ann, prevTime: 4.99, time: 5.0, playing: true, armed })

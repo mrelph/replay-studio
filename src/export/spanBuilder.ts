@@ -93,9 +93,10 @@ export function computeFrameSignature(
  * shown, after it's gone — fewer if it spans the whole clip); a fade
  * produces up to one span per source frame the fade covers, since opacity
  * changes every frame while animating. A draw-on adds up to `maxRevealSteps`
- * spans while it reveals; a hold on the annotation's start frame (matched by
- * source frame index, since the hold usually belongs to a separate freeze
- * marker) keeps the reveal running while the source frame is frozen.
+ * spans while it reveals; a hold on or after the annotation's start frame
+ * (matched by source frame index, since the hold usually belongs to a separate
+ * freeze marker recorded a frame or two later) keeps the reveal running while
+ * the source frame is frozen.
  */
 export function buildDrawingSpans(
   segments: OutputSegment[],
@@ -108,12 +109,13 @@ export function buildDrawingSpans(
   const frames = framePresentations(segments, fps)
   const spans: DrawingSpan[] = []
 
-  // Per drawn annotation: which segments are holds on its start frame, and the hold time accrued before each segment.
+  // Per drawn annotation: which segments are holds on or after its start frame (presentation time since it
+  // started includes every such hold), and the hold time accrued before each segment.
   const holdInfo = new Map<SpanAnnotationLike, { matches: boolean[]; before: number[] }>()
   for (const annotation of annotations) {
     if (!annotation.drawIn || annotation.drawIn <= 0) continue
     const startFrame = frameIndexAt(annotation.startTime, sourceFps)
-    const matches = segments.map((seg) => seg.kind === 'hold' && frameIndexAt(seg.srcTime, sourceFps) === startFrame)
+    const matches = segments.map((seg) => seg.kind === 'hold' && frameIndexAt(seg.srcTime, sourceFps) >= startFrame)
     const before: number[] = []
     let accrued = 0
     segments.forEach((seg, i) => {
