@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Drawings now draw themselves on along the stroke during playback and in
+  exported MP4s and GIFs. Set the time per annotation with the new Draw-on
+  field (0 turns it off).
+- Outline, Glow and Clean annotation styles in the toolbar. Outline, the new
+  default, keeps drawings readable on bright ice.
+
+### Changed
+- Arrowheads scale with stroke width.
+
 ### Planned
 - Audio waveform visualization in timeline
 - Annotation data import/export (JSON format)

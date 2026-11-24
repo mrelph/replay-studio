@@ -7,6 +7,8 @@ import { PRESET_COLORS } from '@/stores/toolStore'
 import { Button, Select } from '@/components/ui'
 import type { Clip } from '@/types/clip'
 import WaveformDisplay from './WaveformDisplay'
+import { revealKind } from '@/export/reveal'
+import { parseDrawIn } from '@/utils/drawInInput'
 
 interface ClipBarProps {
   clip: Clip
@@ -590,6 +592,20 @@ function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetails
             className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
           />
         </div>
+        {revealKind(annotation.toolType) !== 'none' && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-tertiary">Draw-on:</span>
+            <input
+              type="number"
+              step="0.05"
+              min="0"
+              max="2"
+              value={(annotation.drawIn ?? 0).toFixed(2)}
+              onChange={(e) => onUpdate({ drawIn: parseDrawIn(e.target.value) })}
+              className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <Snowflake className="w-3 h-3 text-text-tertiary" />
