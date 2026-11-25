@@ -83,7 +83,7 @@ describe('speed map', () => {
   })
 
   it('uses a single step for a region with fewer than 2 ramp frames', () => {
-    const steps = buildSpeedSteps([region(1, 1.1, 0.5)], 10, 10)
+    const steps = buildSpeedSteps([region(1, 1.3, 0.5)], 10, 10)
     expect(steps.map((s) => s.speed)).toEqual([1, 0.5, 1])
   })
 
@@ -123,5 +123,76 @@ describe('speed map', () => {
     const steps = buildSpeedSteps([region(1, 2, 0.5), region(5, 6, 2)], 10, 30)
     expect(steps.filter((s) => s.speed === 1).length).toBe(3)
     expectWellFormed(steps, 10, 30)
+  })
+
+  it('never leaves a step shorter than 2 frames in short odd regions', () => {
+    for (const length of [5, 7, 9, 15]) {
+      const steps = buildSpeedSteps([region(1, 1 + length / 30, 0.5)], 10, 30)
+      expectWellFormed(steps, 10, 30)
+      const inside = steps.filter((s) => s.speed !== 1)
+      expect(inside[0].start).toBeCloseTo(1)
+      expect(inside[inside.length - 1].end).toBeCloseTo(1 + length / 30)
+    }
+  })
+
+  it('runs a region at the end of a non-integer-frame video to the end', () => {
+    const steps = buildSpeedSteps([region(8, 10, 0.5)], 10, 29.97)
+    expect(steps[steps.length - 1].speed).toBe(0.875)
+    expect(steps[steps.length - 1].end).toBe(10)
+  })
+
+  it('ignores regions under 2 frames and absorbs gaps and margins under 2 frames', () => {
+    expect(buildSpeedSteps([region(2, 2 + 1 / 30, 0.5)], 10, 30)).toEqual([{ start: 0, end: 10, speed: 1 }])
+    const gap = buildSpeedSteps([region(2, 3, 0.5), region(3 + 1 / 30, 4, 0.5)], 10, 30)
+    expect(gap.filter((s) => s.speed === 1).length).toBe(2)
+    const head = buildSpeedSteps([region(1 / 30, 1, 0.5)], 10, 30)
+    expect(head[0].start).toBe(0)
+    expect(head[0].speed).toBeLessThan(1)
+    const tail = buildSpeedSteps([region(9, 10 - 1 / 30, 0.5)], 10, 30)
+    expect(tail[tail.length - 1].speed).toBeLessThan(1)
+  })
+
+  it('finds a step for a time a microsecond below its start', () => {
+    for (const s of one) expect(speedAt(one, s.start - 1e-6)).toBe(s.speed)
+  })
+
+  it('returns the start for a zero presentation offset, even past the end', () => {
+    expect(sourceAtPresentation(one, 12, 0)).toBe(12)
+  })
+
+  it('holds the step invariants across fps and layouts', () => {
+    let seed = 12345
+    const rand = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      return seed % n
+    }
+    for (const fps of [23.976, 24, 25, 29.97, 30, 50, 59.94, 60]) {
+      const duration = 10
+      const total = Math.ceil(duration * fps)
+      for (let layout = 0; layout < 40; layout++) {
+        const regions = []
+        let frame = layout % 4 === 0 ? 0 : rand(60)
+        const count = 1 + (layout % 3)
+        for (let i = 0; i < count && frame < total; i++) {
+          const length = 4 + rand(37)
+          const end = layout % 5 === 0 && i === count - 1 ? total : Math.min(total, frame + length)
+          regions.push({ start: frame / fps, end: end === total ? duration : end / fps, speed: [0.25, 0.5, 0.75, 2][rand(4)] })
+          frame = end + (rand(2) === 0 ? 0 : 4 + rand(30))
+        }
+        const steps = buildSpeedSteps(regions, duration, fps)
+        expect(steps[0].start).toBe(0)
+        expect(steps[steps.length - 1].end).toBe(duration)
+        steps.forEach((step, i) => {
+          if (i > 0) expect(step.start).toBe(steps[i - 1].end)
+          expect(Math.abs(step.start * fps - Math.round(step.start * fps))).toBeLessThan(1e-6)
+          if (i < steps.length - 1) expect((step.end - step.start) * fps).toBeGreaterThanOrEqual(2 - 1e-6)
+        })
+        const x = rand(1000) / 100
+        const y = rand(1000) / 100
+        const from = Math.min(x, y)
+        const to = Math.max(x, y)
+        expect(sourceAtPresentation(steps, from, presentationOffset(steps, from, to))).toBeCloseTo(to, 6)
+      }
+    }
   })
 })

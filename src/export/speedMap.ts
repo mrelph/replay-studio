@@ -16,6 +16,9 @@ export const RAMP_SOURCE_SECONDS = 0.25
 export const RAMP_STEPS = 5
 export const MIN_STEP_FRAMES = 2
 
+// Chromium truncates currentTime to whole microseconds, just below a frame start.
+const START_TOLERANCE = 5e-6
+
 interface FrameSegment {
   frames: number
   speed: number
@@ -51,12 +54,29 @@ export function buildSpeedSteps(regions: SpeedRegionLike[], duration: number, fp
   const endFrame = Math.max(0, Math.ceil(duration * fps - 1e-6))
   const spans = regions
     .map((r) => ({ a: frameIndexAt(r.start, fps), b: Math.min(frameIndexAt(r.end, fps), endFrame), speed: r.speed }))
-    .filter((r) => r.b > r.a)
+    .filter((r) => r.b - r.a >= MIN_STEP_FRAMES)
     .sort((x, y) => x.a - y.a)
+  const clean: typeof spans = []
+  for (const r of spans) {
+    const prev = clean[clean.length - 1]
+    if (prev === undefined) {
+      if (r.a < MIN_STEP_FRAMES) r.a = 0
+    } else if (r.a < prev.b) r.a = prev.b
+    else if (r.a - prev.b < MIN_STEP_FRAMES) prev.b = r.a
+    if (r.b - r.a >= MIN_STEP_FRAMES) clean.push(r)
+  }
+  const lastSpan = clean[clean.length - 1]
+  if (lastSpan && endFrame - lastSpan.b < MIN_STEP_FRAMES) lastSpan.b = endFrame
   const rampMax = Math.round(RAMP_SOURCE_SECONDS * fps)
-  const rampOf = (r: { a: number; b: number }) => {
-    const frames = Math.min(rampMax, Math.floor((r.b - r.a) / 2))
-    return frames >= MIN_STEP_FRAMES ? frames : 0
+  const rampsOf = (r: { a: number; b: number }) => {
+    const length = r.b - r.a
+    let own = Math.min(rampMax, Math.floor(length / 2))
+    if (own < MIN_STEP_FRAMES) return { h: 0, t: 0 }
+    if (length - 2 * own === 1) {
+      if (own - 1 >= MIN_STEP_FRAMES) own -= 1
+      else return { h: own, t: own + 1 }
+    }
+    return { h: own, t: own }
   }
 
   const segments: FrameSegment[] = []
@@ -64,23 +84,23 @@ export function buildSpeedSteps(regions: SpeedRegionLike[], duration: number, fp
     if (frames > 0) segments.push({ frames, speed })
   }
   let cursor = 0
-  spans.forEach((r, k) => {
-    const prev = spans[k - 1]
-    const next = spans[k + 1]
+  clean.forEach((r, k) => {
+    const prev = clean[k - 1]
+    const next = clean[k + 1]
     const joinedPrev = prev !== undefined && prev.b === r.a
     const joinedNext = next !== undefined && r.b === next.a
-    const own = rampOf(r)
+    const { h, t } = rampsOf(r)
     if (!joinedPrev) {
       push(r.a - cursor, 1)
-      segments.push(...ramp(own, 1, r.speed, false))
+      segments.push(...ramp(h, 1, r.speed, false))
     }
-    push(r.b - own - (r.a + own), r.speed)
+    push(r.b - t - (r.a + h), r.speed)
     if (joinedNext) {
-      segments.push(...ramp(own + rampOf(next), r.speed, next.speed, true))
+      segments.push(...ramp(t + rampsOf(next).h, r.speed, next.speed, true))
     } else {
-      segments.push(...ramp(own, 1, r.speed, false).reverse())
+      segments.push(...ramp(t, 1, r.speed, false).reverse())
     }
-    cursor = joinedNext ? next.a + rampOf(next) : r.b
+    cursor = joinedNext ? next.a + rampsOf(next).h : r.b
   })
   push(endFrame - cursor, 1)
 
@@ -105,7 +125,7 @@ export function speedAt(steps: SpeedStep[], srcTime: number): number {
   let hi = steps.length - 1
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1
-    if (steps[mid].start <= srcTime) lo = mid
+    if (steps[mid].start <= srcTime + START_TOLERANCE) lo = mid
     else hi = mid - 1
   }
   return steps[lo].speed
@@ -132,6 +152,7 @@ export function presentationOffset(steps: SpeedStep[], fromSrc: number, toSrc: n
 
 /** Inverse of presentationOffset for seconds >= 0; clamps at the last step's end. */
 export function sourceAtPresentation(steps: SpeedStep[], fromSrc: number, seconds: number): number {
+  if (seconds === 0) return fromSrc
   const last = steps[steps.length - 1]
   let remaining = presentationAt(steps, fromSrc) + seconds
   if (remaining <= 0) return Math.min(0, last.end)
