@@ -24,6 +24,8 @@ interface VideoState {
   pendingPreview: number | null
   /** Set while the player holds on an automatic freeze frame (not a user pause); endedAt is set once the hold has finished. */
   autoHold: { time: number; startedAt: number; endedAt: number | null } | null
+  /** Set by the player: asked before Play starts the video; returns true when it held the frame instead (the first Play after drawing previews the freeze). */
+  interceptPlay: (() => boolean) | null
 
   // Actions
   setVideoElement: (element: HTMLVideoElement | null) => void
@@ -49,6 +51,7 @@ interface VideoState {
   beginAutoHold: (time: number) => void
   endAutoHold: () => void
   clearAutoHold: () => void
+  setInterceptPlay: (intercept: (() => boolean) | null) => void
   play: () => void
   pause: () => void
   togglePlay: () => void
@@ -98,6 +101,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   freezeTiming: null,
   pendingPreview: null,
   autoHold: null,
+  interceptPlay: null,
 
   setVideoElement: (element) => set({ videoElement: element, freezeTiming: null, pendingPreview: null, autoHold: null }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
@@ -133,7 +137,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     if (!videoElement) return
     if (freezeTiming) {
       // The 'play' handler in VideoPlayer records the freeze.
-      videoElement.play()
+      get().play()
       return
     }
     if (reverseRate > 0 || shuttleBaseRate !== null) get().shuttleStop()
@@ -160,11 +164,13 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   endAutoHold: () =>
     set((state) => (state.autoHold ? { autoHold: { ...state.autoHold, endedAt: performance.now() } } : state)),
   clearAutoHold: () => set({ autoHold: null }),
+  setInterceptPlay: (intercept) => set({ interceptPlay: intercept }),
   setFps: (fps) => set({ fps: Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_FPS }),
 
   play: () => {
-    const { videoElement } = get()
-    videoElement?.play()
+    const { videoElement, interceptPlay } = get()
+    if (!videoElement || interceptPlay?.()) return
+    videoElement.play()
   },
   pause: () => {
     const { videoElement } = get()
@@ -178,7 +184,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     }
     if (videoElement) {
       if (isPlaying) videoElement.pause()
-      else videoElement.play()
+      else get().play()
     }
   },
   seek: (time) => {

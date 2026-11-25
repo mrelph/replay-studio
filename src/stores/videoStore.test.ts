@@ -165,3 +165,50 @@ describe('autoHold', () => {
     expect(useVideoStore.getState().autoHold).toBeNull()
   })
 })
+
+describe('interceptPlay', () => {
+  beforeEach(() => {
+    useVideoStore.setState({ videoElement: null, isPlaying: false, freezeTiming: null, reverseRate: 0, shuttleBaseRate: null, interceptPlay: null })
+  })
+
+  it('does not start the video when the interceptor takes over', () => {
+    const video = fakeVideo(true, 3)
+    const intercept = vi.fn(() => true)
+    useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement, interceptPlay: intercept })
+    useVideoStore.getState().togglePlay()
+    useVideoStore.getState().play()
+    expect(intercept).toHaveBeenCalledTimes(2)
+    expect(video.play).not.toHaveBeenCalled()
+  })
+
+  it('starts the video when the interceptor declines', () => {
+    const video = fakeVideo(true, 3)
+    const intercept = vi.fn(() => false)
+    useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement, interceptPlay: intercept })
+    useVideoStore.getState().togglePlay()
+    expect(intercept).toHaveBeenCalledOnce()
+    expect(video.play).toHaveBeenCalledOnce()
+  })
+
+  it('asks before resuming from a timed freeze', () => {
+    const video = fakeVideo(true, 3)
+    const intercept = vi.fn(() => true)
+    useVideoStore.setState({
+      videoElement: video as unknown as HTMLVideoElement,
+      interceptPlay: intercept,
+      freezeTiming: { time: 3, at: 0, resumeTime: 3 },
+    })
+    useVideoStore.getState().toggleFreeze()
+    expect(intercept).toHaveBeenCalledOnce()
+    expect(video.play).not.toHaveBeenCalled()
+  })
+
+  it('is not asked when pausing', () => {
+    const video = fakeVideo(false, 3)
+    const intercept = vi.fn(() => true)
+    useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement, isPlaying: true, interceptPlay: intercept })
+    useVideoStore.getState().togglePlay()
+    expect(intercept).not.toHaveBeenCalled()
+    expect(video.pause).toHaveBeenCalledOnce()
+  })
+})

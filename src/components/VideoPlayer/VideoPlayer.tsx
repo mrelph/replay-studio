@@ -5,6 +5,8 @@ import VideoControls from './VideoControls'
 import { toast } from '@/components/ui'
 import { formatTimecode, frameIndexAt, snapToFrame } from '@/utils/frames'
 import { MAX_PAUSE_DRIFT_SECONDS, autoFreezeOwnsFrame, recordedHold, setFrameFreeze } from '@/utils/freezeMarkers'
+import { previewHoldFor } from '@/utils/holdPreview'
+import type { Annotation } from '@/stores/drawingStore'
 
 interface VideoPlayerProps {
   src: string
@@ -69,6 +71,31 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       setDuration(video.duration)
     }
 
+    // Holds the video on a freeze's frame, then resumes once its time is up.
+    const startHold = (ann: Annotation) => {
+      if (!video.paused) isFreezePauseRef.current = true
+      useVideoStore.getState().beginAutoHold(ann.startTime)
+      if (video.currentTime !== ann.startTime) {
+        isFreezeSeekRef.current = true
+        video.currentTime = ann.startTime
+      }
+      if (!video.paused) video.pause()
+      freezeTimeoutRef.current = setTimeout(() => {
+        freezeTimeoutRef.current = null
+        useVideoStore.getState().endAutoHold()
+        // Don't auto-resume past the out point; respect looping instead.
+        const { outPoint, isLooping, inPoint } = useVideoStore.getState()
+        if (outPoint !== null && video.currentTime >= outPoint) {
+          if (isLooping) {
+            video.currentTime = inPoint ?? 0
+            video.play()
+          }
+          return
+        }
+        video.play()
+      }, (ann.freezeDuration ?? 0) * 1000)
+    }
+
     const handleTimeUpdate = () => {
       const { inPoint, outPoint, isLooping } = useVideoStore.getState()
 
@@ -96,27 +123,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           // Trigger if we crossed the startTime between the last update and now
           if (prevTime <= ann.startTime && curTime >= ann.startTime) {
             triggeredFreezesRef.current.add(ann.id)
-            isFreezePauseRef.current = true
-            useVideoStore.getState().beginAutoHold(ann.startTime)
-            if (video.currentTime !== ann.startTime) {
-              isFreezeSeekRef.current = true
-              video.currentTime = ann.startTime
-            }
-            video.pause()
-            freezeTimeoutRef.current = setTimeout(() => {
-              freezeTimeoutRef.current = null
-              useVideoStore.getState().endAutoHold()
-              // Don't auto-resume past the out point; respect looping instead.
-              const { outPoint, isLooping, inPoint } = useVideoStore.getState()
-              if (outPoint !== null && video.currentTime >= outPoint) {
-                if (isLooping) {
-                  video.currentTime = inPoint ?? 0
-                  video.play()
-                }
-                return
-              }
-              video.play()
-            }, ann.freezeDuration * 1000)
+            startHold(ann)
             break
           }
         }
@@ -157,8 +164,31 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       }
     }
 
+    // The first Play after drawing holds the frame for its freeze, revealing
+    // the drawings in order, then plays on: what the export will show.
+    const interceptPlay = () => {
+      if (!video.paused) return false
+      const { pendingPreview, fps } = useVideoStore.getState()
+      const freeze = previewHoldFor(useDrawingStore.getState().annotations, pendingPreview, video.currentTime, fps)
+      if (!freeze) return false
+      useVideoStore.getState().setPendingPreview(null)
+      // The frame's hold is calculated from its drawings; nothing to record.
+      useVideoStore.getState().cancelFreezeTiming()
+      triggeredFreezesRef.current.add(freeze.id)
+      startHold(freeze)
+      return true
+    }
+
     const handlePlay = () => {
       setIsPlaying(true)
+      useVideoStore.getState().setPendingPreview(null)
+      if (freezeTimeoutRef.current) {
+        // Play during a hold cuts it short and plays on, as a pause during
+        // a hold stops it.
+        clearTimeout(freezeTimeoutRef.current)
+        freezeTimeoutRef.current = null
+        useVideoStore.getState().endAutoHold()
+      }
       const timing = useVideoStore.getState().freezeTiming
       if (!timing) return
       useVideoStore.getState().cancelFreezeTiming()
@@ -219,6 +249,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     video.addEventListener('error', handleError)
     video.addEventListener('canplay', handleCanPlay)
     video.addEventListener('seeking', handleSeeking)
+    useVideoStore.getState().setInterceptPlay(interceptPlay)
     // Pressing Freeze while an existing freeze is playing out takes it over:
     // stop the auto-resume so the coach's own timing replaces its length.
     // Starting a drawing clears the hold, which stops the auto-resume too.
@@ -241,6 +272,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       video.removeEventListener('error', handleError)
       video.removeEventListener('canplay', handleCanPlay)
       video.removeEventListener('seeking', handleSeeking)
+      useVideoStore.getState().setInterceptPlay(null)
       unsubscribeFreeze()
     }
   }, [setCurrentTime, setDuration, setIsPlaying, resetFreezes])
@@ -273,7 +305,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
             const video = videoRef.current
             if (video) {
               if (isPlaying) video.pause()
-              else video.play()
+              else useVideoStore.getState().play()
             }
           }}
         />
