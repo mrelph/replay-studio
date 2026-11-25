@@ -29,7 +29,7 @@ exactly. If you change a default binding in that file, update this doc too.
 |----------|--------|
 | `Space` | Play / Pause |
 | `H` | Freeze: stop on this frame and time it; press again (or Play) to resume and record the freeze. Drawing also adds freezes on its own (see Freeze frames). Also the ❄ button beside Play |
-| `W` | Slow motion: hold while the video plays; releasing saves that stretch as a 50% speed region. Also the gauge button beside Freeze |
+| `W` | Slow motion: hold while the video plays; releasing saves that stretch as a 50% speed region (see Slow motion). Also the Slow button beside Freeze, which you press and hold |
 | `→` | Next frame |
 | `←` | Previous frame |
 | `L` | Shuttle forward — tap again for 2x / 4x / 8x |
@@ -170,3 +170,31 @@ Up to v1.3, a "hold" (`H` and Shift+H **HOLDS**) and the toolbar snowflake were
 three ways of making the same thing. They're all Freeze now. A custom key you
 gave to the hold toggle carries over to Freeze.
 
+## Slow motion
+
+Hold **`W`** (or press and hold the Slow button beside Freeze) while the video
+plays forward. Playback drops to 50% and the sound mutes. Release to save that
+stretch as a slow-motion region.
+
+- A tap under about a third of a second records nothing.
+- Pausing, seeking, or switching away from the window ends the recording at
+  that point. An automatic freeze during it does not; the recording carries on
+  as one region.
+- Pressing `W` while paused does nothing.
+- The speed eases in and out over about a quarter of a second at each end of a
+  region, on replay and in exports.
+- The speed dropdown is your own playback speed and multiplies with the
+  region's: at 50% in the dropdown, a 50% region plays at 25%. A badge beside
+  the dropdown shows the region's speed while the playhead is inside one.
+- Regions appear on the Speed lane in the timeline. Drag a band to move it and
+  drag an end to resize it; both snap to the playhead and to whole frames (hold
+  `Alt` to skip the playhead snap). Click a region to pick 25%, 50%, 75% or 2x,
+  or delete it with the Delete button or `Delete` / `Backspace`. Regions never
+  overlap: placing one over another trims the other.
+- Exported MP4s and GIFs play each region at its speed and are silent during
+  it. Drawings keep their normal draw-on and fade timing, and "Stays 2s" still
+  means two seconds of the play, which lasts longer on screen when slowed.
+  Freezes inside a region hold for their usual length.
+- Slow motion repeats frames rather than inventing new ones, so 60 fps footage
+  looks smoother than 30 fps.
+- Regions are saved in the project file. They are not part of Undo yet.

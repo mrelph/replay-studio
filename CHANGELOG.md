@@ -19,6 +19,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A macOS build (Apple silicon) is published with each release. It is a manual
   download and does not update itself yet; see RELEASING.md for the first-launch
   step macOS asks for.
+- Slow motion. Hold W while the video plays (or press and hold the Slow button
+  beside Freeze) and playback drops to 50% with the sound muted. Release to
+  save that stretch as a slow-motion region. A tap under about a third of a
+  second records nothing.
+- Slow motion eases in and out over about a quarter of a second at each end of
+  a region, on replay and in exports.
+- Regions show on a Speed lane in the timeline (it appears once you have one).
+  Drag a band to move it, drag an end to resize it, click it and pick 25%, 50%,
+  75% or 2x, or delete it with the Delete button or the Delete / Backspace key.
+  Regions never overlap: placing one over another trims the other.
+- While the playhead is inside a region, a badge beside the speed dropdown
+  shows the region's speed. The dropdown is still your own playback speed and
+  multiplies with it.
+- Exported MP4s and GIFs play each region at its speed and are silent during
+  it. Drawings keep their normal draw-on and fade timing inside slow motion.
+  "Stays 2s" still means two seconds of the play, which lasts longer on screen
+  when slowed, and freezes inside a region hold for their usual length.
+- Slow motion repeats frames rather than inventing new ones, so 60 fps footage
+  looks smoother than 30 fps. Speed regions are saved in the project file.
+  They are not part of Undo yet.
+
+### Changed
+- A newly opened video now starts muted when the mute button shows muted.
+  Before, it played with sound while the button showed muted.
 
 ## [1.8.0] - 2026-11-25
 
