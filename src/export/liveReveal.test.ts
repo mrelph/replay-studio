@@ -100,11 +100,13 @@ describe('stepLiveReveal drawn order (revealDelay)', () => {
     expect(r.get('t')).toEqual({ fraction: 1, due: true })
   })
 
-  it('keeps a due drawing shown after the hold ends and playback snaps back', () => {
+  it('keeps a due drawing shown after a short hold ends and playback snaps back', () => {
     const armed = new Map<string, ArmedReveal>()
-    step(armed, { autoHold: { time: 3, startedAt: 1000, endedAt: null }, now: 1400 })
-    const ended = { time: 3, startedAt: 1000, endedAt: 1400 }
-    expect(step(armed, { autoHold: ended, playing: true, prevTime: 3.05, time: 3.0, now: 5000 }).get('b')?.due).toBe(true)
+    step(armed, { playing: true, prevTime: 2.99, time: 3.0 })
+    expect(step(armed, { playing: true, prevTime: 3.0, time: 3.4 }).get('b')?.due).toBe(true)
+    // The hold on frame 3 lasted 0.1 s, less than b's delay: only the latch keeps b due.
+    const ended = { time: 3, startedAt: 1000, endedAt: 1100 }
+    expect(step(armed, { autoHold: ended, playing: true, prevTime: 3.4, time: 3.0, now: 5000 }).get('b')?.due).toBe(true)
   })
 
   it('latches due when a new hold snaps playback back to the start frame', () => {

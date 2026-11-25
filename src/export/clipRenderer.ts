@@ -220,7 +220,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
         },
       }
     })
-    const magnifiers = buildMagnifierOps(clip, segments, magnifierLikes, fps, probe)
+    const magnifiers = buildMagnifierOps(clip, segments, magnifierLikes, fps, probe, MAGNIFIER_ZOOM_LEVEL, probe.fps)
 
     onProgress(5)
     if (signal.aborted) throw new Error('Cancelled')

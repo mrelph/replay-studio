@@ -1,7 +1,7 @@
 import type { OutputSegment } from '@/types/clip'
 import { frameIndexAt } from '@/utils/frames'
-import { annotationStateAt, isRevealDue, revealElapsed, revealFraction, type AnnotationTimingInput } from './annotationTiming'
-import { framePresentations } from './outputTimeline'
+import { annotationStateAt, hasPresentationTiming, isRevealDue, revealElapsed, revealFraction, type AnnotationTimingInput } from './annotationTiming'
+import { framePresentations, type FramePresentation } from './outputTimeline'
 import { revealKind } from './reveal'
 
 /**
@@ -112,33 +112,14 @@ export function buildDrawingSpans(
   const frames = framePresentations(segments, fps)
   const spans: DrawingSpan[] = []
 
-  // Per drawn annotation: which segments are holds on or after its start frame (presentation time since it
-  // started includes every such hold), and the hold time accrued before each segment.
-  const holdInfo = new Map<SpanAnnotationLike, { matches: boolean[]; before: number[] }>()
-  for (const annotation of annotations) {
-    if (!(annotation.drawIn && annotation.drawIn > 0) && !(annotation.revealDelay && annotation.revealDelay > 0)) continue
-    const startFrame = frameIndexAt(annotation.startTime, sourceFps)
-    const matches = segments.map((seg) => seg.kind === 'hold' && frameIndexAt(seg.srcTime, sourceFps) >= startFrame)
-    const before: number[] = []
-    let accrued = 0
-    segments.forEach((seg, i) => {
-      before.push(accrued)
-      if (matches[i] && seg.kind === 'hold') accrued += seg.duration
-    })
-    holdInfo.set(annotation, { matches, before })
-  }
+  const holdElapsedAt = holdElapsedResolver(segments, annotations, sourceFps)
 
   let currentKey: string | null = null
   let currentSignature: AnnotationVisualState[] = []
   let spanStart = 0
 
   frames.forEach((frame, i) => {
-    const holdElapsedFor = (annotation: SpanAnnotationLike) => {
-      const info = holdInfo.get(annotation)
-      if (!info) return 0
-      return info.before[frame.segmentIndex] + (info.matches[frame.segmentIndex] ? frame.holdElapsed : 0)
-    }
-    const signature = computeFrameSignature(annotations, frame.srcTime, revealSteps, holdElapsedFor)
+    const signature = computeFrameSignature(annotations, frame.srcTime, revealSteps, (annotation) => holdElapsedAt(annotation, frame))
     const key = signatureKey(signature)
     if (key !== currentKey) {
       if (currentKey !== null) {
@@ -155,6 +136,52 @@ export function buildDrawingSpans(
   }
 
   return spans
+}
+
+/**
+ * Hold time that counts toward each annotation's presentation time at an
+ * output frame: every hold whose source frame index is on or after the
+ * annotation's start frame (a freeze is usually recorded a frame or two after
+ * the drawing). Annotations without presentation timing always get 0.
+ */
+export function holdElapsedResolver<A extends AnnotationTimingInput>(
+  segments: OutputSegment[],
+  annotations: A[],
+  sourceFps: number
+): (annotation: A, frame: FramePresentation) => number {
+  const holdInfo = new Map<A, { matches: boolean[]; before: number[] }>()
+  for (const annotation of annotations) {
+    if (!hasPresentationTiming(annotation)) continue
+    const startFrame = frameIndexAt(annotation.startTime, sourceFps)
+    const matches = segments.map((seg) => seg.kind === 'hold' && frameIndexAt(seg.srcTime, sourceFps) >= startFrame)
+    const before: number[] = []
+    let accrued = 0
+    segments.forEach((seg, i) => {
+      before.push(accrued)
+      if (matches[i] && seg.kind === 'hold') accrued += seg.duration
+    })
+    holdInfo.set(annotation, { matches, before })
+  }
+  return (annotation, frame) => {
+    const info = holdInfo.get(annotation)
+    if (!info) return 0
+    return info.before[frame.segmentIndex] + (info.matches[frame.segmentIndex] ? frame.holdElapsed : 0)
+  }
+}
+
+/**
+ * The first output frame on which `annotation`'s `revealDelay` has passed
+ * (the same rule `computeFrameSignature` applies), 0 when it has no delay, or
+ * `Infinity` when it never comes due in these segments.
+ */
+export function firstDueFrame(segments: OutputSegment[], annotation: AnnotationTimingInput, fps: number, sourceFps: number = fps): number {
+  if (!(annotation.revealDelay !== undefined && annotation.revealDelay > 0)) return 0
+  const holdElapsedAt = holdElapsedResolver(segments, [annotation], sourceFps)
+  const frames = framePresentations(segments, fps)
+  for (let i = 0; i < frames.length; i++) {
+    if (isRevealDue(annotation.startTime, frames[i].srcTime, holdElapsedAt(annotation, frames[i]), annotation.revealDelay)) return i
+  }
+  return Infinity
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildMagnifierOps, type MagnifierAnnotationLike } from './magnifierOps'
+import { buildDrawingSpans } from './spanBuilder'
 import type { OutputSegment, VideoProbe } from '@/types/clip'
 
 const PROBE: Pick<VideoProbe, 'width' | 'height'> = { width: 1920, height: 1080 }
@@ -104,5 +105,46 @@ describe('buildMagnifierOps', () => {
     expect(ops[0].enable).toEqual([{ start: 0, end: 3 }])
     expect(ops[1].enable).toEqual([{ start: 5, end: 8 }])
     expect(ops[1].destCircle).toEqual({ centerX: 530, centerY: 530, radius: 30 })
+  })
+})
+
+describe('buildMagnifierOps with revealDelay', () => {
+  const HELD: OutputSegment[] = [
+    { kind: 'play', srcStart: 2.9, srcEnd: 3.0 },
+    { kind: 'hold', srcTime: 3.0, duration: 2.3 },
+    { kind: 'play', srcStart: 3.0, srcEnd: 4.0 },
+  ]
+
+  it('starts the zoom on the frame its ring appears, not before', () => {
+    const mag = magnifier({ startTime: 3, endTime: 5, revealDelay: 0.35 })
+    const ops = buildMagnifierOps({ start: 2.9, end: 4.0 }, HELD, [mag], 30, PROBE, undefined, 30)
+    const ring = buildDrawingSpans(HELD, [{ ...mag, toolType: 'magnifier' }], 30, { sourceFps: 30 }).find((s) => s.signature.length > 0)!
+    expect(ring.frameStart).toBe(3 + 11)
+    expect(ops).toHaveLength(1)
+    expect(ops[0].enable[0].start).toBeCloseTo(ring.frameStart / 30, 9)
+    for (const w of ops[0].enable) expect(w.start).toBeGreaterThanOrEqual(ring.frameStart / 30 - 1e-9)
+    expect(ops[0].enable[ops[0].enable.length - 1].end).toBeCloseTo((3 + 69 + 30) / 30, 9)
+  })
+
+  it('omits a magnifier that never becomes due in the clip', () => {
+    const mag = magnifier({ startTime: 3, endTime: 5, revealDelay: 2 })
+    expect(buildMagnifierOps({ start: 2.9, end: 4.0 }, [{ kind: 'play', srcStart: 2.9, srcEnd: 4.0 }], [mag], 30, PROBE)).toEqual([])
+  })
+
+  it('leaves a magnifier without revealDelay exactly as before', () => {
+    const segments: OutputSegment[] = [
+      { kind: 'play', srcStart: 0, srcEnd: 2 },
+      { kind: 'hold', srcTime: 2, duration: 1 },
+      { kind: 'play', srcStart: 2, srcEnd: 4 },
+    ]
+    const expected = [
+      { start: 1.5, end: 2 },
+      { start: 2, end: 3 },
+      { start: 3, end: 3.5 },
+    ]
+    for (const revealDelay of [undefined, 0]) {
+      const ops = buildMagnifierOps({ start: 0, end: 4 }, segments, [magnifier({ startTime: 1.5, endTime: 2.5, revealDelay })], 10, PROBE)
+      expect(ops[0].enable).toEqual(expected)
+    }
   })
 })

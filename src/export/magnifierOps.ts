@@ -1,6 +1,7 @@
 import type { Clip, MagnifierOp, OutputSegment, VideoProbe } from '@/types/clip'
 import type { AnnotationTimingInput } from './annotationTiming'
 import { segmentFrameCounts } from './outputTimeline'
+import { firstDueFrame } from './spanBuilder'
 
 /** Magnifier zoom factor, matching `updateMagnifierContent` in DrawingCanvas.tsx. */
 export const MAGNIFIER_ZOOM_LEVEL = 2.5
@@ -77,8 +78,10 @@ export interface MagnifierAnnotationLike extends AnnotationTimingInput {
  * on through the whole hold, matching the live view where the magnifier
  * would otherwise flicker on a single repeated frame).
  *
- * Magnifiers with no resulting enable window (never visible during the
- * clip) are omitted from the result.
+ * A magnifier with a `revealDelay` is enabled only from the output frame its
+ * delay has passed (`firstDueFrame`, matching its ring's span; `sourceFps`
+ * matches holds to its start frame). Magnifiers with no resulting enable
+ * window (never visible or never due during the clip) are omitted.
  */
 export function buildMagnifierOps(
   clip: Pick<Clip, 'start' | 'end'>,
@@ -86,7 +89,8 @@ export function buildMagnifierOps(
   magnifiers: MagnifierAnnotationLike[],
   fps: number,
   probe: Pick<VideoProbe, 'width' | 'height'>,
-  zoomLevel: number = MAGNIFIER_ZOOM_LEVEL
+  zoomLevel: number = MAGNIFIER_ZOOM_LEVEL,
+  sourceFps: number = fps
 ): MagnifierOp[] {
   const counts = segmentFrameCounts(segments, fps)
   let cumulativeFrames = 0
@@ -124,7 +128,11 @@ export function buildMagnifierOps(
       }
     }
 
-    if (enable.length === 0) continue
+    // A delayed magnifier's zoom waits for its turn, the same output frame its ring's span starts on.
+    const dueFrom = firstDueFrame(segments, magnifier, fps, sourceFps) / fps
+    const due = dueFrom > 0 ? enable.filter((w) => w.end > dueFrom).map((w) => ({ start: Math.max(w.start, dueFrom), end: w.end })) : enable
+
+    if (due.length === 0) continue
 
     const rect = computeMagnifierSampleRect(magnifier.circle, zoomLevel, probe, probe)
     ops.push({
@@ -134,7 +142,7 @@ export function buildMagnifierOps(
         centerY: magnifier.circle.top + magnifier.circle.radius,
         radius: magnifier.circle.radius,
       },
-      enable,
+      enable: due,
     })
   }
 

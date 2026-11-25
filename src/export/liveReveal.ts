@@ -1,5 +1,5 @@
 import { frameIndexAt } from '@/utils/frames'
-import { isRevealDue, revealElapsed, revealFraction } from './annotationTiming'
+import { hasPresentationTiming, isRevealDue, revealElapsed, revealFraction } from './annotationTiming'
 
 export interface LiveRevealAnnotation {
   id: string
@@ -54,7 +54,7 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, LiveRevealSt
 
   for (const annotation of annotations) {
     const { id, startTime, endTime, drawIn, revealDelay } = annotation
-    if (!(drawIn !== undefined && drawIn > 0) && !(revealDelay !== undefined && revealDelay > 0)) {
+    if (!hasPresentationTiming(annotation)) {
       armed.delete(id)
       result.set(id, FINISHED)
       continue

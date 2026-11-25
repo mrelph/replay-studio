@@ -25,6 +25,12 @@ export interface AnnotationTimingInput {
   revealDelay?: number
 }
 
+/** Whether an annotation runs on presentation time (a draw-on or a reveal delay), so hold time must be tracked for it. */
+export function hasPresentationTiming(annotation: Pick<AnnotationTimingInput, 'drawIn' | 'revealDelay'>): boolean {
+  const { drawIn, revealDelay } = annotation
+  return (drawIn !== undefined && drawIn > 0) || (revealDelay !== undefined && revealDelay > 0)
+}
+
 export function revealElapsed(startTime: number, t: number, holdElapsed: number, revealDelay?: number): number {
   return Math.max(0, Math.max(0, t - startTime) + holdElapsed - (revealDelay ?? 0))
 }
