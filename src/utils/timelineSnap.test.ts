@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes } from './timelineSnap'
-import { snapToFrame, frameIndexAt } from './frames'
+import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, barStart } from './timelineSnap'
+import { snapToFrame, frameIndexAt, frameStart, timeForFrame } from './frames'
 import type { Annotation } from '@/stores/drawingStore'
 
 const ann = (id: string, startTime: number, extra: Partial<Annotation> = {}): Annotation =>
@@ -65,6 +65,19 @@ describe('frameWithin', () => {
   })
   it('keeps a frame-aligned in-range time', () => {
     expect(frameWithin(1.0, 0, 5, 30)).toBeCloseTo(snapToFrame(1.0, 30))
+  })
+  it('lands on the exact frame start when asked (drawings)', () => {
+    expect(frameWithin(snapToFrame(3.05, 30), 0, 9, 30, true)).toBe(frameStart(91, 30))
+    expect(frameWithin(0, 2.1, 9, 25, true)).toBe(frameStart(53, 25))
+    expect(frameWithin(5, 0, 1.9, 25, true)).toBe(frameStart(47, 25))
+  })
+})
+
+describe('barStart', () => {
+  it('puts a drawing on the exact frame start and a freeze carrier on its seek time', () => {
+    expect(barStart(ann('arrow-1', 0), 2.03, 30)).toBe(frameStart(60, 30))
+    expect(barStart(ann('freeze-1', 0, { freezeDuration: 2 }), 2.03, 30)).toBe(timeForFrame(60, 30))
+    expect(barStart(ann('arrow-2', 0, { freezeDuration: 0 }), 2.03, 30)).toBe(timeForFrame(60, 30))
   })
 })
 

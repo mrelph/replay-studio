@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { frameIndexAt, timeForFrame, stepFrames, snapToFrame, formatTimecode, nextForwardRate, nextReverseRate } from './frames'
+import { frameIndexAt, timeForFrame, stepFrames, snapToFrame, formatTimecode, nextForwardRate, nextReverseRate, frameStart, lastTimeInFrame } from './frames'
+
+/** What Chromium reports after seeking to `target`: whole microseconds, truncated. */
+const reported = (target: number) => Math.floor(target * 1e6) / 1e6
 
 describe('frame math', () => {
   it('round-trips frame index through seek time at NTSC rates', () => {
@@ -60,5 +63,27 @@ describe('snapToFrame', () => {
     expect(frameIndexAt(snapToFrame(3.0569, 30), 30)).toBe(91)
     expect(snapToFrame(3.0569, 30)).toBeLessThan(3.0569)
     expect(snapToFrame(0.01, 30)).toBe(0)
+  })
+})
+
+describe('frameStart / lastTimeInFrame', () => {
+  const rates = [30, 30000 / 1001, 25, 60]
+  const frames = [1, 7, 91, 300, 1799]
+
+  it('frameStart is the exact frame start and still maps back to its frame', () => {
+    expect(frameStart(91, 30)).toBe(91 / 30)
+    expect(frameStart(0, 30)).toBe(0)
+    for (const fps of rates) for (const k of frames) expect(frameIndexAt(frameStart(k, fps), fps)).toBe(k)
+  })
+
+  it('every time the video reports for a frame lies in [frameStart, lastTimeInFrame]', () => {
+    for (const fps of rates) {
+      for (const k of frames) {
+        const t = reported(timeForFrame(k, fps))
+        expect(t).toBeGreaterThanOrEqual(frameStart(k, fps))
+        expect(t).toBeLessThanOrEqual(lastTimeInFrame(k, fps))
+        expect(reported(timeForFrame(k + 1, fps))).toBeGreaterThan(lastTimeInFrame(k, fps))
+      }
+    }
   })
 })

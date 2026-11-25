@@ -1,3 +1,5 @@
+import { frameIndexAt, lastTimeInFrame } from '@/utils/frames'
+
 export type StayPreset = 'freeze' | 1 | 2 | 4 | 'end'
 
 export const STAY_PRESETS: { value: StayPreset; label: string }[] = [
@@ -26,7 +28,10 @@ export function stayTiming(
   defaults: { fadeIn: number; fadeOut: number },
 ): StayTiming {
   if (preset === 'freeze') {
-    return { endTime: startTime + 0.5 / fps, fadeIn: 0, fadeOut: 0 }
+    // The whole frame, whatever time a hold on it shows, and never the next one.
+    const frameEnd = lastTimeInFrame(frameIndexAt(startTime, fps), fps)
+    const clamped = videoDuration > 0 ? Math.min(frameEnd, videoDuration) : frameEnd
+    return { endTime: clamped > startTime ? clamped : frameEnd, fadeIn: 0, fadeOut: 0 }
   }
   const target = preset === 'end' ? videoDuration : startTime + preset
   const endTime = videoDuration > 0 ? Math.min(target, videoDuration) : target

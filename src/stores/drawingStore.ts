@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { fabric } from 'fabric'
 import { stripReveal } from '@/export/reveal'
 import { useVideoStore } from '@/stores/videoStore'
-import { frameIndexAt } from '@/utils/frames'
+import { frameIndexAt, timeForFrame } from '@/utils/frames'
 import { findFreezeCarrierAt, freezeMarkerAnnotation } from '@/utils/freezeFrame'
 import { sequenceFrame } from '@/utils/freezeSequence'
 
@@ -420,7 +420,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }
 
     for (const { time, hold } of create) {
-      get().addAnnotation(freezeMarkerAnnotation(time, hold, true), { history: false })
+      // The marker is the hold's seek target; drawings start on the exact frame start.
+      get().addAnnotation(freezeMarkerAnnotation(timeForFrame(frameIndexAt(time, fps), fps), hold, true), { history: false })
     }
     if (removeIds.size > 0) canvas?.requestRenderAll()
   },

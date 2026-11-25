@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { stayTiming, STAY_PRESETS, STAY_TOOL_TYPES } from './stayPreset'
 import { annotationStateAt } from '@/export/annotationTiming'
+import { frameStart, timeForFrame } from './frames'
 
 const d = { fadeIn: 0.1, fadeOut: 0.1 }
 
@@ -22,6 +23,24 @@ describe('stayTiming', () => {
     expect(f.endTime).toBeLessThan(3 + 1 / 30)
     expect(annotationStateAt({ startTime: 3, ...f }, 3)).toEqual({ visible: true, opacity: 1 })
     expect(annotationStateAt({ startTime: 3, ...f }, 3 + 1 / 30).visible).toBe(false)
+  })
+
+  it('Freeze only covers its whole frame and ends just before the next frame starts', () => {
+    for (const fps of [30, 30000 / 1001, 25, 60]) {
+      const start = frameStart(60, fps)
+      const f = stayTiming('freeze', start, 60, fps, d)
+      expect(f.endTime).toBeLessThan(frameStart(61, fps))
+      // An unsnapped 1.7.0 H marker later in the frame still shows the drawing.
+      expect(annotationStateAt({ startTime: start, ...f }, start + 0.75 / fps).visible).toBe(true)
+      expect(annotationStateAt({ startTime: start, ...f }, Math.floor(timeForFrame(60, fps) * 1e6) / 1e6).visible).toBe(true)
+      expect(annotationStateAt({ startTime: start, ...f }, Math.floor(timeForFrame(61, fps) * 1e6) / 1e6).visible).toBe(false)
+    }
+    expect(annotationStateAt({ startTime: 2, ...stayTiming('freeze', 2, 60, 30, d) }, 2.025).visible).toBe(true)
+  })
+
+  it('Freeze only clamps to the video when the frame ends past it', () => {
+    expect(stayTiming('freeze', 59.99, 59.995, 30, d).endTime).toBe(59.995)
+    expect(stayTiming('freeze', 2, 0, 30, d).endTime).toBeGreaterThan(2)
   })
 
   it('Freeze only on the last frame stays visible on it', () => {

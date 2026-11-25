@@ -158,6 +158,17 @@ snap it to the start of its frame (`timeForFrame`), and seek there if needed.
 The drawing's `startTime` is that snapped time. Selecting, moving or editing an
 existing object does not pause.
 
+*Post-review change (final fix wave):* the video seeks to `timeForFrame` (a
+hair past the boundary), but the drawing's `startTime` is the exact frame start
+`frameIndex / fps` (`frameStart`), with no epsilon. Chromium reports
+`currentTime` in whole microseconds, truncated, so a seek to
+`k / fps + 0.001 / fps` reads back just below it; a drawing starting at the
+seek time was hidden on its own frame while paused and during every hold.
+Seek targets keep the epsilon: the video seek, and a freeze marker's own
+`startTime` (the hold seeks to it). Timeline drags and the inspector's Start
+field write exact frame starts for drawings and seek times for freeze
+carriers.
+
 Today `createAnnotation` stamps the store's `currentTime` when the drawing is
 *committed*: shapes on mouse-up, the pen on `path:created` (the mouse-down
 handler returns early for the pen), text on mouse-down. So the snapped time
@@ -236,6 +247,14 @@ that a one-frame annotation is drawn for the whole hold in both the live view
 and export, and that it does not flash on the frame when there is no hold
 (if the freeze was set to 0, a `Freeze only` drawing shows for one frame; that
 is accepted).
+
+*Post-review change (final fix wave):* `Freeze only` ends just before the next
+frame starts, `(frameIndex + 1 - 0.001) / fps` (`lastTimeInFrame`), clamped to
+the video duration when that still leaves `endTime > startTime`. With the
+drawing starting on the exact frame start (section 4) it covers its whole
+frame, so a hold anywhere in that frame (a 1.7.0 `H` marker recorded mid-frame,
+or a Start typed mid-frame) shows it. The inspector's Start value snaps to its
+frame start on blur.
 
 The chip applies to new drawings from the tools listed in section 4. With
 drawings selected, clicking a chip re-times them and saves one undo step, the

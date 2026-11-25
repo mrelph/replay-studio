@@ -15,6 +15,20 @@ export function timeForFrame(index: number, fps: number): number {
   return Math.max(0, index) / fps + (index > 0 ? BOUNDARY_EPSILON / fps : 0)
 }
 
+/**
+ * Exact start of frame `index`, with no epsilon. A drawing starts here so it
+ * covers every time the video can report for that frame (Chromium truncates
+ * `currentTime` to whole microseconds, just below a `timeForFrame` seek).
+ */
+export function frameStart(index: number, fps: number): number {
+  return Math.max(0, index) / fps
+}
+
+/** Where `frameIndexAt` moves on to frame `index + 1`: an inclusive end here never shows on the next frame. */
+export function lastTimeInFrame(index: number, fps: number): number {
+  return (Math.max(0, index) + 1 - BOUNDARY_EPSILON) / fps
+}
+
 /** Seek time of the start of the frame showing at `time`. */
 export function snapToFrame(time: number, fps: number): number {
   return timeForFrame(frameIndexAt(time, fps), fps)

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useVideoStore } from './videoStore'
-import { snapToFrame } from '@/utils/frames'
+import { snapToFrame, frameStart, frameIndexAt, timeForFrame } from '@/utils/frames'
+import { stayTiming } from '@/utils/stayPreset'
+import { annotationStateAt } from '@/export/annotationTiming'
 
 /** Just enough of an HTMLVideoElement for toggleFreeze. */
 function fakeVideo(paused: boolean, currentTime: number) {
@@ -81,14 +83,40 @@ describe('captureDrawFrame', () => {
     useVideoStore.setState({ videoElement: null, currentTime: 0, fps: 30, reverseRate: 0, shuttleBaseRate: null })
   })
 
-  it('stops a playing video on the start of its current frame', () => {
+  it('stops a playing video on its current frame and returns the exact frame start', () => {
     const video = fakeVideo(false, 3.0569)
     useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement })
     const time = useVideoStore.getState().captureDrawFrame()
-    expect(time).toBe(snapToFrame(3.0569, 30))
+    expect(time).toBe(frameStart(91, 30))
     expect(video.pause).toHaveBeenCalledOnce()
-    expect(video.currentTime).toBe(time)
-    expect(useVideoStore.getState().currentTime).toBe(time)
+    expect(video.currentTime).toBe(snapToFrame(3.0569, 30))
+    expect(useVideoStore.getState().currentTime).toBe(snapToFrame(3.0569, 30))
+  })
+
+  it('a drawing made on a frame is visible at every time the browser reports for it', () => {
+    for (const fps of [30, 30000 / 1001, 25, 60]) {
+      for (const k of [1, 7, 91, 300, 1799]) {
+        // Chromium reports currentTime in whole microseconds, truncated.
+        let reported = (k + 0.5) / fps
+        const video = fakeVideo(true, 0)
+        Object.defineProperty(video, 'currentTime', {
+          get: () => reported,
+          set: (target: number) => { reported = Math.floor(target * 1e6) / 1e6 },
+        })
+        useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement, fps })
+        const startTime = useVideoStore.getState().captureDrawFrame()
+        expect(frameIndexAt(startTime, fps)).toBe(k)
+        const t = video.currentTime
+        for (const preset of ['freeze', 2] as const) {
+          const timing = stayTiming(preset, startTime, 120, fps, { fadeIn: 0, fadeOut: 0 })
+          const drawing = { startTime, ...timing }
+          expect(annotationStateAt(drawing, t).visible, `fps ${fps} frame ${k} ${preset}`).toBe(true)
+          expect(annotationStateAt(drawing, useVideoStore.getState().currentTime).visible).toBe(true)
+          // The hold seeks to the frame's marker time.
+          expect(annotationStateAt(drawing, Math.floor(timeForFrame(k, fps) * 1e6) / 1e6).visible).toBe(true)
+        }
+      }
+    }
   })
 
   it('leaves a paused video on an already snapped frame alone', () => {
@@ -100,7 +128,7 @@ describe('captureDrawFrame', () => {
       set: () => { assigned = true },
     })
     useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement })
-    expect(useVideoStore.getState().captureDrawFrame()).toBe(snapped)
+    expect(useVideoStore.getState().captureDrawFrame()).toBe(frameStart(91, 30))
     expect(video.pause).not.toHaveBeenCalled()
     expect(assigned).toBe(false)
     expect(useVideoStore.getState().currentTime).toBe(snapped)

@@ -9,7 +9,7 @@ import type { Clip } from '@/types/clip'
 import WaveformDisplay from './WaveformDisplay'
 import { revealKind } from '@/export/reveal'
 import { parseDrawIn } from '@/utils/drawInInput'
-import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes } from '@/utils/timelineSnap'
+import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, startsOnFrameStart, barStart } from '@/utils/timelineSnap'
 import { setFrameFreeze } from '@/utils/freezeMarkers'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
@@ -157,12 +157,13 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
       const targets = snapTargets(useDrawingStore.getState().annotations, currentTime, annotation)
       const snap = (t: number) => snapTime(t, targets, rect.width / duration, fps, e.altKey)
 
+      const exact = startsOnFrameStart(annotation)
       if (isDragging === 'move') {
         const annotationDuration = annotation.endTime - annotation.startTime
-        const newStart = frameWithin(snap(time - annotationDuration / 2), 0, duration - annotationDuration, fps)
+        const newStart = frameWithin(snap(time - annotationDuration / 2), 0, duration - annotationDuration, fps, exact)
         onUpdateTime(newStart, newStart + annotationDuration)
       } else if (isDragging === 'start') {
-        const newStart = frameWithin(snap(time), 0, annotation.endTime - 0.1, fps)
+        const newStart = frameWithin(snap(time), 0, annotation.endTime - 0.1, fps, exact)
         onUpdateTime(newStart, annotation.endTime)
       } else if (isDragging === 'end') {
         const newEnd = frameWithin(snap(time), annotation.startTime + 0.1, duration, fps)
@@ -537,7 +538,11 @@ function AnnotationDetails({ annotation, onUpdate, onUpdateAnnotation, onDelete 
             onChange={(e) => onUpdate({ startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
             onBlur={() => {
               const focused = startOnFocusRef.current
-              if (focused.id === annotation.id && annotation.startTime !== focused.start) syncFrames([focused.start, annotation.startTime])
+              if (focused.id !== annotation.id || annotation.startTime === focused.start) return
+              // A typed start lands on its frame, so a freeze on that frame shows the drawing.
+              const snapped = barStart(annotation, annotation.startTime, fps)
+              if (snapped !== annotation.startTime) onUpdate({ startTime: snapped })
+              if (snapped !== focused.start) syncFrames([focused.start, snapped])
             }}
             className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
           />

@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { fabric } from '@/lib/fabric'
+import { useVideoStore } from './videoStore'
 import { useDrawingStore, type Annotation } from './drawingStore'
+import { frameStart, timeForFrame } from '@/utils/frames'
+import { annotationStateAt } from '@/export/annotationTiming'
 
 // Fabric schedules renders on requestAnimationFrame; dispose each test canvas
 // so none fires after the mocked 2D context is restored (jsdom's returns null).
@@ -110,7 +113,7 @@ describe('drawingStore frame sync', () => {
   it('creates an automatic freeze on a drawn frame and grows it with each drawing', () => {
     draw(drawing('a', 3, 0.35))
     expect(freezes()).toHaveLength(1)
-    expect(freezes()[0].startTime).toBe(3)
+    expect(freezes()[0].startTime).toBe(timeForFrame(90, 30))
     expect(freezes()[0].freezeAuto).toBe(true)
     expect(freezes()[0].freezeDuration).toBeCloseTo(1.4)
     expect(byId('a').revealDelay).toBe(0)
@@ -119,6 +122,22 @@ describe('drawingStore frame sync', () => {
     expect(freezes()).toHaveLength(1)
     expect(byId('b').revealDelay).toBeCloseTo(0.35)
     expect(freezes()[0].freezeDuration).toBeCloseTo(1.8)
+  })
+
+  it('puts the automatic freeze on its seek time, where the drawing (at the exact frame start) shows', () => {
+    for (const fps of [30, 30000 / 1001, 25, 60]) {
+      reset()
+      useVideoStore.setState({ fps })
+      for (const k of [1, 91, 1799]) {
+        draw(drawing(`d${k}`, frameStart(k, fps)))
+        const marker = freezes().find((f) => f.startTime > frameStart(k, fps) - 1e-9 && f.startTime < frameStart(k + 1, fps))!
+        expect(marker.startTime).toBe(timeForFrame(k, fps))
+        // The hold seeks to the marker; Chromium reports that in whole microseconds.
+        const held = Math.floor(marker.startTime * 1e6) / 1e6
+        expect(annotationStateAt(byId(`d${k}`), held).visible).toBe(true)
+      }
+    }
+    useVideoStore.setState({ fps: 30 })
   })
 
   it('re-sequences on delete and removes the automatic marker with the last drawing', () => {
@@ -161,7 +180,7 @@ describe('drawingStore frame sync', () => {
     draw(drawing('b', 3, 0.4))
     store().updateAnnotation('b', { startTime: 9 })
     expect(freezes()).toHaveLength(1)
-    expect(freezes()[0].startTime).toBe(3)
+    expect(freezes()[0].startTime).toBe(timeForFrame(90, 30))
     expect(freezes()[0].freezeDuration).toBeCloseTo(1.4)
     expect(byId('b').revealDelay ?? 0).toBe(0)
     expect(freezes().some((f) => f.startTime === 9)).toBe(false)
@@ -213,7 +232,7 @@ describe('drawingStore frame sync', () => {
     expect(freezes()).toHaveLength(2)
     store().discardNewAnnotation('t')
     expect(store().annotations.map((a) => a.id)).toEqual(['a', freezes()[0].id])
-    expect(freezes().map((f) => f.startTime)).toEqual([1])
+    expect(freezes().map((f) => f.startTime)).toEqual([timeForFrame(30, 30)])
     expect(store().undoStack).toHaveLength(undoBefore)
   })
 

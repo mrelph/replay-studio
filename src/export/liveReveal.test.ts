@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { stepLiveReveal, type ArmedReveal } from './liveReveal'
 import { revealFraction } from './annotationTiming'
+import { frameStart, timeForFrame } from '@/utils/frames'
 
 const armedWith = (id: string) => new Map<string, ArmedReveal>([[id, { peak: 0, due: false }]])
 
@@ -134,5 +135,35 @@ describe('stepLiveReveal drawn order (revealDelay)', () => {
   it('shows a delayed drawing that playback did not arrive at', () => {
     const armed = new Map<string, ArmedReveal>()
     expect(step(armed, { playing: true, prevTime: 1, time: 3.1 }).get('t')).toEqual({ fraction: 1, due: true })
+  })
+})
+
+describe('stepLiveReveal on the exact frame start', () => {
+  const fps = 30
+  const start = frameStart(91, fps)
+  // Chromium reports the hold's seek time in whole microseconds, just below it.
+  const held = Math.floor(timeForFrame(91, fps) * 1e6) / 1e6
+  const anns = [
+    { id: 'a', startTime: start, endTime: start + 2, drawIn: 0.35, revealDelay: 0 },
+    { id: 'b', startTime: start, endTime: start + 2, drawIn: 0.4, revealDelay: 0.35 },
+  ]
+
+  it('reveals in order during a hold seeked to the frame\'s marker', () => {
+    const armed = new Map<string, ArmedReveal>()
+    const hold = { time: timeForFrame(91, fps), startedAt: 1000, endedAt: null }
+    const step = (now: number) => stepLiveReveal({ annotations: anns, prevTime: held, time: held, playing: false, autoHold: hold, now, fps, armed })
+    let r = step(1100)
+    expect(r.get('a')?.due).toBe(true)
+    expect(r.get('a')?.fraction).toBeLessThan(1)
+    expect(r.get('b')?.due).toBe(false)
+    r = step(1800)
+    expect(r.get('b')).toEqual({ fraction: 1, due: true })
+  })
+
+  it('arms when playback crosses into the frame, not when Play starts on it', () => {
+    const arrive = new Map<string, ArmedReveal>()
+    expect(stepLiveReveal({ annotations: anns, prevTime: start - 0.02, time: start + 0.001, playing: true, autoHold: null, now: 0, fps, armed: arrive }).get('a')?.fraction).toBeLessThan(1)
+    const onFrame = new Map<string, ArmedReveal>()
+    expect(stepLiveReveal({ annotations: anns, prevTime: held, time: held + 0.016, playing: true, autoHold: null, now: 0, fps, armed: onFrame }).get('a')?.fraction).toBe(1)
   })
 })
