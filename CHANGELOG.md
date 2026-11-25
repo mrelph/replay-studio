@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Audio waveform visualization in timeline
+- Annotation data import/export (JSON format)
+- Customizable keyboard shortcuts
+- Plugin system for custom drawing tools
+- Collaborative annotation features
+- Cloud storage integration
+
+## [1.8.0] - 2026-11-25
+
 ### Added
 - Drawing while the video plays now pauses on that frame and adds a freeze
   for you. The freeze lasts as long as the drawings need plus a second to
@@ -35,14 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   frame has no freeze, and could leave out a one-frame (Freeze only) drawing
   entirely. Both now show.
 - A magnifier's zoom in an export no longer starts a frame after its ring.
-
-### Planned
-- Audio waveform visualization in timeline
-- Annotation data import/export (JSON format)
-- Customizable keyboard shortcuts
-- Plugin system for custom drawing tools
-- Collaborative annotation features
-- Cloud storage integration
 
 ## [1.7.0] - 2026-11-25
 
