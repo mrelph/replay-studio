@@ -5,7 +5,7 @@ import { useDrawingStore } from '@/stores/drawingStore'
 import { useSpeedStore } from '@/stores/speedStore'
 import { Modal, Button, Select } from '@/components/ui'
 import { renderClip } from '@/export/clipRenderer'
-import { buildOutputTimeline } from '@/export/outputTimeline'
+import { buildOutputTimeline, exportSpeedSteps } from '@/export/outputTimeline'
 
 interface ExportDialogProps {
   onClose: () => void
@@ -24,8 +24,9 @@ interface ExportSettings {
 }
 
 export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
-  const { inPoint, outPoint, duration } = useVideoStore()
+  const { inPoint, outPoint, duration, fps: sourceFps } = useVideoStore()
   const { annotations } = useDrawingStore()
+  const speedRegions = useSpeedStore((s) => s.regions)
 
   const [settings, setSettings] = useState<ExportSettings>({
     format: 'mp4',
@@ -48,7 +49,9 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
   const outputDuration = buildOutputTimeline(
     { start: startTime, end: endTime },
     settings.includeAnnotations ? annotations : [],
-    settings.fps
+    settings.fps,
+    exportSpeedSteps(speedRegions, { duration, fps: sourceFps }),
+    sourceFps
   ).duration
 
   // Check FFmpeg availability on mount

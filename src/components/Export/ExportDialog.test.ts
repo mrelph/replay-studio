@@ -5,6 +5,8 @@ import ExportDialog from './ExportDialog'
 import { renderClip } from '@/export/clipRenderer'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
+import { useSpeedStore } from '@/stores/speedStore'
+import { buildOutputTimeline, exportSpeedSteps } from '@/export/outputTimeline'
 
 vi.mock('@/export/clipRenderer', () => ({ renderClip: vi.fn() }))
 
@@ -17,7 +19,7 @@ describe('Export Video annotation wiring', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-    useVideoStore.setState({ inPoint: 10, outPoint: 20, duration: 30 })
+    useVideoStore.setState({ inPoint: 10, outPoint: 20, duration: 30, fps: 30 })
     useDrawingStore.setState({ annotations: [annotation] })
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
@@ -62,6 +64,16 @@ describe('Export Video annotation wiring', () => {
       outputPath: '/exports/video.mp4', sourcePath: '/videos/source.mp4',
     }))
     expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('estimates the duration in presentation time, slow regions included', async () => {
+    const regions = [{ id: 'r', start: 15, end: 19, speed: 0.25 }]
+    await act(async () => useSpeedStore.setState({ regions }))
+    const expected = buildOutputTimeline({ start: 10, end: 20 }, [annotation], 30, exportSpeedSteps(regions, { duration: 30, fps: 30 }), 30).duration
+    expect(expected).toBeGreaterThan(20)
+    expect(container.textContent).toContain(`0:${Math.floor(expected)}`)
+    await act(async () => useSpeedStore.setState({ regions: [] }))
+    expect(container.textContent).toContain('0:12')
   })
 
   it('can export a clean full-length video without drawings or annotation freezes', async () => {
