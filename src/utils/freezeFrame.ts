@@ -21,8 +21,21 @@ export function findFreezeCarrierAt(annotations: Annotation[], time: number, fps
   return carriers.find((a) => a.toolType === 'freeze') ?? carriers[0]
 }
 
-/** The invisible Fabric object a freeze marker annotation wraps. */
-export function createFreezeMarkerObject() {
+/** A new invisible freeze-frame marker annotation at `time`, holding `seconds`. */
+export function freezeMarkerAnnotation(time: number, seconds: number, auto?: boolean): Annotation {
+  return {
+    id: `freeze-${Date.now()}`,
+    object: createFreezeMarkerObject(),
+    startTime: time,
+    endTime: time + 0.1,
+    layer: 1,
+    toolType: 'freeze',
+    freezeDuration: seconds,
+    freezeAuto: auto,
+  }
+}
+
+function createFreezeMarkerObject() {
   return new fabric.Rect({
     left: 0,
     top: 0,

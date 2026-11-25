@@ -3,7 +3,7 @@ import type { fabric } from 'fabric'
 import { stripReveal } from '@/export/reveal'
 import { useVideoStore } from '@/stores/videoStore'
 import { frameIndexAt } from '@/utils/frames'
-import { findFreezeCarrierAt, createFreezeMarkerObject } from '@/utils/freezeFrame'
+import { findFreezeCarrierAt, freezeMarkerAnnotation } from '@/utils/freezeFrame'
 import { sequenceFrame } from '@/utils/freezeSequence'
 
 export interface Annotation {
@@ -187,8 +187,9 @@ interface DrawingState {
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void
   /** Re-sequences each frame: assigns revealDelay in array order; resizes the hold if the carrier is automatic;
    *  creates an automatic marker when `createFreeze` and the frame has drawings but no carrier;
-   *  removes an automatic marker when the frame has no drawings left. Never saves undo state. */
-  syncFrames: (times: number[], opts?: { createFreeze?: boolean }) => void
+   *  removes an automatic marker when the frame has no drawings left, unless `removeEmpty` is false (default true).
+   *  A frame with no freeze carrier (and no `createFreeze`) gets no delays. Never saves undo state. */
+  syncFrames: (times: number[], opts?: { createFreeze?: boolean; removeEmpty?: boolean }) => void
   selectAnnotation: (id: string | null) => void
   clearAnnotations: () => void
   getVisibleAnnotations: (currentTime: number) => Annotation[]
@@ -344,7 +345,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
       ),
     }))
     if (before && before.toolType !== 'freeze' && ('drawIn' in updates || 'startTime' in updates)) {
-      get().syncFrames([before.startTime, updates.startTime ?? before.startTime])
+      // Timeline drags land here on every mousemove; never delete a marker mid-drag.
+      get().syncFrames([before.startTime, updates.startTime ?? before.startTime], { removeEmpty: false })
     }
   },
 
@@ -367,7 +369,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
       const carrier = findFreezeCarrierAt(annotations, time, fps)
 
       if (drawings.length === 0) {
-        if (carrier?.toolType === 'freeze' && carrier.freezeAuto === true) removeIds.add(carrier.id)
+        if (opts?.removeEmpty !== false && carrier?.toolType === 'freeze' && carrier.freezeAuto === true) removeIds.add(carrier.id)
         continue
       }
 
@@ -404,16 +406,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }
 
     for (const { time, hold } of create) {
-      get().addAnnotation({
-        id: `freeze-${Date.now()}`,
-        object: createFreezeMarkerObject(),
-        startTime: time,
-        endTime: time + 0.1,
-        layer: 1,
-        toolType: 'freeze',
-        freezeDuration: hold,
-        freezeAuto: true,
-      }, { history: false })
+      get().addAnnotation(freezeMarkerAnnotation(time, hold, true), { history: false })
     }
     if (removeIds.size > 0) canvas?.requestRenderAll()
   },

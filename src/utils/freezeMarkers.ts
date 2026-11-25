@@ -1,5 +1,5 @@
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
-import { MIN_RECORDED_HOLD_SECONDS, MAX_RECORDED_HOLD_SECONDS, MAX_PAUSE_DRIFT_SECONDS, findFreezeCarrierAt, createFreezeMarkerObject } from '@/utils/freezeFrame'
+import { MIN_RECORDED_HOLD_SECONDS, MAX_RECORDED_HOLD_SECONDS, MAX_PAUSE_DRIFT_SECONDS, findFreezeCarrierAt, freezeMarkerAnnotation } from '@/utils/freezeFrame'
 
 export { MIN_RECORDED_HOLD_SECONDS, MAX_RECORDED_HOLD_SECONDS, MAX_PAUSE_DRIFT_SECONDS, findFreezeCarrierAt }
 
@@ -29,40 +29,34 @@ export function findFreezeAt(annotations: Annotation[], time: number, fps: numbe
 export function addFreezeMarker(time: number, seconds: number, opts?: { auto?: boolean; history?: boolean }): string | null {
   const { addAnnotation, canvas } = useDrawingStore.getState()
   if (!canvas) return null
-  const marker = createFreezeMarkerObject()
-  canvas.add(marker)
+  const marker = freezeMarkerAnnotation(time, seconds, opts?.auto)
+  canvas.add(marker.object)
   const before = new Set(useDrawingStore.getState().annotations.map((a) => a.id))
-  addAnnotation({
-    id: `freeze-${Date.now()}`,
-    object: marker,
-    startTime: time,
-    endTime: time + 0.1,
-    layer: 1,
-    toolType: 'freeze',
-    freezeDuration: seconds,
-    freezeAuto: opts?.auto,
-  }, { history: opts?.history })
+  addAnnotation(marker, { history: opts?.history })
   // addAnnotation may de-duplicate the id; report the one it actually used.
   return useDrawingStore.getState().annotations.find((a) => !before.has(a.id))?.id ?? null
 }
 
 /** Sets the frame's freeze through its carrier, creating a marker if none. `opts.history: false` must not save undo state. Returns the carrier id. */
 export function setFrameFreeze(time: number, seconds: number, fps: number, opts: { auto: boolean; history?: boolean }): string | null {
+  return writeFrameFreeze(time, seconds, fps, opts.auto, opts)
+}
+
+/** Writes the hold through the frame's carrier (or a new marker); `auto: undefined` leaves a carrier's `freezeAuto` key absent unless it was automatic. */
+function writeFrameFreeze(time: number, seconds: number, fps: number, auto: boolean | undefined, opts?: { history?: boolean }): string | null {
   const carrier = findFreezeCarrierAt(useDrawingStore.getState().annotations, time, fps)
-  if (!carrier) return addFreezeMarker(time, seconds, opts)
-  useDrawingStore.getState().updateAnnotation(carrier.id, { freezeDuration: seconds, freezeAuto: opts.auto })
+  if (!carrier) return addFreezeMarker(time, seconds, { auto, history: opts?.history })
+  const freezeAuto = auto ?? (carrier.freezeAuto ? false : undefined)
+  useDrawingStore.getState().updateAnnotation(
+    carrier.id,
+    freezeAuto === undefined ? { freezeDuration: seconds } : { freezeDuration: seconds, freezeAuto },
+  )
   return carrier.id
 }
 
 /** Sets a hand-set hold of `seconds` on `time`'s frame, reusing the frame's freeze carrier. Returns the annotation id. */
 export function setFreezeAt(time: number, seconds: number, fps: number): string | null {
-  const carrier = findFreezeCarrierAt(useDrawingStore.getState().annotations, time, fps)
-  if (!carrier) return addFreezeMarker(time, seconds)
-  useDrawingStore.getState().updateAnnotation(
-    carrier.id,
-    carrier.freezeAuto ? { freezeDuration: seconds, freezeAuto: false } : { freezeDuration: seconds },
-  )
-  return carrier.id
+  return writeFrameFreeze(time, seconds, fps, undefined)
 }
 
 /** Removes the hold on `time`'s frame: deletes a bare marker, or clears a drawing's freeze. Returns false if there was none. */

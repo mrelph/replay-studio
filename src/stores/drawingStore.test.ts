@@ -151,6 +151,27 @@ describe('drawingStore frame sync', () => {
     expect(freezes()[0].startTime).toBe(3)
     expect(freezes()[0].freezeDuration).toBeCloseTo(1.4)
     expect(byId('b').revealDelay ?? 0).toBe(0)
+    expect(freezes().some((f) => f.startTime === 9)).toBe(false)
+  })
+
+  it('keeps an automatic freeze while its only drawing is dragged away and back', () => {
+    draw(drawing('a', 3, 0.35))
+    store().updateAnnotation('a', { startTime: 9 })
+    expect(freezes()).toHaveLength(1)
+    store().updateAnnotation('a', { startTime: 3 })
+    expect(freezes()).toHaveLength(1)
+    expect(freezes()[0].freezeAuto).toBe(true)
+    expect(freezes()[0].freezeDuration).toBeCloseTo(1.4)
+    expect(byId('a').revealDelay).toBe(0)
+  })
+
+  it('prunes an emptied automatic freeze on an explicit sync', () => {
+    draw(drawing('a', 3, 0.35))
+    store().updateAnnotation('a', { startTime: 9 })
+    expect(freezes()[0].freezeDuration).toBeCloseTo(1.4)
+    expect(freezes()[0].freezeAuto).toBe(true)
+    store().syncFrames([3])
+    expect(freezes()).toHaveLength(0)
   })
 
   it('makes the drawing and its freeze one undo step', () => {

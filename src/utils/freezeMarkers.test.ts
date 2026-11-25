@@ -5,6 +5,7 @@ import {
   findFreezeAt,
   findFreezeCarrierAt,
   setFrameFreeze,
+  setFreezeAt,
   addFreezeMarker,
   MAX_RECORDED_HOLD_SECONDS,
 } from './freezeMarkers'
@@ -98,5 +99,21 @@ describe('setFrameFreeze', () => {
     expect(setFrameFreeze(4, 2, 30, { auto: false })).toBe(id)
     expect(freezes()).toHaveLength(1)
     expect(freezes()[0].freezeDuration).toBe(2)
+  })
+
+  it('setFreezeAt leaves a legacy carrier without a freezeAuto key, and makes an automatic one hand-set', () => {
+    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
+    const legacy = addFreezeMarker(4, 1)
+    expect(setFreezeAt(4, 3, 30)).toBe(legacy)
+    const marker = useDrawingStore.getState().annotations[0]
+    expect(marker.freezeDuration).toBe(3)
+    expect(marker.freezeAuto).toBeUndefined()
+
+    addFreezeMarker(8, 1.4, { auto: true })
+    setFreezeAt(8, 2, 30)
+    const auto = useDrawingStore.getState().annotations[1]
+    expect(auto.freezeDuration).toBe(2)
+    expect(auto.freezeAuto).toBe(false)
   })
 })
