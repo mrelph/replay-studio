@@ -1,5 +1,6 @@
 import { frameIndexAt } from '@/utils/frames'
-import { hasPresentationTiming, isRevealDue, revealElapsed, revealFraction } from './annotationTiming'
+import { hasPresentationTiming, isRevealDue, revealElapsed, revealFraction, type ElapsedBetween } from './annotationTiming'
+import { presentationOffset, type SpeedStep } from './speedMap'
 
 export interface LiveRevealAnnotation {
   id: string
@@ -29,6 +30,8 @@ export interface LiveRevealInput {
   now: number
   fps: number
   armed: Map<string, ArmedReveal>
+  /** Speed steps for the loaded video; omitted means source time is on-screen time. */
+  speedSteps?: SpeedStep[]
 }
 
 const FINISHED: LiveRevealState = { fraction: 1, due: true }
@@ -39,7 +42,8 @@ const FINISHED: LiveRevealState = { fraction: 1, due: true }
  * finished and due. `armed` holds each armed id's peak fraction and latched due.
  */
 export function stepLiveReveal(input: LiveRevealInput): Map<string, LiveRevealState> {
-  const { annotations, prevTime, time, playing, autoHold, now, fps, armed } = input
+  const { annotations, prevTime, time, playing, autoHold, now, fps, armed, speedSteps } = input
+  const elapsed: ElapsedBetween | undefined = speedSteps ? (a, b) => presentationOffset(speedSteps, a, b) : undefined
   const result = new Map<string, LiveRevealState>()
   const holdActive = autoHold !== null && autoHold.endedAt === null
 
@@ -77,8 +81,8 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, LiveRevealSt
     // A freeze snaps playback back to the start frame after it ran a little
     // past it; never let an armed shape un-draw or disappear again.
     const holdElapsed = holdCounts && autoHold ? ((autoHold.endedAt ?? now) - autoHold.startedAt) / 1000 : 0
-    const due = state.due || isRevealDue(startTime, time, holdElapsed, revealDelay)
-    const fraction = Math.max(state.peak, revealFraction(revealElapsed(startTime, time, holdElapsed, revealDelay), drawIn))
+    const due = state.due || isRevealDue(startTime, time, holdElapsed, revealDelay, elapsed)
+    const fraction = Math.max(state.peak, revealFraction(revealElapsed(startTime, time, holdElapsed, revealDelay, elapsed), drawIn))
     armed.set(id, { peak: fraction, due })
     result.set(id, { fraction, due })
   }

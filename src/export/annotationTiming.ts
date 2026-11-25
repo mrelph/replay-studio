@@ -9,12 +9,18 @@
  * point: whatever a coach sees in the live view during scrubbing is exactly
  * what gets burned into the exported clip.
  *
- * Presentation time: draw-on reveal runs on its own clock, not the video's.
- * `revealElapsed` is source seconds since the annotation started plus any
- * hold time (video paused or frozen while the shape keeps drawing), and
- * `revealFraction` maps that onto 0..1 with an ease-out curve. Annotations
- * without a positive `drawIn` are always fully revealed.
+ * Presentation time: fades, draw-on reveal and reveal delays run on their own
+ * clock, not the video's. `revealElapsed` is on-screen seconds since the
+ * annotation started (an `ElapsedBetween`, so a slow-motion region does not
+ * stretch it) plus any hold time (video paused or frozen while the shape keeps
+ * drawing), and `revealFraction` maps that onto 0..1 with an ease-out curve.
+ * Annotations without a positive `drawIn` are always fully revealed.
  */
+
+/** On-screen seconds between two source times, excluding holds. */
+export type ElapsedBetween = (fromSrc: number, toSrc: number) => number
+
+const sourceElapsed: ElapsedBetween = (fromSrc, toSrc) => toSrc - fromSrc
 
 export interface AnnotationTimingInput {
   startTime: number
@@ -31,13 +37,13 @@ export function hasPresentationTiming(annotation: Pick<AnnotationTimingInput, 'd
   return (drawIn !== undefined && drawIn > 0) || (revealDelay !== undefined && revealDelay > 0)
 }
 
-export function revealElapsed(startTime: number, t: number, holdElapsed: number, revealDelay?: number): number {
-  return Math.max(0, Math.max(0, t - startTime) + holdElapsed - (revealDelay ?? 0))
+export function revealElapsed(startTime: number, t: number, holdElapsed: number, revealDelay?: number, elapsed: ElapsedBetween = sourceElapsed): number {
+  return Math.max(0, Math.max(0, elapsed(startTime, t)) + holdElapsed - (revealDelay ?? 0))
 }
 
-export function isRevealDue(startTime: number, t: number, holdElapsed: number, revealDelay?: number): boolean {
+export function isRevealDue(startTime: number, t: number, holdElapsed: number, revealDelay?: number, elapsed: ElapsedBetween = sourceElapsed): boolean {
   if (revealDelay === undefined || !(revealDelay > 0)) return true
-  return Math.max(0, t - startTime) + holdElapsed >= revealDelay - 1e-6
+  return Math.max(0, elapsed(startTime, t)) + holdElapsed >= revealDelay - 1e-6
 }
 
 export function revealFraction(elapsed: number, drawIn: number | undefined): number {
@@ -59,10 +65,11 @@ export interface AnnotationTimingState {
  *   opacity ramps from 1 down to a floor of 0.5 (never fully invisible, so a
  *   fresh drawing is never mistaken for "not drawn yet"). Otherwise, if
  *   within `fadeOut` seconds of `endTime`, opacity ramps down to a floor of
- *   0.2. Fade-in takes priority over fade-out when both windows overlap
+ *   0.2. Both windows are measured with `elapsed` (on-screen seconds); the
+ *   range itself stays in source time. Fade-in takes priority over fade-out when both windows overlap
  *   (matches the original `else if`).
  */
-export function annotationStateAt(annotation: AnnotationTimingInput, t: number): AnnotationTimingState {
+export function annotationStateAt(annotation: AnnotationTimingInput, t: number, elapsed: ElapsedBetween = sourceElapsed): AnnotationTimingState {
   const { startTime, endTime, fadeIn = 0, fadeOut = 0, drawIn = 0 } = annotation
   const isInTimeRange = t >= startTime && t <= endTime
 
@@ -70,8 +77,8 @@ export function annotationStateAt(annotation: AnnotationTimingInput, t: number):
     return { visible: false, opacity: 0 }
   }
 
-  const timeInRange = t - startTime
-  const timeToEnd = endTime - t
+  const timeInRange = elapsed(startTime, t)
+  const timeToEnd = elapsed(t, endTime)
 
   let opacity = 1
 

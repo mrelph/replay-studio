@@ -9,6 +9,7 @@ import {
   type SpanAnnotationLike,
 } from './spanBuilder'
 import { buildOutputTimeline, framePresentations } from './outputTimeline'
+import { buildSpeedSteps } from './speedMap'
 import { frameIndexAt, frameStart, timeForFrame } from '@/utils/frames'
 import { stayTiming } from '@/utils/stayPreset'
 import type { OutputSegment } from '@/types/clip'
@@ -444,5 +445,27 @@ describe('a clip from 0, where a play frame can fall a float ulp below its frame
         expect(late, `fps ${rate.toFixed(3)}, ${seconds} s`).toEqual([])
       }
     }
+  })
+})
+
+describe('a draw-on inside a slow-motion region', () => {
+  // The play segments carry speed 0.5, but until the output timeline honours it
+  // each output frame still advances one source frame, so this compares source
+  // time: inside the region the draw-on completes in half the source time.
+  const fps = 30
+  const speedSteps = buildSpeedSteps([{ start: 2, end: 4, speed: 0.5 }], 10, fps)
+  const sourceFramesToDraw = (startTime: number, segments: OutputSegment[]) => {
+    const arrow: SpanAnnotationLike = { id: 'a', startTime, endTime: startTime + 0.5, drawIn: 0.35, toolType: 'arrow' }
+    const spans = buildDrawingSpans(segments, [arrow], fps, { speedSteps })
+    const shown = spans.find((s) => s.signature.length > 0)!
+    const drawn = spans.find((s) => s.signature[0]?.revealBucket === 12)!
+    return drawn.frameStart - shown.frameStart
+  }
+
+  it('takes half the source frames it takes outside the region', () => {
+    const inside = sourceFramesToDraw(3, [{ kind: 'play', srcStart: 2.9, srcEnd: 3.6, speed: 0.5 }])
+    const outside = sourceFramesToDraw(6, [{ kind: 'play', srcStart: 5.9, srcEnd: 6.6, speed: 1 }])
+    expect(outside).toBeGreaterThan(8)
+    expect(Math.abs(inside * 2 - outside)).toBeLessThanOrEqual(1)
   })
 })

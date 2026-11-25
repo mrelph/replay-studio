@@ -9,7 +9,7 @@ import { getToolDefaults } from '@/utils/annotationDefaults'
 import { STAY_TOOL_TYPES, stayTiming } from '@/utils/stayPreset'
 import { annotationStateAt } from '@/export/annotationTiming'
 import { stripReveal } from '@/export/reveal'
-import { useLiveReveal } from '@/hooks/useLiveReveal'
+import { elapsedFor, useLiveReveal, useSpeedSteps } from '@/hooks/useLiveReveal'
 import { shadowForStyle, arrowHeadSize } from '@/utils/annotationStyle'
 import { textFormatProps } from '@/utils/textFormat'
 
@@ -345,6 +345,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     })
   }, [currentTime, updateMagnifierContent])
 
+  const speedSteps = useSpeedSteps()
+
   // Control annotation visibility based on current time with fade effects.
   // The rule itself lives in src/export/annotationTiming.ts, shared with the
   // clip export renderer so burned-in exports match what's shown here.
@@ -356,15 +358,16 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const { autoHold } = useVideoStore.getState()
     if (!videoElement.paused || (autoHold !== null && autoHold.endedAt === null)) return
 
+    const elapsed = elapsedFor(speedSteps)
     annotations.forEach((annotation) => {
-      const { visible, opacity } = annotationStateAt(annotation, currentTime)
+      const { visible, opacity } = annotationStateAt(annotation, currentTime, elapsed)
       annotation.object.visible = visible
       annotation.object.opacity = opacity
       stripReveal(annotation.object)
     })
 
     canvas.renderAll()
-  }, [currentTime, annotations, videoElement])
+  }, [currentTime, annotations, videoElement, speedSteps])
 
   useLiveReveal(fabricRef, videoElement)
 

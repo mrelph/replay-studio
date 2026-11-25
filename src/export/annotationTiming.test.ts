@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { annotationStateAt, isRevealDue, revealElapsed, revealFraction } from './annotationTiming'
+import { buildSpeedSteps, presentationOffset } from './speedMap'
 
 describe('revealFraction', () => {
   it('is 1 with no drawIn', () => {
@@ -101,5 +102,26 @@ describe('annotationStateAt', () => {
 
   it('handles zero-length fade windows as "no fade"', () => {
     expect(annotationStateAt({ startTime: 0, endTime: 10, fadeIn: 0, fadeOut: 0 }, 0).opacity).toBe(1)
+  })
+})
+
+describe('timing inside a slow-motion region', () => {
+  const steps = buildSpeedSteps([{ start: 2, end: 4, speed: 0.5 }], 10, 30)
+  const el = (a: number, b: number) => presentationOffset(steps, a, b)
+
+  it('runs fades and reveals on presentation time', () => {
+    // a 0.3 s fade-in starting at 3.0 (inside the 0.5 region) is over after 0.15 s of source time
+    expect(annotationStateAt({ startTime: 3, endTime: 3.9, fadeIn: 0.3 }, 3.1, el).opacity).toBeCloseTo(Math.max(0.5, 0.2 / 0.3))
+    expect(annotationStateAt({ startTime: 3, endTime: 3.9, fadeIn: 0.3 }, 3.16, el).opacity).toBe(1)
+    expect(annotationStateAt({ startTime: 3, endTime: 3.9, fadeIn: 0.3 }, 3.16).opacity).toBeLessThan(1)
+    expect(revealElapsed(3, 3.1, 0, 0, el)).toBeCloseTo(0.2)
+    expect(revealElapsed(3, 3.1, 0.5, 0.35, el)).toBeCloseTo(0.35)
+    expect(isRevealDue(3, 3.1, 0, 0.35, el)).toBe(false)
+    expect(isRevealDue(3, 3.18, 0, 0.35, el)).toBe(true)
+  })
+
+  it('runs a fade-out on presentation time', () => {
+    expect(annotationStateAt({ startTime: 2.5, endTime: 3.5, fadeOut: 0.4 }, 3.35, el).opacity).toBeCloseTo(0.3 / 0.4)
+    expect(annotationStateAt({ startTime: 2.5, endTime: 3.5, fadeOut: 0.4 }, 3.35).opacity).toBeCloseTo(0.15 / 0.4)
   })
 })

@@ -24,7 +24,7 @@ export interface Clip {
  * srcTime for `duration` seconds (a freeze-frame annotation), with silence.
  */
 export type OutputSegment =
-  | { kind: 'play'; srcStart: number; srcEnd: number }
+  | { kind: 'play'; srcStart: number; srcEnd: number; speed?: number }
   | { kind: 'hold'; srcTime: number; duration: number }
 
 /** Result of probing the source video in the main process. */

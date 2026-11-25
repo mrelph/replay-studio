@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { stepLiveReveal, type ArmedReveal } from './liveReveal'
 import { revealFraction } from './annotationTiming'
+import { buildSpeedSteps } from './speedMap'
 import { frameStart, timeForFrame } from '@/utils/frames'
 
 const armedWith = (id: string) => new Map<string, ArmedReveal>([[id, { peak: 0, due: false }]])
@@ -165,5 +166,24 @@ describe('stepLiveReveal on the exact frame start', () => {
     expect(stepLiveReveal({ annotations: anns, prevTime: start - 0.02, time: start + 0.001, playing: true, autoHold: null, now: 0, fps, armed: arrive }).get('a')?.fraction).toBeLessThan(1)
     const onFrame = new Map<string, ArmedReveal>()
     expect(stepLiveReveal({ annotations: anns, prevTime: held, time: held + 0.016, playing: true, autoHold: null, now: 0, fps, armed: onFrame }).get('a')?.fraction).toBe(1)
+  })
+})
+
+describe('stepLiveReveal inside a slow-motion region', () => {
+  const ann = [{ id: 'a', startTime: 3, endTime: 3.9, drawIn: 0.4 }]
+  const step = (armed: Map<string, ArmedReveal>, prevTime: number, time: number, speedSteps?: ReturnType<typeof buildSpeedSteps>) =>
+    stepLiveReveal({ annotations: ann, prevTime, time, playing: true, autoHold: null, now: 0, fps: 30, armed, speedSteps })
+
+  it('draws on in the same wall time as at normal speed', () => {
+    const steps = buildSpeedSteps([{ start: 2, end: 4, speed: 0.5 }], 10, 30)
+    const slow = new Map<string, ArmedReveal>()
+    step(slow, 2.99, 3.0, steps)
+    // 0.2 s of wall time at half speed is 0.1 s of source time
+    const slowFraction = step(slow, 3.0, 3.1, steps).get('a')?.fraction
+    const normal = new Map<string, ArmedReveal>()
+    step(normal, 2.99, 3.0)
+    const normalFraction = step(normal, 3.0, 3.2).get('a')?.fraction
+    expect(slowFraction).toBeCloseTo(revealFraction(0.2, 0.4))
+    expect(slowFraction).toBeCloseTo(normalFraction!)
   })
 })

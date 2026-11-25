@@ -1,7 +1,8 @@
 import type { OutputSegment } from '@/types/clip'
 import { frameIndexAt, frameStart } from '@/utils/frames'
-import { annotationStateAt, hasPresentationTiming, isRevealDue, revealElapsed, revealFraction, type AnnotationTimingInput } from './annotationTiming'
+import { annotationStateAt, hasPresentationTiming, isRevealDue, revealElapsed, revealFraction, type AnnotationTimingInput, type ElapsedBetween } from './annotationTiming'
 import { framePresentations, type FramePresentation } from './outputTimeline'
+import { presentationOffset, type SpeedStep } from './speedMap'
 import { revealKind } from './reveal'
 
 /**
@@ -29,6 +30,8 @@ export interface SpanOptions {
   sourceFps?: number
   /** Most reveal steps per annotation. Defaults to 12. */
   maxRevealSteps?: number
+  /** Speed steps for the source video, so animations run on presentation time. Omitted means source time. */
+  speedSteps?: SpeedStep[]
 }
 
 const DEFAULT_MAX_REVEAL_STEPS = 12
@@ -70,17 +73,18 @@ export function computeFrameSignature(
   annotations: SpanAnnotationLike[],
   t: number,
   revealSteps: number = DEFAULT_MAX_REVEAL_STEPS,
-  holdElapsedFor: (annotation: SpanAnnotationLike) => number = () => 0
+  holdElapsedFor: (annotation: SpanAnnotationLike) => number = () => 0,
+  elapsed?: ElapsedBetween
 ): AnnotationVisualState[] {
   const states: AnnotationVisualState[] = []
   for (const annotation of annotations) {
-    const { visible, opacity } = annotationStateAt(annotation, t)
+    const { visible, opacity } = annotationStateAt(annotation, t, elapsed)
     if (!visible || opacity <= 0) continue
     const holdElapsed = holdElapsedFor(annotation)
-    if (!isRevealDue(annotation.startTime, t, holdElapsed, annotation.revealDelay)) continue
+    if (!isRevealDue(annotation.startTime, t, holdElapsed, annotation.revealDelay, elapsed)) continue
     const noReveal = annotation.toolType !== undefined && revealKind(annotation.toolType) === 'none'
     const fraction =
-      noReveal || revealSteps <= 1 ? 1 : revealFraction(revealElapsed(annotation.startTime, t, holdElapsed, annotation.revealDelay), annotation.drawIn)
+      noReveal || revealSteps <= 1 ? 1 : revealFraction(revealElapsed(annotation.startTime, t, holdElapsed, annotation.revealDelay, elapsed), annotation.drawIn)
     const revealBucket = fraction >= 1 ? revealSteps : Math.floor(fraction * revealSteps)
     states.push({ id: annotation.id, opacityBucket: quantizeOpacity(opacity), revealBucket, revealSteps })
   }
@@ -122,13 +126,15 @@ export function buildDrawingSpans(
   const spans: DrawingSpan[] = []
 
   const holdElapsedAt = holdElapsedResolver(segments, annotations, sourceFps)
+  const { speedSteps } = opts
+  const elapsed: ElapsedBetween | undefined = speedSteps ? (a, b) => presentationOffset(speedSteps, a, b) : undefined
 
   let currentKey: string | null = null
   let currentSignature: AnnotationVisualState[] = []
   let spanStart = 0
 
   frames.forEach((frame, i) => {
-    const signature = computeFrameSignature(annotations, sampleTime(frame.srcTime, sourceFps), revealSteps, (annotation) => holdElapsedAt(annotation, frame))
+    const signature = computeFrameSignature(annotations, sampleTime(frame.srcTime, sourceFps), revealSteps, (annotation) => holdElapsedAt(annotation, frame), elapsed)
     const key = signatureKey(signature)
     if (key !== currentKey) {
       if (currentKey !== null) {
