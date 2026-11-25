@@ -46,14 +46,16 @@ export function clampCardSeconds(seconds: number): number {
  * the same output timeline as single-clip export, so a clip's holds play in
  * the reel exactly as in its own file. Chapter boundaries are cumulative
  * frame counts, matching the frames the parts actually contain. Pass the
- * same `speedSteps` the parts are rendered with.
+ * same `speedSteps` the parts are rendered with, and the source rate they
+ * were built at.
  */
 export function buildReelPlan(
   clips: Clip[],
   annotations: FreezeAnnotationLike[],
   fps: number,
   options: ReelPlanOptions,
-  speedSteps?: SpeedStep[]
+  speedSteps?: SpeedStep[],
+  sourceFps: number = fps
 ): ReelPlan {
   if (clips.length === 0) throw new Error('Choose at least one clip for the reel')
   if (!Number.isFinite(fps) || fps <= 0) throw new Error('Unknown frame rate')
@@ -72,7 +74,7 @@ export function buildReelPlan(
       parts.push({ kind: 'card', clip, number, segments, frameCount })
       frame += frameCount
     }
-    const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps, speedSteps)
+    const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps, speedSteps, sourceFps)
     parts.push({ kind: 'clip', clip, number, segments, frameCount })
     frame += frameCount
     chapters.push({ title: clip.name, startFrame: chapterStart, frameCount: frame - chapterStart })

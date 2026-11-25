@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildReelPlan, buildReelBaseName, clampCardSeconds, defaultReelName, estimateEncodeBytes } from './reelPlan'
 import { buildOutputTimeline } from './outputTimeline'
+import { buildSpeedSteps } from './speedMap'
 import type { Clip } from '@/types/clip'
 
 const clip = (id: string, start: number, end: number, name = id, tags: string[] = []): Clip => ({
@@ -41,6 +42,13 @@ describe('buildReelPlan', () => {
     }
     expect(expected).toBe(plan.frameCount)
     expect(plan.duration).toBeCloseTo(plan.frameCount / FPS, 9)
+  })
+
+  it('cuts speed-ramped clips at the source frame rate it is given, not the output rate', () => {
+    const steps = buildSpeedSteps([{ start: 10.5, end: 12, speed: 0.5 }], 60, 25)
+    const plan = buildReelPlan([clips[0]], [], 60, { titleCards: false, cardSeconds: 2 }, steps, 25)
+    expect(plan.parts[0].segments).toEqual(buildOutputTimeline(clips[0], [], 60, steps, 25).segments)
+    expect(plan.parts[0].segments).not.toEqual(buildOutputTimeline(clips[0], [], 60, steps).segments)
   })
 
   it('includes a clip\'s freezes inside its clip part, like single-clip export', () => {

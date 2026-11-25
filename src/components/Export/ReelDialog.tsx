@@ -115,7 +115,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
   const speedSteps = useMemo(() => (probe ? exportSpeedSteps(speedRegions, probe) : undefined), [probe, speedRegions])
   const plan = useMemo(() => {
     if (!probe || inReel.length === 0) return null
-    return buildReelPlan(inReel, annotations, probe.fps, { titleCards, cardSeconds }, speedSteps)
+    return buildReelPlan(inReel, annotations, probe.fps, { titleCards, cardSeconds }, speedSteps, probe.fps)
   }, [probe, inReel, annotations, titleCards, cardSeconds, speedSteps])
 
   const clipById = useMemo(() => new Map(clips.map((c) => [c.id, c])), [clips])
