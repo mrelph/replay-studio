@@ -17,7 +17,7 @@ interface Drag {
 
 const RAMP_FADE = 'linear-gradient(to right, rgba(0,0,0,0.45), rgba(0,0,0,0))'
 
-export function selectSpeedRegion(id: string) {
+function selectSpeedRegion(id: string) {
   useDrawingStore.getState().selectAnnotation(null)
   useSpeedStore.getState().select(id)
 }
