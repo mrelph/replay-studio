@@ -327,6 +327,31 @@ describe('drawIn persistence', () => {
   })
 })
 
+describe('revealDelay and freezeAuto persistence', () => {
+  it('round-trips revealDelay and freezeAuto through serializeProject and JSON', () => {
+    const object = new fabric.Rect({ left: 1, top: 2, width: 10, height: 10 })
+    const project = serializeProject(
+      [
+        { id: 'a1', object, startTime: 0, endTime: 2, layer: 0, toolType: 'arrow', revealDelay: 0.35 },
+        { id: 'm1', object, startTime: 1, endTime: 3, layer: 0, toolType: 'arrow', freezeAuto: true, freezeDuration: 1.7 },
+      ],
+      '/videos/test.mp4', null, null, 'Test'
+    )
+
+    const imported = importProjectFromJSON(exportProjectToJSON(project))
+    expect(imported.annotations[0].revealDelay).toBe(0.35)
+    expect(imported.annotations[1].freezeAuto).toBe(true)
+    expect(imported.annotations[1].freezeDuration).toBe(1.7)
+  })
+
+  it('loads an annotation saved without either field as undefined', () => {
+    const project = makeProject([makeAnnotation()])
+    const imported = importProjectFromJSON(exportProjectToJSON(project))
+    expect(imported.annotations[0].revealDelay).toBeUndefined()
+    expect(imported.annotations[0].freezeAuto).toBeUndefined()
+  })
+})
+
 describe('serializeFabricObject / deserializeFabricObject round-trip (real fabric objects)', () => {
   it('round-trips a rect', () => {
     const rect = new fabric.Rect({

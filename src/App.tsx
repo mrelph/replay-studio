@@ -236,7 +236,9 @@ function App() {
         fadeIn: serializedAnn.fadeIn,
         fadeOut: serializedAnn.fadeOut,
         drawIn: serializedAnn.drawIn,
+        revealDelay: serializedAnn.revealDelay,
         freezeDuration: serializedAnn.freezeDuration,
+        freezeAuto: serializedAnn.freezeAuto,
         name: serializedAnn.name,
       }))
 

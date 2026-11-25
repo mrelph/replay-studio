@@ -22,10 +22,16 @@ export interface AnnotationTimingInput {
   fadeIn?: number
   fadeOut?: number
   drawIn?: number
+  revealDelay?: number
 }
 
-export function revealElapsed(startTime: number, t: number, holdElapsed: number): number {
-  return Math.max(0, t - startTime) + holdElapsed
+export function revealElapsed(startTime: number, t: number, holdElapsed: number, revealDelay?: number): number {
+  return Math.max(0, Math.max(0, t - startTime) + holdElapsed - (revealDelay ?? 0))
+}
+
+export function isRevealDue(startTime: number, t: number, holdElapsed: number, revealDelay?: number): boolean {
+  if (revealDelay === undefined || !(revealDelay > 0)) return true
+  return Math.max(0, t - startTime) + holdElapsed >= revealDelay - 1e-6
 }
 
 export function revealFraction(elapsed: number, drawIn: number | undefined): number {

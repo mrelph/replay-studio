@@ -43,4 +43,27 @@ describe('drawingStore undo', () => {
     useDrawingStore.getState().undo()
     expect(useDrawingStore.getState().annotations[0].drawIn).toBe(0.35)
   })
+
+  it('keeps revealDelay and freezeAuto across undo', () => {
+    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
+    const object = new fabric.Line([0, 0, 40, 20], { stroke: '#f00', strokeWidth: 4 })
+    useDrawingStore.getState().addAnnotation({
+      id: 'a',
+      object,
+      startTime: 0,
+      endTime: 2,
+      layer: useDrawingStore.getState().activeLayerId,
+      toolType: 'line',
+      revealDelay: 0.35,
+      freezeAuto: true,
+    } as never)
+    useDrawingStore.getState().saveState()
+    useDrawingStore.setState((state) => ({
+      annotations: state.annotations.map((a) => ({ ...a, revealDelay: 0.9, freezeAuto: false })),
+    }))
+    useDrawingStore.getState().undo()
+    expect(useDrawingStore.getState().annotations[0].revealDelay).toBe(0.35)
+    expect(useDrawingStore.getState().annotations[0].freezeAuto).toBe(true)
+  })
 })

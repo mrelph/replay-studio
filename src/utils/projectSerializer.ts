@@ -14,8 +14,10 @@ export interface SerializedAnnotation {
   fadeIn?: number
   fadeOut?: number
   drawIn?: number
+  revealDelay?: number
   name?: string
   freezeDuration?: number
+  freezeAuto?: boolean
   // Fabric.js object properties
   fabricData: {
     type: string
@@ -186,8 +188,10 @@ export function serializeProject(
         fadeIn: ann.fadeIn,
         fadeOut: ann.fadeOut,
         drawIn: ann.drawIn,
+        revealDelay: ann.revealDelay,
         name: ann.name,
         freezeDuration: ann.freezeDuration,
+        freezeAuto: ann.freezeAuto,
         fabricData: serializeFabricObject(ann.object)
       }
     }),

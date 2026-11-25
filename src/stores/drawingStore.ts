@@ -12,8 +12,10 @@ export interface Annotation {
   fadeIn?: number
   fadeOut?: number
   drawIn?: number
+  revealDelay?: number
   name?: string
   freezeDuration?: number  // seconds to hold video at this annotation's startTime
+  freezeAuto?: boolean
 }
 
 export interface Layer {
@@ -34,8 +36,10 @@ interface AnnotationSnapshot {
   fadeIn?: number
   fadeOut?: number
   drawIn?: number
+  revealDelay?: number
   name?: string
   freezeDuration?: number
+  freezeAuto?: boolean
 }
 
 // A full undo/redo snapshot: annotation metadata + fabric canvas JSON
@@ -101,8 +105,10 @@ function snapshotMetadata(annotation: Annotation): AnnotationSnapshot {
     fadeIn: annotation.fadeIn,
     fadeOut: annotation.fadeOut,
     drawIn: annotation.drawIn,
+    revealDelay: annotation.revealDelay,
     name: annotation.name,
     freezeDuration: annotation.freezeDuration,
+    freezeAuto: annotation.freezeAuto,
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { annotationStateAt, revealElapsed, revealFraction } from './annotationTiming'
+import { annotationStateAt, isRevealDue, revealElapsed, revealFraction } from './annotationTiming'
 
 describe('revealFraction', () => {
   it('is 1 with no drawIn', () => {
@@ -21,6 +21,30 @@ describe('revealElapsed', () => {
     expect(revealElapsed(5, 5, 0.3)).toBeCloseTo(0.3)
     expect(revealElapsed(5, 5.1, 0.3)).toBeCloseTo(0.4)
     expect(revealElapsed(5, 4, 0)).toBe(0)
+  })
+
+  it('subtracts the reveal delay and floors at zero', () => {
+    expect(revealElapsed(3, 3, 0.5, 0.35)).toBeCloseTo(0.15)
+    expect(revealElapsed(3, 3, 0.2, 0.35)).toBe(0)
+    expect(revealElapsed(3, 3.4, 0, undefined)).toBeCloseTo(0.4)
+  })
+})
+
+describe('isRevealDue', () => {
+  it('is always due without a positive delay', () => {
+    expect(isRevealDue(3, 3, 0, undefined)).toBe(true)
+    expect(isRevealDue(3, 3, 0, 0)).toBe(true)
+    expect(isRevealDue(3, 3, 0, -1)).toBe(true)
+    expect(isRevealDue(3, 3, 0, Number.NaN)).toBe(true)
+  })
+
+  it('becomes due once hold time reaches the delay', () => {
+    expect(isRevealDue(3, 3, 0.34, 0.35)).toBe(false)
+    expect(isRevealDue(3, 3, 0.35, 0.35)).toBe(true)
+  })
+
+  it('becomes due from source time alone when there is no hold', () => {
+    expect(isRevealDue(3, 3.4, 0, 0.35)).toBe(true)
   })
 })
 
