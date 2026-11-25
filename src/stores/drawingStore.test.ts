@@ -25,7 +25,7 @@ beforeAll(() => {
       get(target, prop: string) {
         if (prop in target) return target[prop]
         if (prop === 'measureText') return (text: string) => ({ width: (text?.length || 0) * 8 })
-        if (prop === 'canvas') return { width: 0, height: 0 }
+        if (prop === 'canvas') return { width: 0, height: 0, getAttribute: () => null, setAttribute: () => undefined }
         if (prop === 'getContextAttributes') return () => ({})
         return () => undefined
       },
@@ -299,6 +299,57 @@ describe('drawingStore frame sync', () => {
     store().removeEmptiedText('t', false)
     expect(store().annotations.some((x) => x.id === 't')).toBe(false)
     expect(store().undoStack).toHaveLength(undoBefore)
+  })
+
+  describe('undoing a cleared committed text', () => {
+    const typedText = (id: string, startTime: number, value: string) =>
+      ({ ...drawing(id, startTime), object: new fabric.IText(value, { left: 10, top: 10 }), toolType: 'text' }) as Annotation
+    const textOf = (id: string) => (byId(id).object as InstanceType<typeof fabric.IText>).text
+    const frameState = () => ({
+      delays: store().annotations.filter((a) => a.toolType !== 'freeze').map((a) => [a.id, a.revealDelay]),
+      holds: freezes().map((f) => f.freezeDuration),
+    })
+    const clear = (id: string) => {
+      const object = byId(id).object as InstanceType<typeof fabric.IText>
+      const before = { text: object.text ?? '' }
+      object.set('text', '')
+      store().removeEmptiedText(id, true, before)
+    }
+
+    it('restores the text as it was before the edit, with the later drawing', () => {
+      draw(typedText('t', 3, 'Hi'))
+      draw(drawing('a', 3))
+      clear('t')
+      expect(store().annotations.some((x) => x.id === 't')).toBe(false)
+      store().undo()
+      expect(textOf('t')).toBe('Hi')
+      expect(store().annotations.some((x) => x.id === 'a')).toBe(true)
+    })
+
+    it('restores the frame sequence and automatic hold from before the clear', () => {
+      draw(typedText('t', 3, 'Hi'))
+      draw(drawing('a', 3))
+      const beforeClear = frameState()
+      clear('t')
+      const afterClear = frameState()
+      expect(afterClear).not.toEqual(beforeClear)
+      store().undo()
+      expect(frameState()).toEqual(beforeClear)
+      store().redo()
+      expect(frameState()).toEqual(afterClear)
+    })
+
+    it('redo removes the restored text again', () => {
+      draw(typedText('t', 3, 'Hi'))
+      draw(drawing('a', 3))
+      clear('t')
+      store().undo()
+      store().redo()
+      expect(store().annotations.some((x) => x.id === 't')).toBe(false)
+      expect(store().annotations.some((x) => x.id === 'a')).toBe(true)
+      store().undo()
+      expect(textOf('t')).toBe('Hi')
+    })
   })
 
   it('addAnnotation with history false saves no undo state', () => {

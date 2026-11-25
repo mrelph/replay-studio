@@ -742,9 +742,13 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           // persisting an invisible placeholder. A text that once held words
           // is deleted as its own undo step instead.
           let committed = false
+          let beforeEdit = { text: '', styles: {} as unknown }
+          text.on('editing:entered', () => {
+            beforeEdit = { text: text.text ?? '', styles: JSON.parse(JSON.stringify(text.styles ?? {})) }
+          })
           text.on('editing:exited', () => {
             if (!text.text || text.text.trim() === '') {
-              useDrawingStore.getState().removeEmptiedText(textId, committed)
+              useDrawingStore.getState().removeEmptiedText(textId, committed, beforeEdit)
             } else {
               committed = true
             }

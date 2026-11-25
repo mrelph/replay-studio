@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A freeze recorded with H no longer lands one or two frames late.
+- Undo after deleting all the words in a text brings the text back as it was,
+  instead of an empty box.
 
 ### Planned
 - Audio waveform visualization in timeline

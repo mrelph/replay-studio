@@ -185,8 +185,9 @@ interface DrawingState {
   removeAnnotations: (ids: string[], opts?: { history?: boolean }) => void
   /** Removes an annotation just added with history (an abandoned empty text) as if it never was: drops the undo entry its add saved. */
   discardNewAnnotation: (id: string) => void
-  /** A text left empty: discarded without a trace if it was never committed with text, otherwise deleted as its own undo step. */
-  removeEmptiedText: (id: string, everCommitted: boolean) => void
+  /** A text left empty: discarded without a trace if it was never committed with text, otherwise deleted as its own undo step
+   *  that restores `before` (its content when the edit began). */
+  removeEmptiedText: (id: string, everCommitted: boolean, before?: { text: string; styles?: unknown }) => void
   replaceAnnotations: (annotations: Annotation[]) => void
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void
   /** Re-sequences each frame: assigns revealDelay in array order; resizes the hold if the carrier is automatic;
@@ -325,9 +326,15 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }
   },
 
-  removeEmptiedText: (id, everCommitted) => {
-    if (everCommitted) get().removeAnnotations([id])
-    else get().discardNewAnnotation(id)
+  removeEmptiedText: (id, everCommitted, before) => {
+    if (!everCommitted) {
+      get().discardNewAnnotation(id)
+      return
+    }
+    // The edit already emptied the object; put back its pre-edit content so the undo step restores that.
+    const object = get().annotations.find((a) => a.id === id)?.object
+    if (before && object) object.set(before as Partial<fabric.Object>)
+    get().removeAnnotations([id])
   },
 
   replaceAnnotations: (annotations) => {
