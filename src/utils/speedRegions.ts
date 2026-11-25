@@ -20,6 +20,11 @@ export function newSpeedRegionId(): string {
   return `speed-${Date.now().toString(36)}-${regionIdCounter}`
 }
 
+/** "50%" for slow speeds, "2x" for faster ones. */
+export function formatSpeed(speed: number): string {
+  return speed >= 1 ? `${+speed.toFixed(2)}x` : `${Math.round(speed * 100)}%`
+}
+
 export function clampSpeed(speed: number): number {
   return Math.min(MAX_SPEED, Math.max(MIN_SPEED, speed))
 }

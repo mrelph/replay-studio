@@ -1,4 +1,5 @@
 import { speedAt, type SpeedRegionLike, type SpeedStep } from '@/export/speedMap'
+import { formatSpeed } from '@/utils/speedRegions'
 
 export const MIN_LIVE_RATE = 0.0625
 export const MAX_LIVE_RATE = 16
@@ -40,5 +41,5 @@ export function liveOutput(input: LiveInput): { rate: number | null; muted: bool
 /** The speed badge for the region under the playhead (e.g. "50%"), or null outside regions. */
 export function regionBadge(regions: SpeedRegionLike[], time: number): string | null {
   const region = regions.find((r) => r.start <= time + START_TOLERANCE && time + START_TOLERANCE < r.end)
-  return region ? `${Math.round(region.speed * 100)}%` : null
+  return region ? formatSpeed(region.speed) : null
 }

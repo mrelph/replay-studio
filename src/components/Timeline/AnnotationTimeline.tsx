@@ -3,6 +3,9 @@ import { Trash2, Snowflake } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
 import { useClipStore } from '@/stores/clipStore'
+import { useSpeedStore } from '@/stores/speedStore'
+import SpeedLane, { SpeedRegionDetails } from './SpeedLane'
+import { deleteKeyTarget } from '@/utils/speedLane'
 import { PRESET_COLORS } from '@/stores/toolStore'
 import { Button, Select } from '@/components/ui'
 import type { Clip } from '@/types/clip'
@@ -270,6 +273,11 @@ export default function AnnotationTimeline() {
   const { currentTime, duration, seek, inPoint, outPoint } = useVideoStore()
   const { annotations, selectedAnnotationId, selectAnnotation, updateAnnotation, removeAnnotation } = useDrawingStore()
   const { clips, selectedClipId, selectClip, updateClip } = useClipStore()
+  const speedRegions = useSpeedStore((s) => s.regions)
+  const selectedSpeedId = useSpeedStore((s) => s.selectedId)
+  const selectedSpeedRegion = speedRegions.find((r) => r.id === selectedSpeedId)
+  const hasSpeedLane = speedRegions.length > 0
+  const laneTop = hasSpeedLane ? 'top-12' : 'top-8'
   const [trackHeight, setTrackHeight] = useState(96)
   const [trackWidth, setTrackWidth] = useState(0)
   const isResizingRef = useRef(false)
@@ -307,19 +315,26 @@ export default function AnnotationTimeline() {
     }
   }, [selectedAnnotationId, removeAnnotation])
 
-  // Keyboard handler for delete
+  // Selecting an annotation (here or on the canvas) clears the speed region selection
+  useEffect(() => {
+    if (selectedAnnotationId) useSpeedStore.getState().select(null)
+  }, [selectedAnnotationId])
+
+  // Keyboard handler for delete: a selected speed region wins over an annotation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnnotationId) {
-        const target = e.target as HTMLElement
-        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-          handleDeleteSelected()
-        }
-      }
+      const target = e.target as HTMLElement
+      const what = deleteKeyTarget(
+        { key: e.key, tagName: target.tagName, isContentEditable: target.isContentEditable },
+        selectedSpeedId,
+        selectedAnnotationId,
+      )
+      if (what === 'region' && selectedSpeedId) useSpeedStore.getState().remove(selectedSpeedId)
+      else if (what === 'annotation') handleDeleteSelected()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedAnnotationId, handleDeleteSelected])
+  }, [selectedSpeedId, selectedAnnotationId, handleDeleteSelected])
 
   // Resize handle for timeline height
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -413,22 +428,24 @@ export default function AnnotationTimeline() {
           ))}
         </div>
 
+        {hasSpeedLane && <SpeedLane duration={duration} />}
+
         {/* In/Out point markers */}
         {inPoint !== null && (
           <div
-            className="absolute top-8 bottom-0 w-0.5 bg-success z-20"
+            className={`absolute ${laneTop} bottom-0 w-0.5 bg-success z-20`}
             style={{ left: `${(inPoint / duration) * 100}%` }}
           />
         )}
         {outPoint !== null && (
           <div
-            className="absolute top-8 bottom-0 w-0.5 bg-error z-20"
+            className={`absolute ${laneTop} bottom-0 w-0.5 bg-error z-20`}
             style={{ left: `${(outPoint / duration) * 100}%` }}
           />
         )}
         {inPoint !== null && outPoint !== null && (
           <div
-            className="absolute top-8 bottom-0 bg-accent/10 z-10"
+            className={`absolute ${laneTop} bottom-0 bg-accent/10 z-10`}
             style={{
               left: `${(inPoint / duration) * 100}%`,
               width: `${((outPoint - inPoint) / duration) * 100}%`,
@@ -437,7 +454,7 @@ export default function AnnotationTimeline() {
         )}
 
         {/* Annotation markers */}
-        <div className="absolute inset-x-0 top-8 bottom-0">
+        <div className={`absolute inset-x-0 ${laneTop} bottom-0`}>
           {annotations.map((annotation) => (
             <TimelineMarker
               key={annotation.id}
@@ -458,6 +475,8 @@ export default function AnnotationTimeline() {
           <div className="absolute -top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-text-primary rotate-45" />
         </div>
       </div>
+
+      {selectedSpeedRegion && <SpeedRegionDetails region={selectedSpeedRegion} />}
 
       {/* Selected annotation details */}
       {selectedAnnotationId && (
