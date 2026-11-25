@@ -22,7 +22,7 @@ import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore } from './stores/themeStore'
 import { useClipStore } from './stores/clipStore'
 import { useSpeedStore } from './stores/speedStore'
-import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
+import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject, hasProjectContent } from './utils/projectSerializer'
 import type { ProjectData } from './utils/projectSerializer'
 import type { Annotation } from './stores/drawingStore'
 import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
@@ -80,6 +80,7 @@ function App() {
   const { reset: resetVideo, inPoint, outPoint, setInPoint, setOutPoint } = useVideoStore()
   const { annotations, canvas, replaceAnnotations, isRestoring } = useDrawingStore()
   const { clips, setClips } = useClipStore()
+  const speedRegionCount = useSpeedStore((state) => state.regions.length)
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
   const videoSrcRef = useRef<string | null>(null)
   const nextProjectRequestIdRef = useRef(0)
@@ -462,7 +463,7 @@ function App() {
           >
             <FolderOpen className="w-4 h-4" />
           </IconButton>
-          {annotations.length > 0 && (
+          {hasProjectContent({ annotations: annotations.length, speedRegions: speedRegionCount, clips: clips.length }) && (
             <IconButton
               onClick={handleSaveProject}
               title="Save Project (Ctrl+S)"

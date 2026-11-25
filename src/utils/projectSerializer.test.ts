@@ -5,6 +5,7 @@ import {
   serializeFabricObject,
   deserializeFabricObject,
   serializeProject,
+  hasProjectContent,
   type ProjectData,
   type SerializedAnnotation,
 } from './projectSerializer'
@@ -546,5 +547,14 @@ describe('shadow persistence', () => {
     const data = serializeFabricObject(new fabric.Line([0, 0, 10, 0], { stroke: '#FFCC00' }))
     delete data.shadow
     expect(deserializeFabricObject(fabric, data).shadow).toMatchObject({ color: '#FFCC00', blur: 12 })
+  })
+})
+
+describe('hasProjectContent', () => {
+  it('is true when there are annotations, speed regions or clips, and false for an empty project', () => {
+    expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 0 })).toBe(false)
+    expect(hasProjectContent({ annotations: 1, speedRegions: 0, clips: 0 })).toBe(true)
+    expect(hasProjectContent({ annotations: 0, speedRegions: 1, clips: 0 })).toBe(true)
+    expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 2 })).toBe(true)
   })
 })

@@ -77,6 +77,11 @@ export interface ProjectData {
   speedRegions?: SpeedRegion[]
 }
 
+/** Whether a project has anything worth saving: annotations, speed regions or clips (counts). */
+export function hasProjectContent(counts: { annotations: number; speedRegions: number; clips: number }): boolean {
+  return counts.annotations > 0 || counts.speedRegions > 0 || counts.clips > 0
+}
+
 /**
  * A Fabric object viewed through every subclass field this module reads.
  * Fabric's own types put these on separate subclasses, but serialization
