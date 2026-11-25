@@ -9,6 +9,9 @@ import type { Clip } from '@/types/clip'
 import WaveformDisplay from './WaveformDisplay'
 import { revealKind } from '@/export/reveal'
 import { parseDrawIn } from '@/utils/drawInInput'
+import { snapTime, snapTargets, freezeFieldState } from '@/utils/timelineSnap'
+import { setFrameFreeze } from '@/utils/freezeMarkers'
+import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
 interface ClipBarProps {
   clip: Clip
@@ -128,12 +131,14 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
   const [isDragging, setIsDragging] = useState<'move' | 'start' | 'end' | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   const markerRef = useRef<HTMLDivElement>(null)
+  const dragStartRef = useRef(annotation.startTime)
 
   const left = (annotation.startTime / duration) * 100
   const width = ((annotation.endTime - annotation.startTime) / duration) * 100
 
   const handleMouseDown = (e: React.MouseEvent, type: 'move' | 'start' | 'end') => {
     e.stopPropagation()
+    dragStartRef.current = annotation.startTime
     setIsDragging(type)
     onSelect()
   }
@@ -148,22 +153,28 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
       const rect = timeline.getBoundingClientRect()
       const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
       const time = x * duration
+      const { fps, currentTime } = useVideoStore.getState()
+      const targets = snapTargets(useDrawingStore.getState().annotations, currentTime, annotation.id)
+      const snap = (t: number) => snapTime(t, targets, rect.width / duration, fps, e.altKey)
 
       if (isDragging === 'move') {
         const annotationDuration = annotation.endTime - annotation.startTime
-        const newStart = Math.max(0, Math.min(duration - annotationDuration, time - annotationDuration / 2))
+        const newStart = Math.max(0, Math.min(duration - annotationDuration, snap(time - annotationDuration / 2)))
         onUpdateTime(newStart, newStart + annotationDuration)
       } else if (isDragging === 'start') {
-        const newStart = Math.min(annotation.endTime - 0.1, time)
+        const newStart = Math.min(annotation.endTime - 0.1, snap(time))
         onUpdateTime(Math.max(0, newStart), annotation.endTime)
       } else if (isDragging === 'end') {
-        const newEnd = Math.max(annotation.startTime + 0.1, time)
+        const newEnd = Math.max(annotation.startTime + 0.1, snap(time))
         onUpdateTime(annotation.startTime, Math.min(duration, newEnd))
       }
     }
 
     const handleMouseUp = () => {
       setIsDragging(null)
+      if (isDragging === 'end') return
+      const finalStart = useDrawingStore.getState().annotations.find((a) => a.id === annotation.id)?.startTime
+      if (finalStart !== undefined) useDrawingStore.getState().syncFrames([dragStartRef.current, finalStart])
     }
 
     window.addEventListener('mousemove', handleMouseMove)
@@ -444,6 +455,7 @@ export default function AnnotationTimeline() {
         <AnnotationDetails
           annotation={annotations.find((a) => a.id === selectedAnnotationId)!}
           onUpdate={(updates) => updateAnnotation(selectedAnnotationId, updates)}
+          onUpdateAnnotation={updateAnnotation}
           onDelete={handleDeleteSelected}
         />
       )}
@@ -454,11 +466,25 @@ export default function AnnotationTimeline() {
 interface AnnotationDetailsProps {
   annotation: Annotation
   onUpdate: (updates: Partial<Annotation>) => void
+  onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void
   onDelete: () => void
 }
 
-function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetailsProps) {
-  const { layers } = useDrawingStore()
+function AnnotationDetails({ annotation, onUpdate, onUpdateAnnotation, onDelete }: AnnotationDetailsProps) {
+  const { layers, annotations, syncFrames } = useDrawingStore()
+  const fps = useVideoStore((s) => s.fps)
+  const startOnFocusRef = useRef(annotation.startTime)
+  const freeze = freezeFieldState(annotations, annotation.startTime, fps)
+
+  const handleAutoFreeze = () => {
+    const carrier = findFreezeCarrierAt(annotations, annotation.startTime, fps)
+    if (carrier) {
+      onUpdateAnnotation(carrier.id, { freezeAuto: true })
+      syncFrames([annotation.startTime])
+    } else {
+      syncFrames([annotation.startTime], { createFreeze: true })
+    }
+  }
   const fabricObj = annotation.object as fabric.Object | undefined
 
   // fabric types `shadow` as `Shadow | string | null`; only the object form
@@ -506,7 +532,11 @@ function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetails
             type="number"
             step="0.1"
             value={annotation.startTime.toFixed(2)}
+            onFocus={() => { startOnFocusRef.current = annotation.startTime }}
             onChange={(e) => onUpdate({ startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
+            onBlur={() => {
+              if (annotation.startTime !== startOnFocusRef.current) syncFrames([startOnFocusRef.current, annotation.startTime])
+            }}
             className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
           />
         </div>
@@ -614,15 +644,21 @@ function AnnotationDetails({ annotation, onUpdate, onDelete }: AnnotationDetails
             type="number"
             step="0.5"
             min="0"
-            max="10"
-            value={(annotation.freezeDuration ?? 0).toFixed(1)}
+            max="30"
+            value={freeze.seconds.toFixed(1)}
             onChange={(e) => {
-              const val = parseFloat(e.target.value) || 0
-              onUpdate({ freezeDuration: val > 0 ? val : undefined })
+              const val = Math.min(30, Math.max(0, parseFloat(e.target.value) || 0))
+              setFrameFreeze(annotation.startTime, val, fps, { auto: false })
             }}
             className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
           />
           <span className="text-xs text-text-disabled">sec</span>
+          {freeze.isAuto && <span className="text-xs text-text-tertiary">Auto</span>}
+          {freeze.showAutoButton && (
+            <Button onClick={handleAutoFreeze} variant="secondary" size="sm">
+              Auto
+            </Button>
+          )}
         </div>
       </div>
     </div>
