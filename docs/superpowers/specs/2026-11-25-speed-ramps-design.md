@@ -179,14 +179,27 @@ time and presentation time. Everything else asks this module.
   duration, so each output frame's source time comes from the same map as
   everything else. `framePresentations` also carries the presentation offset
   needed by section 5.
-- `electron/clipExport.ts`: a play segment with speed `s ≠ 1` becomes
-  `trim` + `setpts=(PTS-STARTPTS)/s`, resampled to the output rate **inside
-  the segment** and forced to its exact planned frame count, the way holds
-  already get an exact count. The `concat` filter judges a video segment's
-  length from its frames, so a short slowed segment left to the final `fps=`
-  filter would lose or gain frames mid-timeline and drift from the
-  sample-exact silent audio. Speed-1 segments keep today's graph unchanged, so
-  projects without regions export byte-identically. Validation accepts `speed`
+- `electron/clipExport.ts`: a play segment with speed `s ≠ 1` is built to
+  show exactly its planned frames, chosen by one rule both sides share
+  (*post-review change*; the first version resampled `setpts=(PTS-STARTPTS)/s`
+  with `fps=`, whose rounding disagreed with the plan and lost one-frame
+  segments in `concat`). For a segment covering source frames `[a, b)` in `n`
+  planned output frames, output frame `f` shows source frame
+  `a + floor(f · (b − a) / n + 1e-6)`: the source frames spread evenly over
+  the planned frames, so a slowed segment never skips one.
+  `speedSegmentFrame` in `outputTimeline.ts` plans overlays with it; ffmpeg
+  gets it by giving source frame `N` of the trim the output slot
+  `ceil((N − 1e-6) · n / (b − a))` before `fps=`, then forcing exactly `n`
+  frames with sequential timestamps. A one-frame segment gets a copy half a
+  slot later, because `concat` measures an input from its frame spacing. In a
+  timeline with speed segments, each run of speed-1 plays and holds between
+  them keeps today's per-segment chains but is concatenated and locked to its
+  planned frame count before the top-level concat, so every speed segment
+  starts on a whole output frame (an odd number of 30 fps frames in a 15 fps
+  GIF would otherwise leave it on half-frame timestamps). Frame counts in the
+  main process come from the renderer's segment edges, not the half-frame
+  aligned ones (aligning clamps a frame-0 edge). Projects without regions
+  export byte-identically. Validation accepts `speed`
   in `[0.1, 4]`, and the main process's own copy of the frame-count
   calculation must take `speed` into account too.
 - Audio: a play segment with `speed !== 1` contributes silence of its output

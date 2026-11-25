@@ -159,15 +159,33 @@ export function segmentFrameCounts(segments: OutputSegment[], fps: number): numb
   return counts
 }
 
+// Keeps the frame choice off exact boundaries where float error could tip it.
+const SPEED_FRAME_EPSILON = 1e-6
+// frameIndexAt moves to the next frame 1e-3 of a frame early; stay clear of that.
+const FRAME_TIME_MARGIN = 1e-3
+
+/**
+ * The rule both sides of the export share for a play segment with speed != 1
+ * covering source frames [a, b) in `frames` output frames: output frame f shows
+ * source frame `a + floor(f * (b - a) / frames + 1e-6)`, spreading the source
+ * frames evenly over the planned frames so a slowed segment never skips one.
+ * electron/clipExport.ts builds its ffmpeg graph from the same rule.
+ */
+export function speedSegmentFrame(f: number, frames: number, a: number, b: number): number {
+  return a + Math.floor((f * (b - a)) / frames + SPEED_FRAME_EPSILON)
+}
+
 /**
  * For every output frame (in order), returns the source-video time it
  * shows. A `hold` segment's frames all map to that hold's `srcTime`; a
- * `play` segment's frames are evenly spaced across `[srcStart, srcEnd)`.
+ * `play` segment's frames are evenly spaced across `[srcStart, srcEnd)`, and in
+ * a slowed or sped-up segment each is kept inside the source frame
+ * `speedSegmentFrame` picks.
  *
  * `frameSourceTimes(segments, fps).length` always equals the `frameCount`
  * `buildOutputTimeline` computed for the same segments and fps.
  */
-export function frameSourceTimes(segments: OutputSegment[], fps: number): number[] {
+export function frameSourceTimes(segments: OutputSegment[], fps: number, sourceFps: number = fps): number[] {
   const counts = segmentFrameCounts(segments, fps)
   const times: number[] = []
 
@@ -179,6 +197,16 @@ export function frameSourceTimes(segments: OutputSegment[], fps: number): number
     }
 
     const segDuration = seg.srcEnd - seg.srcStart
+    if ((seg.speed ?? 1) !== 1) {
+      const a = frameIndexAt(seg.srcStart, sourceFps)
+      const b = Math.max(a + 1, frameIndexAt(seg.srcEnd, sourceFps))
+      for (let f = 0; f < segFrameCount; f++) {
+        const lo = frameStart(speedSegmentFrame(f, segFrameCount, a, b), sourceFps)
+        times.push(Math.min(Math.max(seg.srcStart + segDuration * (f / segFrameCount), lo), lo + (1 - 2 * FRAME_TIME_MARGIN) / sourceFps))
+      }
+      return
+    }
+
     for (let f = 0; f < segFrameCount; f++) {
       times.push(segFrameCount > 0 ? seg.srcStart + segDuration * (f / segFrameCount) : seg.srcStart)
     }
@@ -199,9 +227,9 @@ export interface FramePresentation {
  * how far into a hold it is, so draw-on reveals can keep animating while the
  * source frame is frozen. Same order and length as `frameSourceTimes`.
  */
-export function framePresentations(segments: OutputSegment[], fps: number): FramePresentation[] {
+export function framePresentations(segments: OutputSegment[], fps: number, sourceFps: number = fps): FramePresentation[] {
   const counts = segmentFrameCounts(segments, fps)
-  const times = frameSourceTimes(segments, fps)
+  const times = frameSourceTimes(segments, fps, sourceFps)
   const presentations: FramePresentation[] = []
 
   segments.forEach((seg, segmentIndex) => {

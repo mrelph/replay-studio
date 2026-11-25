@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildOutputTimeline, framePresentations, frameSourceTimes, segmentFrameCounts } from './outputTimeline'
+import { buildOutputTimeline, framePresentations, frameSourceTimes, segmentFrameCounts, speedSegmentFrame } from './outputTimeline'
 import type { OutputSegment } from '@/types/clip'
 import { buildSpeedSteps, presentationOffset, speedAt } from './speedMap'
+import { frameIndexAt } from '@/utils/frames'
 
 describe('buildOutputTimeline', () => {
   it('produces a single play segment when there are no qualifying holds', () => {
@@ -264,5 +265,88 @@ describe('frame counts shared with the main process', () => {
     const align = (t: number) => Math.floor(t * fps + 1e-3) / fps
     const aligned = segments.map((s) => (s.kind === 'play' ? { ...s, srcStart: align(s.srcStart), srcEnd: align(s.srcEnd) } : s))
     expect(segmentFrameCounts(segments, fps)).toEqual(segmentFrameCounts(aligned, fps))
+  })
+})
+
+// Speed-ramp cases (30 fps source; region [2, 4] unless noted) as
+// [first source frame, end source frame, speed]. Twin of SPEED_CASES in
+// electron/clipExport.test.ts, where the real ffmpeg export of each one must
+// decode to exactly `plannedSourceFrames`; keep the two in step.
+type FrameSegment = [number, number, number]
+const RAMP_05: FrameSegment[] = [[68, 112, 0.5], [112, 114, 0.6], [114, 116, 0.7], [116, 118, 0.8], [118, 120, 0.9]]
+const SPEED_CASES: Record<string, { clip: [number, number]; region: [number, number, number]; frames: FrameSegment[] }> = {
+  '0.25': { clip: [1, 5], region: [2, 4, 0.25], frames: [[30, 60, 1], [60, 62, 0.85], [62, 64, 0.7], [64, 66, 0.55], [66, 68, 0.4], [68, 112, 0.25], [112, 114, 0.4], [114, 116, 0.55], [116, 118, 0.7], [118, 120, 0.85], [120, 150, 1]] },
+  '0.5': { clip: [1, 5], region: [2, 4, 0.5], frames: [[30, 60, 1], [60, 62, 0.9], [62, 64, 0.8], [64, 66, 0.7], [66, 68, 0.6], ...RAMP_05, [120, 150, 1]] },
+  '0.75': { clip: [1, 5], region: [2, 4, 0.75], frames: [[30, 60, 1], [60, 62, 0.95], [62, 64, 0.9], [64, 66, 0.85], [66, 68, 0.8], [68, 112, 0.75], [112, 114, 0.8], [114, 116, 0.85], [116, 118, 0.9], [118, 120, 0.95], [120, 150, 1]] },
+  '2': { clip: [1, 5], region: [2, 4, 2], frames: [[30, 60, 1], [60, 62, 1.2], [62, 64, 1.4], [64, 66, 1.6], [66, 68, 1.8], [68, 112, 2], [112, 114, 1.8], [114, 116, 1.6], [116, 118, 1.4], [118, 120, 1.2], [120, 150, 1]] },
+  from0: { clip: [0, 5], region: [2, 4, 0.5], frames: [[0, 60, 1], [60, 62, 0.9], [62, 64, 0.8], [64, 66, 0.7], [66, 68, 0.6], ...RAMP_05, [120, 150, 1]] },
+  cut: { clip: [2.1, 3.9], region: [2, 4, 0.5], frames: [[63, 64, 0.8], [64, 66, 0.7], [66, 68, 0.6], [68, 112, 0.5], [112, 114, 0.6], [114, 116, 0.7], [116, 117, 0.8]] },
+  odd: { clip: [1, 5], region: [61 / 30, 4, 2], frames: [[30, 61, 1], [61, 63, 1.2], [63, 65, 1.4], [65, 67, 1.6], [67, 69, 1.8], [69, 112, 2], [112, 114, 1.8], [114, 116, 1.6], [116, 118, 1.4], [118, 120, 1.2], [120, 150, 1]] },
+}
+
+/** Twin of the helper in electron/clipExport.test.ts: the source frame each output frame shows. */
+function plannedSourceFrames(frames: FrameSegment[], fps: number, sourceFps: number): number[] {
+  const segments: OutputSegment[] = frames.map(([a, b, speed]) => (speed === 1 ? { kind: 'play', srcStart: a / sourceFps, srcEnd: b / sourceFps } : { kind: 'play', srcStart: a / sourceFps, srcEnd: b / sourceFps, speed }))
+  const counts = segmentFrameCounts(segments, fps)
+  const out: number[] = []
+  segments.forEach((segment, i) => {
+    if (segment.kind !== 'play') return
+    const [a, b, speed] = frames[i]
+    for (let f = 0; f < counts[i]; f++) {
+      if (speed === 1) {
+        const t = segment.srcStart + (segment.srcEnd - segment.srcStart) * (f / counts[i])
+        out.push(Math.floor(t * sourceFps + 1e-3))
+      } else {
+        out.push(a + Math.floor((f * (b - a)) / counts[i] + 1e-6))
+      }
+    }
+  })
+  return out
+}
+
+describe('the source frame each output frame of a speed ramp shows', () => {
+  const sourceFps = 30
+  const planOf = (name: string, fps: number) => {
+    const { clip, region, frames } = SPEED_CASES[name]
+    const steps = buildSpeedSteps([{ start: region[0], end: region[1], speed: region[2] }], 10, sourceFps)
+    const { segments, frameCount } = buildOutputTimeline({ start: clip[0], end: clip[1] }, [], fps, steps, sourceFps)
+    return { segments, frameCount, frames }
+  }
+
+  it.each(Object.keys(SPEED_CASES))('builds the shared segments for case %s', (name) => {
+    const { segments, frames } = planOf(name, 30)
+    expect(segments.map((s) => (s.kind === 'play' ? [Math.round(s.srcStart * sourceFps), Math.round(s.srcEnd * sourceFps), s.speed ?? 1] : s))).toEqual(frames)
+  })
+
+  it.each([
+    ['0.5', 30], ['0.5', 60], ['0.5', 15], ['2', 30], ['2', 15], ['0.25', 30], ['0.75', 30],
+    ['from0', 30], ['cut', 30], ['cut', 15], ['odd', 15], ['0.25', 60], ['0.75', 15],
+  ] as const)('plans case %s at %i fps by the shared rule', (name, fps) => {
+    const { segments, frameCount, frames } = planOf(name, fps)
+    const planned = frameSourceTimes(segments, fps, sourceFps).map((t) => frameIndexAt(t, sourceFps))
+    expect(planned).toHaveLength(frameCount)
+    expect(planned).toEqual(plannedSourceFrames(frames, fps, sourceFps))
+  })
+
+  it('pins the 0.5 case at 30 fps through both ramps, showing every source frame', () => {
+    const { segments } = planOf('0.5', 30)
+    const planned = frameSourceTimes(segments, 30, sourceFps).map((t) => frameIndexAt(t, sourceFps))
+    expect(segmentFrameCounts(segments, 30)).toEqual([30, 2, 3, 3, 3, 88, 3, 3, 3, 2, 30])
+    expect(planned.slice(28, 44)).toEqual([58, 59, 60, 61, 62, 62, 63, 64, 64, 65, 66, 66, 67, 68, 68, 69])
+    expect(planned.slice(126, 142)).toEqual([110, 111, 111, 112, 112, 113, 114, 114, 115, 116, 116, 117, 118, 119, 120, 121])
+    expect(new Set(planned).size).toBe(120)
+  })
+
+  it('spreads a segment\'s source frames evenly over its planned frames', () => {
+    expect([0, 1].map((f) => speedSegmentFrame(f, 2, 60, 62))).toEqual([60, 61])
+    expect([0, 1, 2].map((f) => speedSegmentFrame(f, 3, 62, 64))).toEqual([62, 62, 63])
+    expect([0, 1, 2, 3].map((f) => speedSegmentFrame(f, 4, 10, 18))).toEqual([10, 12, 14, 16])
+  })
+
+  it('keeps play-frame times inside the chosen frame, so reveals still advance every output frame', () => {
+    const { segments } = planOf('0.25', 30)
+    const times = frameSourceTimes(segments, 30, sourceFps)
+    const slow = segmentFrameCounts(segments, 30).slice(0, 5).reduce((a, b) => a + b, 0)
+    for (let i = slow + 1; i < slow + 40; i++) expect(times[i]).toBeGreaterThan(times[i - 1])
   })
 })

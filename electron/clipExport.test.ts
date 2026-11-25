@@ -395,6 +395,54 @@ const SLOW_CASE: OutputSegment[] = [
   { kind: 'play', srcStart: 3, srcEnd: 4 },
 ]
 
+// Speed-ramp cases as the renderer plans them (30 fps source; region [2, 4]
+// unless noted), as [first source frame, end source frame, speed]. Twin of
+// SPEED_CASES in src/export/outputTimeline.test.ts, which checks that
+// buildOutputTimeline produces exactly these segments; keep the two in step.
+type FrameSegment = [number, number, number]
+const RAMP_05: FrameSegment[] = [[68, 112, 0.5], [112, 114, 0.6], [114, 116, 0.7], [116, 118, 0.8], [118, 120, 0.9]]
+const SPEED_CASES: Record<string, FrameSegment[]> = {
+  // clip 1→5, region at 0.25 / 0.5 / 0.75 / 2
+  '0.25': [[30, 60, 1], [60, 62, 0.85], [62, 64, 0.7], [64, 66, 0.55], [66, 68, 0.4], [68, 112, 0.25], [112, 114, 0.4], [114, 116, 0.55], [116, 118, 0.7], [118, 120, 0.85], [120, 150, 1]],
+  '0.5': [[30, 60, 1], [60, 62, 0.9], [62, 64, 0.8], [64, 66, 0.7], [66, 68, 0.6], ...RAMP_05, [120, 150, 1]],
+  '0.75': [[30, 60, 1], [60, 62, 0.95], [62, 64, 0.9], [64, 66, 0.85], [66, 68, 0.8], [68, 112, 0.75], [112, 114, 0.8], [114, 116, 0.85], [116, 118, 0.9], [118, 120, 0.95], [120, 150, 1]],
+  '2': [[30, 60, 1], [60, 62, 1.2], [62, 64, 1.4], [64, 66, 1.6], [66, 68, 1.8], [68, 112, 2], [112, 114, 1.8], [114, 116, 1.6], [116, 118, 1.4], [118, 120, 1.2], [120, 150, 1]],
+  // clip 0→5 at 0.5: starts at frame 0
+  from0: [[0, 60, 1], [60, 62, 0.9], [62, 64, 0.8], [64, 66, 0.7], [66, 68, 0.6], ...RAMP_05, [120, 150, 1]],
+  // clip 2.1→3.9 at 0.5: the in and out points cut both ramps
+  cut: [[63, 64, 0.8], [64, 66, 0.7], [66, 68, 0.6], [68, 112, 0.5], [112, 114, 0.6], [114, 116, 0.7], [116, 117, 0.8]],
+  // clip 1→5, region [61/30, 4] at 2: an odd number of speed-1 frames before it
+  odd: [[30, 61, 1], [61, 63, 1.2], [63, 65, 1.4], [65, 67, 1.6], [67, 69, 1.8], [69, 112, 2], [112, 114, 1.8], [114, 116, 1.6], [116, 118, 1.4], [118, 120, 1.2], [120, 150, 1]],
+}
+
+const toSegments = (frames: FrameSegment[], sourceFps: number): OutputSegment[] =>
+  frames.map(([a, b, speed]) => (speed === 1 ? { kind: 'play', srcStart: a / sourceFps, srcEnd: b / sourceFps } : { kind: 'play', srcStart: a / sourceFps, srcEnd: b / sourceFps, speed }))
+
+/**
+ * The source frame every output frame shows, by the rule both sides share
+ * (twin of the helper in src/export/outputTimeline.test.ts): speed-1 frames
+ * evenly spaced over the segment, frame f of a speed segment's n frames at
+ * `a + floor(f * (b - a) / n + 1e-6)`.
+ */
+function plannedSourceFrames(frames: FrameSegment[], fps: number, sourceFps: number): number[] {
+  const segments = toSegments(frames, sourceFps)
+  const counts = segmentFrameCountsForBuilder(segments, fps)
+  const out: number[] = []
+  segments.forEach((segment, i) => {
+    if (segment.kind !== 'play') return
+    const [a, b, speed] = frames[i]
+    for (let f = 0; f < counts[i]; f++) {
+      if (speed === 1) {
+        const t = segment.srcStart + (segment.srcEnd - segment.srcStart) * (f / counts[i])
+        out.push(Math.floor(t * sourceFps + 1e-3))
+      } else {
+        out.push(a + Math.floor((f * (b - a)) / counts[i] + 1e-6))
+      }
+    }
+  })
+  return out
+}
+
 describe('slowed segments', () => {
   it('plans a slowed segment\'s frames from its output duration (agrees with segmentFrameCounts)', () => {
     expect(segmentFrameCountsForBuilder(SLOW_CASE, 30)).toEqual([30, 60, 30, 30])
@@ -404,20 +452,56 @@ describe('slowed segments', () => {
     expect(alignSegmentsToFrames(SLOW_CASE, 30)[1]).toEqual({ kind: 'play', srcStart: 59.5 / 30, srcEnd: 89.5 / 30, speed: 0.5 })
   })
 
-  it('slows only the segment with a speed and forces its exact frame count; its audio is silence', () => {
+  it('picks each slowed frame by output slot, forces exact counts on every concat input, and silences slowed audio', () => {
     const args = buildClipEncodeFilterGraph({ ...BASE_INPUT, frameCount: 150, quality: 'high', segments: SLOW_CASE, hasAudio: true, magnifiers: [] })
     const filter = args[args.indexOf('-filter_complex') + 1]
     const parts = filter.split(';')
+    // Speed-1 plays and holds keep today's chains...
     expect(parts).toContain('[0:v]trim=start=0.000000:end=1.000000,setpts=PTS-STARTPTS[v0]')
     expect(parts).toContain('[0:v]trim=start=2.000000:end=3.000000,setpts=PTS-STARTPTS[v3]')
-    const v1 = parts.find((p) => p.endsWith('[v1]')) as string
-    expect(v1).toContain('/0.5')
-    expect(v1).toContain('end_frame=60')
+    // ...and each run of them is locked to its planned frame count before the top-level concat.
+    expect(parts).toContain('[v0]tpad=stop_mode=clone:stop=1,fps=30.000000,tpad=stop_mode=clone:stop=30,trim=end_frame=30,setpts=N/(30.000000*TB)[g0]')
+    expect(parts).toContain('[v2][v3]concat=n=2:v=1:a=0,tpad=stop_mode=clone:stop=1,fps=30.000000,tpad=stop_mode=clone:stop=60,trim=end_frame=60,setpts=N/(30.000000*TB)[g2]')
+    expect(parts).toContain(
+      '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.000000:end=2.000000,tpad=stop_mode=clone:stop=1,' +
+        'setpts=ceil((N-0.000001)*60/30)/(30.000000*TB),fps=30.000000,' +
+        'tpad=stop_mode=clone:stop=60,trim=end_frame=60,setpts=N/(30.000000*TB)[v1]'
+    )
     const a1 = parts.find((p) => p.endsWith('[a1]')) as string
     expect(a1).toMatch(/^anullsrc.*atrim=duration=2\.000000,/)
     expect(parts).toContain('[0:a]atrim=start=2.000000:end=3.000000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a3]')
-    expect(parts).toContain('[v0][v1][v2][v3]concat=n=4:v=1:a=0[vbase0]')
+    expect(parts).toContain('[g0][v1][g2]concat=n=3:v=1:a=0[vbase0]')
     expect(parts).toContain('[a0][a1][a2][a3]concat=n=4:v=0:a=1[aout]')
+  })
+
+  it('gives a one-frame speed segment a half-slot copy so concat sees its length', () => {
+    const args = buildClipEncodeFilterGraph({
+      ...BASE_INPUT, frameCount: 32, quality: 'high', hasAudio: false, magnifiers: [],
+      segments: [
+        { kind: 'play', srcStart: 1, srcEnd: 2 },
+        { kind: 'play', srcStart: 2, srcEnd: 2 + 2 / 30, speed: 1.4 },
+        { kind: 'play', srcStart: 2 + 2 / 30, srcEnd: 2 + 4 / 30, speed: 1.6 },
+      ],
+    })
+    const filter = args[args.indexOf('-filter_complex') + 1]
+    const v1 = filter.split(';').find((p) => p.endsWith('[v1]')) as string
+    expect(v1).toMatch(/trim=end_frame=1,setpts=N\/\(30\.000000\*TB\),tpad=stop_mode=clone:stop=1,settb=AVTB,setpts=N\/\(60\.000000\*TB\)\[v1\]$/)
+  })
+
+  it('counts frames from the unaligned edges when a clip with speed segments starts at frame 0', () => {
+    const segments: OutputSegment[] = [
+      { kind: 'play', srcStart: 0, srcEnd: 2 },
+      { kind: 'play', srcStart: 2, srcEnd: 2 + 3 / 30, speed: 0.5 },
+      { kind: 'play', srcStart: 2 + 3 / 30, srcEnd: 3 },
+    ]
+    // The renderer's counts; aligning would clamp the frame-0 edge and give the first segment 59.5 frames' worth.
+    const counts = segmentFrameCountsForBuilder(segments, 30)
+    expect(counts).toEqual([60, 6, 27])
+    const filter = buildClipEncodeFilterGraph({ ...BASE_INPUT, frameCount: 93, quality: 'high', segments, hasAudio: false, magnifiers: [] })
+    const joined = filter[filter.indexOf('-filter_complex') + 1]
+    expect(joined).toContain('trim=end_frame=60,setpts=N/(30.000000*TB)[g0]')
+    expect(joined).toContain('trim=end_frame=6,setpts=N/(30.000000*TB)[v1]')
+    expect(joined).toContain('trim=end_frame=27,setpts=N/(30.000000*TB)[g2]')
   })
 
   it('builds today\'s graph, string for string, when no segment has a speed other than 1', () => {
@@ -459,7 +543,8 @@ describe('slowed segments', () => {
     const filter = args[args.indexOf('-filter_complex') + 1]
     expect(filter).not.toContain('[v1]')
     expect(filter).not.toContain('[a1]')
-    expect(filter).toContain('[v0][v2]concat=n=2:v=1:a=0[vbase0]')
+    expect(filter).toContain('[v0][v2]concat=n=2:v=1:a=0,tpad=stop_mode=clone:stop=1,fps=30.000000,tpad=stop_mode=clone:stop=60,trim=end_frame=60,setpts=N/(30.000000*TB)[g0]')
+    expect(filter).toContain('[g0]concat=n=1:v=1:a=0[vbase0]')
     expect(filter).toContain('[a0][a2]concat=n=2:v=0:a=1[aout]')
   })
 })
@@ -952,6 +1037,58 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
     const audioSeconds = audio.stdout.length / 2 / 48000
     expect(Math.abs(audioSeconds - frameCount / 30)).toBeLessThanOrEqual(1 / 30)
   }, 60_000)
+
+  describe('speed ramps decode to exactly the planned source frames', () => {
+    const W = 160
+    const H = 32
+    const source = path.join(tmpDir, 'numbered10.mp4')
+    // Each frame shows its own index in binary: 10 columns, white = bit set.
+    const frameIds = (file: string): number[] => {
+      const decoded = spawnSync(ffmpegPath as string, ['-v', 'error', '-i', file, '-map', '0:v', '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 27 })
+      const ids: number[] = []
+      for (let k = 0; k < decoded.stdout.length / (W * H); k++) {
+        let id = 0
+        for (let bit = 0; bit < 10; bit++) {
+          if (decoded.stdout[k * W * H + (H / 2) * W + bit * (W / 10) + W / 20] > 128) id |= 1 << bit
+        }
+        ids.push(id)
+      }
+      return ids
+    }
+
+    it.each([
+      ['0.5', 30, 'mp4'], ['0.5', 60, 'mp4'], ['0.5', 15, 'gif'],
+      ['2', 30, 'mp4'], ['2', 15, 'gif'],
+      ['0.25', 30, 'mp4'], ['0.75', 30, 'mp4'],
+      ['from0', 30, 'mp4'], ['cut', 30, 'mp4'], ['cut', 15, 'gif'], ['odd', 15, 'gif'],
+    ] as const)('case %s at %i fps %s', async (name, fps, format) => {
+      const bin = ffmpegPath as string
+      if (!fs.existsSync(source)) {
+        const generated = spawnSync(bin, [
+          '-y', '-f', 'lavfi', '-i',
+          `color=black:size=${W}x${H}:rate=30:duration=6,format=gray,geq=lum='if(mod(floor(N/pow(2\\,floor(X*10/W)))\\,2)\\,235\\,16)'`,
+          '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+          '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '1', '-c:a', 'aac', '-shortest', source,
+        ])
+        expect(generated.status, generated.stderr.toString()).toBe(0)
+      }
+      const planned = plannedSourceFrames(SPEED_CASES[name], fps, 30)
+      const output = path.join(tmpDir, `ramp-${name}-${fps}.${format}`)
+      const started = await startClipEncodeJob({
+        outputPath: output, sourcePath: source, width: W, height: H, fps, format,
+        frameCount: planned.length, quality: 'high', segments: toSegments(SPEED_CASES[name], 30),
+      }, true, 30)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const result = await runClipEncodeJob(started.jobId, { spans: [], magnifiers: [] }, bin)
+      expect(result, result.error).toEqual({ success: true })
+      expect(frameIds(output)).toEqual(planned)
+      if (format === 'mp4') {
+        const audio = spawnSync(bin, ['-v', 'error', '-i', output, '-map', '0:a', '-f', 's16le', '-ac', '1', '-ar', '48000', '-'], { maxBuffer: 1 << 26 })
+        expect(Math.abs(audio.stdout.length / 2 / 48000 - planned.length / fps)).toBeLessThanOrEqual(1 / fps)
+      }
+    }, 60_000)
+  })
 
   it('cancel kills ffmpeg mid-run and removes the partial output file', async () => {
     const bin = ffmpegPath as string

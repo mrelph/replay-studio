@@ -127,7 +127,7 @@ export function buildDrawingSpans(
 ): DrawingSpan[] {
   const sourceFps = opts.sourceFps ?? fps
   const revealSteps = opts.maxRevealSteps ?? DEFAULT_MAX_REVEAL_STEPS
-  const frames = framePresentations(segments, fps)
+  const frames = framePresentations(segments, fps, sourceFps)
   const spans: DrawingSpan[] = []
 
   const holdElapsedAt = holdElapsedResolver(segments, annotations, sourceFps)
@@ -202,7 +202,7 @@ export function firstDueFrame(
 ): number {
   if (!(annotation.revealDelay !== undefined && annotation.revealDelay > 0)) return 0
   const holdElapsedAt = holdElapsedResolver(segments, [annotation], sourceFps)
-  const frames = framePresentations(segments, fps)
+  const frames = framePresentations(segments, fps, sourceFps)
   for (let i = 0; i < frames.length; i++) {
     if (isRevealDue(annotation.startTime, sampleTime(frames[i].srcTime, sourceFps), holdElapsedAt(annotation, frames[i]), annotation.revealDelay, elapsed)) return i
   }

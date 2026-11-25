@@ -345,16 +345,31 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
   const includeAudio = hasAudio && !isGif
   const segments = alignSegmentsToFrames(input.segments, sourceFps)
   const { crf, preset } = QUALITY_SETTINGS[quality]
-  const segFrameCounts = segmentFrameCountsForBuilder(segments, fps)
+  // With speed segments, count frames from the renderer's own (frame-start)
+  // edges: aligning clamps a frame-0 edge and would shorten the first segment.
+  const hasSpeed = input.segments.some(isSpeedSegment)
+  const segFrameCounts = segmentFrameCountsForBuilder(hasSpeed ? input.segments : segments, fps)
   const seekOffset = computeSeekOffset(segments)
 
   const filterParts: string[] = []
 
   // A slowed (or sped-up) segment with no planned frames is left out of both
-  // concats rather than fed in empty.
+  // concats rather than fed in empty, and so is a run of other segments
+  // between them with no planned frames.
+  const emptyRun = new Set<number>()
+  if (hasSpeed) {
+    let run: number[] = []
+    segments.forEach((segment, i) => {
+      if (!isSpeedSegment(segment)) run.push(i)
+      if (isSpeedSegment(segment) || i === segments.length - 1) {
+        if (run.every((j) => segFrameCounts[j] === 0)) run.forEach((j) => emptyRun.add(j))
+        run = []
+      }
+    })
+  }
   const included = segments
     .map((segment, i) => ({ segment, i }))
-    .filter(({ segment, i }) => !(segment.kind === 'play' && (segment.speed ?? 1) !== 1 && segFrameCounts[i] === 0))
+    .filter(({ segment, i }) => !(isSpeedSegment(segment) && segFrameCounts[i] === 0) && !emptyRun.has(i))
 
   // --- Base video timeline: per-segment trim/hold, concatenated, CFR-locked. ---
   included.forEach(({ segment, i }) => {
@@ -365,15 +380,9 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
       if (speed === 1) {
         filterParts.push(`[0:v]trim=start=${fmt(start)}:end=${fmt(end)},setpts=PTS-STARTPTS[v${i}]`)
       } else {
-        // `concat` judges a segment's length from its frames, so resample to
-        // the output rate here and force exactly the planned count (clone the
-        // last frame if short, cut if long) with sequential timestamps.
-        const frames = segFrameCounts[i]
-        filterParts.push(
-          `[0:v]trim=start=${fmt(start)}:end=${fmt(end)},setpts=(PTS-STARTPTS)/${speed},` +
-            `fps=${fmt(fps)},tpad=stop_mode=clone:stop=${frames},trim=end_frame=${frames},` +
-            `setpts=N/(${fmt(fps)}*TB)[v${i}]`
-        )
+        const source = input.segments[i] as Extract<OutputSegment, { kind: 'play' }>
+        const sourceFrames = Math.max(1, Math.round((source.srcEnd - source.srcStart) * sourceFps))
+        filterParts.push(`[0:v]${speedSegmentChain(start, end, sourceFrames, fps, segFrameCounts[i])}[v${i}]`)
       }
     } else {
       const t = segment.srcTime - seekOffset
@@ -391,8 +400,8 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
       )
     }
   })
-  const vConcatInputs = included.map(({ i }) => `[v${i}]`).join('')
-  filterParts.push(`${vConcatInputs}concat=n=${included.length}:v=1:a=0[vbase0]`)
+  const vConcatInputs = hasSpeed ? speedTimelineInputs(included, segFrameCounts, fps, filterParts) : included.map(({ i }) => `[v${i}]`)
+  filterParts.push(`${vConcatInputs.join('')}concat=n=${vConcatInputs.length}:v=1:a=0[vbase0]`)
   // Segment trims can each lose a frame to timestamp rounding (a 20 s clip
   // with a hold came out 2 frames short). Clone the last frame for a moment
   // and let `-frames:v frameCount` cut the stream to the exact length.
@@ -504,6 +513,77 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
   args.push('-progress', 'pipe:1', '-nostats', outputPath)
 
   return args
+}
+
+function isSpeedSegment(segment: OutputSegment): boolean {
+  return segment.kind === 'play' && (segment.speed ?? 1) !== 1
+}
+
+/**
+ * Ends a chain with exactly `frames` frames on sequential output-rate
+ * timestamps. `concat` measures an input from its frame spacing, so a
+ * one-frame input gets a copy half a slot later (the final `fps` drops it).
+ */
+function exactFrames(frames: number, fps: number): string {
+  const chain = `fps=${fmt(fps)},tpad=stop_mode=clone:stop=${frames},trim=end_frame=${frames},setpts=N/(${fmt(fps)}*TB)`
+  return frames === 1 ? `${chain},tpad=stop_mode=clone:stop=1,settb=AVTB,setpts=N/(${fmt(2 * fps)}*TB)` : chain
+}
+
+/**
+ * A play segment at speed != 1 covering `sourceFrames` source frames, as
+ * `frames` output frames. Output frame f shows the segment's source frame
+ * `floor(f * sourceFrames / frames + 1e-6)`, the rule `speedSegmentFrame` in
+ * src/export/outputTimeline.ts plans overlays with: source frame N gets output
+ * slot `ceil((N - 1e-6) * frames / sourceFrames)`, and `fps` fills empty slots
+ * with the previous frame and keeps the latest of several in one slot. The
+ * clone before `trim` keeps a segment past the end of the source from arriving
+ * empty; the one after it lets `fps` emit the last real frame.
+ */
+function speedSegmentChain(start: number, end: number, sourceFrames: number, fps: number, frames: number): string {
+  return (
+    `tpad=stop_mode=clone:stop=-1,trim=start=${fmt(start)}:end=${fmt(end)},tpad=stop_mode=clone:stop=1,` +
+    `setpts=ceil((N-0.000001)*${frames}/${sourceFrames})/(${fmt(fps)}*TB),${exactFrames(frames, fps)}`
+  )
+}
+
+/**
+ * The top-level concat inputs of a timeline with speed segments. Each run of
+ * speed-1 plays and holds is concatenated as usual (today's per-segment
+ * chains), then resampled to its exact planned frame count, so every input of
+ * the top-level concat lasts a whole number of output frames and each speed
+ * segment starts on the output frame the plan gives it. Left to the final
+ * `fps`, a speed-1 run lasting a fractional number of frames (an odd number of
+ * 30 fps frames in a 15 fps GIF) would put the next speed segment's frames on
+ * half-frame timestamps, where rounding picks the wrong ones.
+ */
+function speedTimelineInputs(
+  included: { segment: OutputSegment; i: number }[],
+  segFrameCounts: number[],
+  fps: number,
+  filterParts: string[]
+): string[] {
+  const inputs: string[] = []
+  let run: number[] = []
+  const flushRun = () => {
+    const frames = run.reduce((sum, i) => sum + segFrameCounts[i], 0)
+    if (run.length > 0) {
+      const joined = run.map((i) => `[v${i}]`).join('')
+      const head = run.length === 1 ? joined : `${joined}concat=n=${run.length}:v=1:a=0,`
+      filterParts.push(`${head}tpad=stop_mode=clone:stop=1,${exactFrames(frames, fps)}[g${run[0]}]`)
+      inputs.push(`[g${run[0]}]`)
+    }
+    run = []
+  }
+  for (const { segment, i } of included) {
+    if (isSpeedSegment(segment)) {
+      flushRun()
+      inputs.push(`[v${i}]`)
+    } else {
+      run.push(i)
+    }
+  }
+  flushRun()
+  return inputs
 }
 
 /**
