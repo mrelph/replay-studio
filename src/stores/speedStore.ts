@@ -17,31 +17,49 @@ interface SpeedState {
   replaceAll: (regions: SpeedRegion[]) => void
 }
 
+// Regions as loaded from a project file, kept until the user edits them so they
+// can be re-snapped when the probed fps or the duration arrives after the load.
+let loaded: SpeedRegion[] | null = null
+
 export const useSpeedStore = create<SpeedState>((set) => ({
   regions: [],
   selectedId: null,
 
   place: (region) =>
     set((state) => {
+      loaded = null
       const { duration, fps } = useVideoStore.getState()
-      return { regions: placeSpeedRegion(state.regions, region, duration, fps) }
+      const regions = placeSpeedRegion(state.regions, region, duration, fps)
+      const selectedId = regions.some((r) => r.id === state.selectedId) ? state.selectedId : null
+      return { regions, selectedId }
     }),
 
-  remove: (id) =>
+  remove: (id) => {
+    loaded = null
     set((state) => ({
       regions: state.regions.filter((region) => region.id !== id),
       selectedId: state.selectedId === id ? null : state.selectedId,
-    })),
+    }))
+  },
 
-  setSpeed: (id, speed) =>
+  setSpeed: (id, speed) => {
+    loaded = null
     set((state) => ({
       regions: state.regions.map((region) => (region.id === id ? { ...region, speed: clampSpeed(speed) } : region)),
-    })),
+    }))
+  },
 
   select: (id) => set({ selectedId: id }),
 
   replaceAll: (regions) => {
+    loaded = regions.length > 0 ? regions : null
     const { duration, fps } = useVideoStore.getState()
-    set({ regions: sanitizeSpeedRegions(regions, duration, fps), selectedId: null })
+    set({ regions: duration > 0 ? sanitizeSpeedRegions(regions, duration, fps) : regions, selectedId: null })
   },
 }))
+
+useVideoStore.subscribe((state, prev) => {
+  if (!loaded || state.duration <= 0) return
+  if (state.fps === prev.fps && state.duration === prev.duration) return
+  useSpeedStore.setState({ regions: sanitizeSpeedRegions(loaded, state.duration, state.fps) })
+})

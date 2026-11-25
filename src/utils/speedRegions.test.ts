@@ -59,6 +59,11 @@ describe('sanitizeSpeedRegions', () => {
     expect(out.map((x) => [x.id, x.start, x.end, x.speed])).toEqual([['a', 2, 4, 4], ['c', 4, 6, 0.1]])
   })
 
+  it('keeps the larger gap when an earlier entry splits a later one', () => {
+    const out = sanitizeSpeedRegions([r('a', 4, 5), r('b', 2, 9)], 20, 30)
+    expect(out.map((x) => [x.id, x.start, x.end])).toEqual([['b', 5, 9], ['a', 4, 5]].sort((x, y) => (x[1] as number) - (y[1] as number)))
+  })
+
   it('sorts the result and gives duplicate or missing ids fresh ones', () => {
     const out = sanitizeSpeedRegions([r('a', 6, 8), { start: 1, end: 3, speed: 0.5 }, r('a', 10, 12)], 20, 30)
     expect(out.map((x) => x.start)).toEqual([1, 6, 10])
