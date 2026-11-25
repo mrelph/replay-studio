@@ -17,12 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Stays" chips in the toolbar (Freeze only, 1s, 2s, 4s, To end) set how long
   drawings remain on screen, and re-time the drawings you have selected.
 - Timeline bars snap to the playhead, freeze frames and whole frames. Hold Alt
-  to turn snapping off.
+  to skip snapping to the playhead and freeze frames; whole-frame snapping
+  stays.
 
 ### Changed
 - The inspector's Freeze field now edits the freeze on that frame, up to 30 s.
   0 keeps the frame freeze-free, and the new Auto button restores the
-  calculated length.
+  calculated length. A length you type is kept as typed, not recalculated.
 
 ### Fixed
 - A freeze recorded with H no longer lands one or two frames late.

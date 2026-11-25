@@ -28,7 +28,7 @@ exactly. If you change a default binding in that file, update this doc too.
 | Shortcut | Action |
 |----------|--------|
 | `Space` | Play / Pause |
-| `H` | Freeze: stop on this frame and time it; press again (or Play) to resume and record the freeze. Also the ❄ button beside Play |
+| `H` | Freeze: stop on this frame and time it; press again (or Play) to resume and record the freeze. Drawing also adds freezes on its own (see Freeze frames). Also the ❄ button beside Play |
 | `→` | Next frame |
 | `←` | Previous frame |
 | `L` | Shuttle forward — tap again for 2x / 4x / 8x |
@@ -131,8 +131,21 @@ freeze inside their range: the frame repeats for that long, with silence, so a
 **Freeze (`H`, or the ❄ button beside Play)** is the alternate to Pause. It stops
 on the current frame and starts a timer on the button. When you resume, with
 Freeze again or with Play, a freeze of that length is recorded on that frame.
-So you hold the frame live while you talk or draw, and that becomes the freeze.
-Plain Pause never records anything.
+So you hold the frame live while you talk, and that becomes the freeze.
+Plain Pause never records anything by itself.
+
+**Drawing adds freezes too.** Drawing while the video plays pauses on that
+frame and adds a freeze automatically. Its length is sized from the drawings
+plus about a second to read, however long you took to draw. Drawing on a frame
+you paused yourself does the same.
+
+- Drawings on one frozen frame draw on one after another, in the order you
+  drew them, live and in exported MP4s and GIFs.
+- Pressing Play after drawing previews the freeze, then playback resumes. Play
+  or Space again skips the rest of the preview.
+- `H` with no drawings still records the time you held the frame. If you draw
+  after pressing `H`, the freeze becomes automatic and the paused time is
+  ignored.
 
 - It works while playing or already paused. Stepping a few frames while timing
   (up to about ½ s) is fine: the freeze goes on the frame you resume from.
