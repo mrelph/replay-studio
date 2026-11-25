@@ -739,10 +739,14 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           createAnnotation(text, 'text', textId)
 
           // Drop the annotation if the user leaves it empty instead of
-          // persisting an invisible placeholder.
+          // persisting an invisible placeholder. A text that once held words
+          // is deleted as its own undo step instead.
+          let committed = false
           text.on('editing:exited', () => {
             if (!text.text || text.text.trim() === '') {
-              useDrawingStore.getState().discardNewAnnotation(textId)
+              useDrawingStore.getState().removeEmptiedText(textId, committed)
+            } else {
+              committed = true
             }
           })
 

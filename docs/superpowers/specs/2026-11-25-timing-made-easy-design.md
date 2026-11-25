@@ -149,6 +149,11 @@ assigned (drawn-order reveal still applies) but `freezeDuration` is left alone.
 If the hand-set hold is shorter than the sequence, the later drawings finish
 their reveal after play resumes; that is the user's choice.
 
+*Post-review change (final fix wave):* delays are assigned only on a frame
+whose carrier holds more than 0 s. A frame with no carrier, or with a Freeze 0
+carrier, gets no `revealDelay`: its drawings appear together (as in 1.7.0).
+Deleting a freeze marker by hand re-syncs its frame, so the delays go with it.
+
 ### 4. Creating freezes
 
 **Draw while playing.** On pointer-down that begins a new annotation with any
@@ -203,6 +208,13 @@ the user stayed paused, and it is not automatic. If the user presses `H`, draws,
 and resumes, the freeze becomes automatic and the recorded pause time is
 ignored. A hold recorded on resume must never overwrite an automatic or
 hand-set freeze that the drawing step already put on that frame.
+
+*Post-review change (final fix wave):* H skips recording only when a carrier
+owns the frame: an automatic freeze, or any freeze on a frame with drawings.
+It then shows an info toast ("This frame's freeze is set from its drawings")
+instead of doing nothing silently. A drawn-on frame with no freeze (a 1.7.0
+project, or drawings moved off their freeze) records a hand-set hold as in
+1.7.0 and re-syncs the frame so its drawings reveal in order.
 
 **Late-freeze fix.** `handlePlay` in `VideoPlayer.tsx` places the marker at
 `video.currentTime` read inside the `play` event, after playback has restarted,

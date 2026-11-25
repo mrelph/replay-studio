@@ -167,6 +167,27 @@ describe('drawingStore frame sync', () => {
     expect(freezes()[0].freezeDuration).toBe(0)
   })
 
+  it('assigns no delays on a Freeze 0 frame: its drawings appear together', () => {
+    draw(drawing('a', 3, 0.35))
+    store().updateAnnotation(freezes()[0].id, { freezeAuto: false, freezeDuration: 0 })
+    store().syncFrames([3])
+    expect(byId('a').revealDelay).toBeUndefined()
+    draw(drawing('b', 3, 0.4))
+    expect(byId('a').revealDelay).toBeUndefined()
+    expect(byId('b').revealDelay).toBeUndefined()
+  })
+
+  it('clears the delays when the frame\'s freeze marker is deleted by hand', () => {
+    draw(drawing('a', 3, 0.35))
+    draw(drawing('b', 3, 0.4))
+    store().updateAnnotation(freezes()[0].id, { freezeAuto: false, freezeDuration: 5 })
+    expect(byId('b').revealDelay).toBeCloseTo(0.35)
+    store().removeAnnotations([freezes()[0].id])
+    expect(freezes()).toHaveLength(0)
+    expect(byId('a').revealDelay).toBeUndefined()
+    expect(byId('b').revealDelay).toBeUndefined()
+  })
+
   it('resizes an automatic hold when a drawIn changes', () => {
     draw(drawing('a', 3, 0.35))
     draw(drawing('b', 3, 0.4))
@@ -250,6 +271,33 @@ describe('drawingStore frame sync', () => {
     const undoBefore = store().undoStack.length
     expect(undoBefore).toBe(1)
     store().discardNewAnnotation('t')
+    expect(store().undoStack).toHaveLength(undoBefore)
+  })
+
+  it('removes a cleared text that was committed as its own undo step, keeping later drawings', () => {
+    draw({ ...drawing('t', 1), toolType: 'text' })
+    draw(drawing('a', 3, 0.35))
+    store().removeEmptiedText('t', true)
+    expect(store().annotations.some((x) => x.id === 't')).toBe(false)
+    store().undo()
+    expect(store().annotations.some((x) => x.id === 't')).toBe(true)
+    expect(store().annotations.some((x) => x.id === 'a')).toBe(true)
+  })
+
+  it('a committed text cleared right after keeps its own add step undoable', () => {
+    draw({ ...drawing('t', 1), toolType: 'text' })
+    store().removeEmptiedText('t', true)
+    expect(store().annotations).toHaveLength(0)
+    store().undo()
+    expect(store().annotations.some((x) => x.id === 't')).toBe(true)
+  })
+
+  it('a text never committed is discarded without a trace', () => {
+    draw(drawing('a', 1, 0.35))
+    const undoBefore = store().undoStack.length
+    draw({ ...drawing('t', 3), toolType: 'text' })
+    store().removeEmptiedText('t', false)
+    expect(store().annotations.some((x) => x.id === 't')).toBe(false)
     expect(store().undoStack).toHaveLength(undoBefore)
   })
 
