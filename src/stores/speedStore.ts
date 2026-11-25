@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { useVideoStore } from './videoStore'
+import { useVideoStore, setSlowRegionSink } from './videoStore'
 import {
   clampSpeed,
   placeSpeedRegion,
@@ -57,6 +57,8 @@ export const useSpeedStore = create<SpeedState>((set) => ({
     set({ regions: duration > 0 ? sanitizeSpeedRegions(regions, duration, fps) : regions, selectedId: null })
   },
 }))
+
+setSlowRegionSink((region) => useSpeedStore.getState().place(region))
 
 useVideoStore.subscribe((state, prev) => {
   if (!loaded || state.duration <= 0) return

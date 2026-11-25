@@ -1,7 +1,7 @@
 import {
   SkipBack, RotateCcw, ChevronLeft, Play, Pause, ChevronRight,
   RotateCw, SkipForward, ChevronsLeft, ChevronsRight, Repeat2,
-  Volume2, Volume1, VolumeX, Maximize, Minimize, Snowflake
+  Volume2, Volume1, VolumeX, Maximize, Minimize, Snowflake, Gauge
 } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useSpeedStore } from '@/stores/speedStore'
@@ -56,6 +56,33 @@ function FreezeButton({ keyLabel }: { keyLabel: string }) {
   )
 }
 
+/** Hold while playing to record the stretch as a slow-motion region (same as the key). */
+function SlowButton({ keyLabel }: { keyLabel: string }) {
+  const recording = useVideoStore((s) => s.slowRecording !== null)
+  const hasVideo = useVideoStore((s) => s.duration > 0)
+  const end = () => useVideoStore.getState().endSlowRecording()
+
+  return (
+    <button
+      type="button"
+      onPointerDown={() => useVideoStore.getState().beginSlowRecording()}
+      onPointerUp={end}
+      onPointerLeave={end}
+      onPointerCancel={end}
+      disabled={!hasVideo}
+      aria-pressed={recording}
+      title={`Slow motion: hold while playing to record a slow region (${keyLabel})`}
+      className={`h-9 min-w-9 px-2 mr-1 flex items-center justify-center rounded-full transition-colors disabled:opacity-25 disabled:cursor-not-allowed ${
+        recording
+          ? 'bg-sky-500 text-white shadow-md ring-2 ring-sky-300/60'
+          : 'text-text-secondary hover:text-sky-500 hover:bg-surface-elevated'
+      }`}
+    >
+      <Gauge className={`w-4 h-4 ${recording ? 'animate-pulse' : ''}`} />
+    </button>
+  )
+}
+
 export default function VideoControls() {
   const {
     isPlaying,
@@ -101,6 +128,7 @@ export default function VideoControls() {
   // from the actual bindings if they're ever rebound.
   const loopKeyLabel = useShortcutKeyLabel('video.toggleLoop')
   const freezeKeyLabel = useShortcutKeyLabel('video.freeze')
+  const slowKeyLabel = useShortcutKeyLabel('video.slow')
   const muteKeyLabel = useShortcutKeyLabel('video.toggleMute')
   const fullscreenKeyLabel = useShortcutKeyLabel('video.toggleFullscreen')
   const playPauseKeyLabel = useShortcutKeyLabel('video.playPause')
@@ -241,6 +269,7 @@ export default function VideoControls() {
             {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
           </button>
           <FreezeButton keyLabel={freezeKeyLabel} />
+          <SlowButton keyLabel={slowKeyLabel} />
 
           <IconButton onClick={() => stepFrame('forward')} title={`Next Frame (${stepForwardKeyLabel})`} size="sm">
             <ChevronRight className="w-4 h-4" />

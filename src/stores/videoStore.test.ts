@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useVideoStore } from './videoStore'
+import { useSpeedStore } from './speedStore'
+import { toast } from '@/components/ui/Toast'
 import { snapToFrame, frameStart, frameIndexAt, timeForFrame } from '@/utils/frames'
 import { stayTiming } from '@/utils/stayPreset'
 import { annotationStateAt } from '@/export/annotationTiming'
@@ -19,6 +21,80 @@ function fakeVideo(paused: boolean, currentTime: number) {
   }
   return video
 }
+
+vi.mock('@/components/ui/Toast', () => ({ toast: vi.fn() }))
+
+describe('slow recording', () => {
+  beforeEach(() => {
+    vi.mocked(toast).mockClear()
+    useSpeedStore.setState({ regions: [], selectedId: null })
+    useVideoStore.setState({ videoElement: null, slowRecording: null, reverseRate: 0, duration: 20, fps: 30 })
+  })
+  const start = (video: ReturnType<typeof fakeVideo>) => {
+    useVideoStore.getState().setVideoElement(video as unknown as HTMLVideoElement)
+    useVideoStore.getState().beginSlowRecording()
+  }
+
+  it('does not begin while paused or reversing', () => {
+    start(fakeVideo(true, 2))
+    expect(useVideoStore.getState().slowRecording).toBeNull()
+    useVideoStore.setState({ reverseRate: 2 })
+    start(fakeVideo(false, 2))
+    expect(useVideoStore.getState().slowRecording).toBeNull()
+  })
+
+  it('records the start from the element and ignores a second begin', () => {
+    const video = fakeVideo(false, 2.5)
+    start(video)
+    const first = useVideoStore.getState().slowRecording
+    expect(first?.startSrc).toBe(2.5)
+    video.currentTime = 4
+    useVideoStore.getState().beginSlowRecording()
+    expect(useVideoStore.getState().slowRecording).toBe(first)
+  })
+
+  it('end with no recording is a no-op', () => {
+    useVideoStore.getState().endSlowRecording()
+    expect(toast).not.toHaveBeenCalled()
+    expect(useSpeedStore.getState().regions).toEqual([])
+  })
+
+  it('places a region and toasts on a long enough hold', () => {
+    const video = fakeVideo(false, 2)
+    start(video)
+    useVideoStore.setState({ slowRecording: { ...useVideoStore.getState().slowRecording!, at: performance.now() - 3000 } })
+    video.currentTime = 3.5
+    useVideoStore.getState().endSlowRecording()
+    expect(useVideoStore.getState().slowRecording).toBeNull()
+    expect(useSpeedStore.getState().regions).toMatchObject([{ start: 2, end: 3.5, speed: 0.5 }])
+    expect(toast).toHaveBeenCalledWith('success', '1.5s slow motion at 50%')
+  })
+
+  it('uses an explicit end time instead of the element time', () => {
+    const video = fakeVideo(false, 2)
+    start(video)
+    useVideoStore.setState({ slowRecording: { ...useVideoStore.getState().slowRecording!, at: performance.now() - 3000 } })
+    video.currentTime = 15
+    useVideoStore.getState().endSlowRecording(3)
+    expect(useSpeedStore.getState().regions).toMatchObject([{ start: 2, end: 3 }])
+  })
+
+  it('clears and toasts on a too-short hold', () => {
+    start(fakeVideo(false, 2))
+    useVideoStore.getState().endSlowRecording()
+    expect(useVideoStore.getState().slowRecording).toBeNull()
+    expect(toast).toHaveBeenCalledWith('info', 'Slow motion too short: nothing recorded')
+  })
+
+  it('clears silently when the hold covered no motion', () => {
+    const video = fakeVideo(false, 2)
+    start(video)
+    useVideoStore.setState({ slowRecording: { ...useVideoStore.getState().slowRecording!, at: performance.now() - 3000 } })
+    useVideoStore.getState().endSlowRecording()
+    expect(useVideoStore.getState().slowRecording).toBeNull()
+    expect(toast).not.toHaveBeenCalled()
+  })
+})
 
 describe('toggleFreeze', () => {
   beforeEach(() => {

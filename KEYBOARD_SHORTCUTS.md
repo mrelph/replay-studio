@@ -29,6 +29,7 @@ exactly. If you change a default binding in that file, update this doc too.
 |----------|--------|
 | `Space` | Play / Pause |
 | `H` | Freeze: stop on this frame and time it; press again (or Play) to resume and record the freeze. Drawing also adds freezes on its own (see Freeze frames). Also the ❄ button beside Play |
+| `W` | Slow motion: hold while the video plays; releasing saves that stretch as a 50% speed region. Also the gauge button beside Freeze |
 | `→` | Next frame |
 | `←` | Previous frame |
 | `L` | Shuttle forward — tap again for 2x / 4x / 8x |

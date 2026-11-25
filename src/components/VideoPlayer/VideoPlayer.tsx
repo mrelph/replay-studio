@@ -149,6 +149,8 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         isFreezeSeekRef.current = false
         return
       }
+      // The element has already moved; the last timeupdate is where the recording stopped.
+      useVideoStore.getState().endSlowRecording(lastTimeRef.current)
       resetFreezes()
       lastTimeRef.current = video.currentTime
       // Stepping a few frames while timing a freeze picks the exact frame;
@@ -219,6 +221,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     }
     const handlePause = () => {
       setIsPlaying(false)
+      const freezePause = isFreezePauseRef.current
       if (isFreezePauseRef.current) {
         // This pause was triggered by the freeze-frame logic itself — leave
         // the pending resume timer alone.
@@ -230,6 +233,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         freezeTimeoutRef.current = null
         useVideoStore.getState().clearAutoHold()
       }
+      if (!freezePause) useVideoStore.getState().endSlowRecording()
     }
     const handleEnded = () => {
       handleEnding()

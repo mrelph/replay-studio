@@ -264,6 +264,11 @@ export function useKeyboardShortcuts() {
         return
       }
 
+      case 'video.slow':
+        e.preventDefault()
+        if (!e.repeat) useVideoStore.getState().beginSlowRecording()
+        return
+
       // Editing
       case 'edit.undo':
         e.preventDefault()
@@ -327,8 +332,14 @@ export function useKeyboardShortcuts() {
     const handleKeyUp = (e: KeyboardEvent) => {
       const stopKey = useShortcutsStore.getState().getShortcut('video.pause')?.binding.key
       if (e.key.toLowerCase() === stopKey) stopKeyHeldRef.current = false
+      // Ends on the key alone: a modifier pressed in between must not leave the recording running.
+      const slowKey = useShortcutsStore.getState().getShortcut('video.slow')?.binding.key
+      if (e.key.toLowerCase() === slowKey) useVideoStore.getState().endSlowRecording()
     }
-    const handleBlur = () => { stopKeyHeldRef.current = false }
+    const handleBlur = () => {
+      stopKeyHeldRef.current = false
+      useVideoStore.getState().endSlowRecording()
+    }
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
     window.addEventListener('blur', handleBlur)

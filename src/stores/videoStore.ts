@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import { toast } from '@/components/ui/Toast'
+import { DEFAULT_REGION_SPEED, newSpeedRegionId, type SpeedRegion } from '@/utils/speedRegions'
+import { finishSlowRecording } from '@/utils/slowRecording'
 import { DEFAULT_FPS, stepFrames, snapToFrame, frameIndexAt, frameStart, nextForwardRate, nextReverseRate } from '@/utils/frames'
 
 interface VideoState {
@@ -54,6 +57,10 @@ interface VideoState {
   endAutoHold: () => void
   clearAutoHold: () => void
   setInterceptPlay: (intercept: (() => boolean) | null) => void
+  /** Starts recording a slow-motion region from the current source time; only while playing forward and not already recording. */
+  beginSlowRecording: () => void
+  /** Ends the recording, placing the region or toasting why not; always clears it. `endSrc` overrides the element's time (a seek has already moved it). */
+  endSlowRecording: (endSrc?: number) => void
   play: () => void
   pause: () => void
   togglePlay: () => void
@@ -72,6 +79,12 @@ interface VideoState {
   goToOutPoint: () => void
   toggleMute: () => void
   reset: () => void
+}
+
+// speedStore imports this store, so it registers where finished recordings go.
+let placeSlowRegion: ((region: SpeedRegion) => void) | null = null
+export function setSlowRegionSink(sink: ((region: SpeedRegion) => void) | null) {
+  placeSlowRegion = sink
 }
 
 // HTMLVideoElement can't play backwards, so reverse shuttle is a seek loop:
@@ -165,6 +178,25 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   setInterceptPlay: (intercept) => set({ interceptPlay: intercept }),
   setFps: (fps) => set({ fps: Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_FPS }),
 
+  beginSlowRecording: () => {
+    const { videoElement, reverseRate, slowRecording } = get()
+    if (!videoElement || videoElement.paused || reverseRate > 0 || slowRecording) return
+    set({ slowRecording: { startSrc: videoElement.currentTime, at: performance.now(), speed: DEFAULT_REGION_SPEED } })
+  },
+  endSlowRecording: (endSrc) => {
+    const { videoElement, slowRecording, duration, fps } = get()
+    if (!slowRecording) return
+    set({ slowRecording: null })
+    const end = endSrc ?? videoElement?.currentTime ?? slowRecording.startSrc
+    const held = (performance.now() - slowRecording.at) / 1000
+    const result = finishSlowRecording(slowRecording.startSrc, end, held, slowRecording.speed, duration, fps)
+    if (!result.record) {
+      if (result.reason === 'too-short') toast('info', 'Slow motion too short: nothing recorded')
+      return
+    }
+    placeSlowRegion?.({ id: newSpeedRegionId(), ...result.region })
+    toast('success', `${(result.region.end - result.region.start).toFixed(1)}s slow motion at ${Math.round(result.region.speed * 100)}%`)
+  },
   play: () => {
     const { videoElement, interceptPlay } = get()
     if (!videoElement || interceptPlay?.()) return
