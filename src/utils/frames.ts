@@ -15,6 +15,11 @@ export function timeForFrame(index: number, fps: number): number {
   return Math.max(0, index) / fps + (index > 0 ? BOUNDARY_EPSILON / fps : 0)
 }
 
+/** Seek time of the start of the frame showing at `time`. */
+export function snapToFrame(time: number, fps: number): number {
+  return timeForFrame(frameIndexAt(time, fps), fps)
+}
+
 /** `time` moved by `frames` whole frames, clamped to [0, duration], landing on a frame start. */
 export function stepFrames(time: number, frames: number, fps: number, duration: number): number {
   const target = timeForFrame(frameIndexAt(time, fps) + frames, fps)

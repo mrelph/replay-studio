@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { frameIndexAt, timeForFrame, stepFrames, formatTimecode, nextForwardRate, nextReverseRate } from './frames'
+import { frameIndexAt, timeForFrame, stepFrames, snapToFrame, formatTimecode, nextForwardRate, nextReverseRate } from './frames'
 
 describe('frame math', () => {
   it('round-trips frame index through seek time at NTSC rates', () => {
@@ -52,5 +52,13 @@ describe('JKL shuttle rates', () => {
     expect(nextReverseRate('forward', 2)).toBe(1)
     expect(nextReverseRate('reverse', 1)).toBe(2)
     expect(nextReverseRate('reverse', 8)).toBe(8)
+  })
+})
+
+describe('snapToFrame', () => {
+  it('moves a mid-frame time back to the start of its frame', () => {
+    expect(frameIndexAt(snapToFrame(3.0569, 30), 30)).toBe(91)
+    expect(snapToFrame(3.0569, 30)).toBeLessThan(3.0569)
+    expect(snapToFrame(0.01, 30)).toBe(0)
   })
 })

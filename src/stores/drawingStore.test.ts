@@ -192,6 +192,25 @@ describe('drawingStore frame sync', () => {
     expect(store().annotations.every((a) => a.revealDelay === undefined)).toBe(true)
   })
 
+  it('discards an empty text drawn on a new frame without a trace', () => {
+    draw(drawing('a', 1, 0.35))
+    const undoBefore = store().undoStack.length
+    const text = { ...drawing('t', 3), toolType: 'text' }
+    draw(text)
+    expect(freezes()).toHaveLength(2)
+    store().discardNewAnnotation('t')
+    expect(store().annotations.map((a) => a.id)).toEqual(['a', freezes()[0].id])
+    expect(freezes().map((f) => f.startTime)).toEqual([1])
+    expect(store().undoStack).toHaveLength(undoBefore)
+  })
+
+  it('discards an empty text as the only annotation, leaving nothing to undo', () => {
+    draw({ ...drawing('t', 3), toolType: 'text' })
+    store().discardNewAnnotation('t')
+    expect(store().annotations).toHaveLength(0)
+    expect(store().undoStack).toHaveLength(0)
+  })
+
   it('addAnnotation with history false saves no undo state', () => {
     store().addAnnotation(drawing('a', 3), { history: false })
     expect(store().undoStack).toHaveLength(0)

@@ -6,6 +6,7 @@ import {
   findFreezeCarrierAt,
   setFrameFreeze,
   setFreezeAt,
+  autoFreezeOwnsFrame,
   addFreezeMarker,
   MAX_RECORDED_HOLD_SECONDS,
 } from './freezeMarkers'
@@ -115,5 +116,24 @@ describe('setFrameFreeze', () => {
     const auto = useDrawingStore.getState().annotations[1]
     expect(auto.freezeDuration).toBe(2)
     expect(auto.freezeAuto).toBe(false)
+  })
+})
+
+describe('autoFreezeOwnsFrame', () => {
+  const ann = (id: string, startTime: number, extra: Partial<Annotation> = {}) =>
+    ({ id, startTime, endTime: startTime + 2, layer: 1, toolType: 'arrow', object: {} as never, ...extra }) as Annotation
+
+  it('is true when the frame has a drawing', () => {
+    expect(autoFreezeOwnsFrame([ann('a', timeForFrame(91, 30))], 3.0569, 30)).toBe(true)
+  })
+
+  it('is true for an automatic marker without drawings', () => {
+    expect(autoFreezeOwnsFrame([ann('f', 3.04, { toolType: 'freeze', freezeDuration: 1.4, freezeAuto: true })], 3.0569, 30)).toBe(true)
+  })
+
+  it('is false for a bare hand-set or legacy marker, or drawings on other frames', () => {
+    expect(autoFreezeOwnsFrame([ann('f', 3.04, { toolType: 'freeze', freezeDuration: 2, freezeAuto: false })], 3.0569, 30)).toBe(false)
+    expect(autoFreezeOwnsFrame([ann('f', 3.04, { toolType: 'freeze', freezeDuration: 2 })], 3.0569, 30)).toBe(false)
+    expect(autoFreezeOwnsFrame([ann('a', timeForFrame(92, 30))], 3.0569, 30)).toBe(false)
   })
 })

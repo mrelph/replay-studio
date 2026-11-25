@@ -182,7 +182,9 @@ interface DrawingState {
   // Annotation actions
   addAnnotation: (annotation: Annotation, opts?: { history?: boolean }) => void
   removeAnnotation: (id: string) => void
-  removeAnnotations: (ids: string[]) => void
+  removeAnnotations: (ids: string[], opts?: { history?: boolean }) => void
+  /** Removes an annotation just added with history (an abandoned empty text) as if it never was: drops the undo entry its add saved. */
+  discardNewAnnotation: (id: string) => void
   replaceAnnotations: (annotations: Annotation[]) => void
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void
   /** Re-sequences each frame: assigns revealDelay in array order; resizes the hold if the carrier is automatic;
@@ -276,7 +278,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     get().removeAnnotations([id])
   },
 
-  removeAnnotations: (ids) => {
+  removeAnnotations: (ids, opts) => {
     const { annotations, saveState, canvas, isRestoring } = get()
     if (isRestoring) return
 
@@ -284,7 +286,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     const annotationsToRemove = annotations.filter((annotation) => requestedIds.has(annotation.id))
     if (annotationsToRemove.length === 0) return
 
-    saveState()
+    if (opts?.history !== false) saveState()
 
     const removedIds = new Set(annotationsToRemove.map((annotation) => annotation.id))
     if (canvas) {
@@ -306,6 +308,17 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }))
     canvas?.requestRenderAll()
     get().syncFrames(annotationsToRemove.filter((a) => a.toolType !== 'freeze').map((a) => a.startTime))
+  },
+
+  discardNewAnnotation: (id) => {
+    const { undoStack } = get()
+    const addEntry = undoStack[undoStack.length - 1]
+    // The entry saved by the add is the last one that doesn't contain it yet.
+    const ownEntry = addEntry && !addEntry.annotations.some((a) => a.id === id) ? addEntry : null
+    get().removeAnnotations([id], { history: false })
+    if (ownEntry) {
+      set((state) => ({ undoStack: state.undoStack.filter((entry) => entry !== ownEntry) }))
+    }
   },
 
   replaceAnnotations: (annotations) => {

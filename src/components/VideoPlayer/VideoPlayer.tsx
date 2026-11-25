@@ -3,8 +3,8 @@ import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import VideoControls from './VideoControls'
 import { toast } from '@/components/ui'
-import { formatTimecode } from '@/utils/frames'
-import { MAX_PAUSE_DRIFT_SECONDS, recordedHold, setFreezeAt } from '@/utils/freezeMarkers'
+import { formatTimecode, frameIndexAt, snapToFrame } from '@/utils/frames'
+import { MAX_PAUSE_DRIFT_SECONDS, autoFreezeOwnsFrame, recordedHold, setFrameFreeze } from '@/utils/freezeMarkers'
 
 interface VideoPlayerProps {
   src: string
@@ -145,10 +145,15 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       lastTimeRef.current = video.currentTime
       // Stepping a few frames while timing a freeze picks the exact frame;
       // seeking away means the coach moved on.
-      const timing = useVideoStore.getState().freezeTiming
+      const { freezeTiming: timing, pendingPreview, fps } = useVideoStore.getState()
       if (timing && Math.abs(video.currentTime - timing.time) > MAX_PAUSE_DRIFT_SECONDS) {
         useVideoStore.getState().cancelFreezeTiming()
         toast('info', 'Freeze cancelled: the playhead moved')
+      } else if (timing) {
+        useVideoStore.getState().noteFreezeFrame(video.currentTime)
+      }
+      if (pendingPreview !== null && frameIndexAt(video.currentTime, fps) !== frameIndexAt(pendingPreview, fps)) {
+        useVideoStore.getState().setPendingPreview(null)
       }
     }
 
@@ -157,18 +162,23 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       const timing = useVideoStore.getState().freezeTiming
       if (!timing) return
       useVideoStore.getState().cancelFreezeTiming()
-      const hold = recordedHold(timing.time, video.currentTime, (performance.now() - timing.at) / 1000)
+      // video.currentTime has already moved on by now; record on the frame
+      // the pause was resumed from.
+      const { fps } = useVideoStore.getState()
+      const time = snapToFrame(timing.resumeTime, fps)
+      // A drawn-on frame's freeze is calculated, not timed: leave it alone.
+      if (autoFreezeOwnsFrame(useDrawingStore.getState().annotations, time, fps)) return
+      const hold = recordedHold(timing.time, time, (performance.now() - timing.at) / 1000)
       if (!hold.record) {
         if (hold.reason === 'too-short') toast('info', 'Freeze too short: nothing recorded')
         return
       }
-      const { fps } = useVideoStore.getState()
-      const id = setFreezeAt(video.currentTime, hold.seconds, fps)
+      const id = setFrameFreeze(time, hold.seconds, fps, { auto: false })
       if (!id) return
       // Playback is resuming from this very frame; the coach already held it
       // live, so don't let the new freeze fire again right now.
       triggeredFreezesRef.current.add(id)
-      const stamp = formatTimecode(video.currentTime, fps)
+      const stamp = formatTimecode(time, fps)
       toast('success', hold.capped ? `Freeze recorded at ${stamp} (capped at ${hold.seconds}s)` : `${hold.seconds}s freeze recorded at ${stamp}`)
     }
     const handlePause = () => {

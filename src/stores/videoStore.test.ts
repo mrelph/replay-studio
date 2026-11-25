@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useVideoStore } from './videoStore'
+import { snapToFrame } from '@/utils/frames'
 
 /** Just enough of an HTMLVideoElement for toggleFreeze. */
 function fakeVideo(paused: boolean, currentTime: number) {
@@ -56,6 +57,67 @@ describe('toggleFreeze', () => {
     useVideoStore.getState().toggleFreeze()
     useVideoStore.getState().setVideoElement(fakeVideo(true, 0) as unknown as HTMLVideoElement)
     expect(useVideoStore.getState().freezeTiming).toBeNull()
+  })
+
+  it('remembers the frame it started on as the resume frame, and follows frame steps', () => {
+    const video = fakeVideo(false, 3.0569)
+    useVideoStore.getState().setVideoElement(video as unknown as HTMLVideoElement)
+    useVideoStore.getState().toggleFreeze()
+    expect(useVideoStore.getState().freezeTiming).toMatchObject({ time: 3.0569, resumeTime: 3.0569 })
+    useVideoStore.getState().noteFreezeFrame(3.1)
+    expect(useVideoStore.getState().freezeTiming).toMatchObject({ time: 3.0569, resumeTime: 3.1 })
+  })
+
+  it('noteFreezeFrame does nothing when not timing', () => {
+    const before = useVideoStore.getState()
+    useVideoStore.getState().noteFreezeFrame(3.1)
+    expect(useVideoStore.getState().freezeTiming).toBeNull()
+    expect(useVideoStore.getState()).toBe(before)
+  })
+})
+
+describe('captureDrawFrame', () => {
+  beforeEach(() => {
+    useVideoStore.setState({ videoElement: null, currentTime: 0, fps: 30, reverseRate: 0, shuttleBaseRate: null })
+  })
+
+  it('stops a playing video on the start of its current frame', () => {
+    const video = fakeVideo(false, 3.0569)
+    useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement })
+    const time = useVideoStore.getState().captureDrawFrame()
+    expect(time).toBe(snapToFrame(3.0569, 30))
+    expect(video.pause).toHaveBeenCalledOnce()
+    expect(video.currentTime).toBe(time)
+    expect(useVideoStore.getState().currentTime).toBe(time)
+  })
+
+  it('leaves a paused video on an already snapped frame alone', () => {
+    const snapped = snapToFrame(3.0569, 30)
+    const video = fakeVideo(true, snapped)
+    let assigned = false
+    Object.defineProperty(video, 'currentTime', {
+      get: () => snapped,
+      set: () => { assigned = true },
+    })
+    useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement })
+    expect(useVideoStore.getState().captureDrawFrame()).toBe(snapped)
+    expect(video.pause).not.toHaveBeenCalled()
+    expect(assigned).toBe(false)
+    expect(useVideoStore.getState().currentTime).toBe(snapped)
+  })
+
+  it('returns the store time when there is no video', () => {
+    useVideoStore.setState({ currentTime: 4.2 })
+    expect(useVideoStore.getState().captureDrawFrame()).toBe(4.2)
+  })
+})
+
+describe('pendingPreview', () => {
+  it('holds the frame just drawn on until cleared', () => {
+    useVideoStore.getState().setPendingPreview(2.5)
+    expect(useVideoStore.getState().pendingPreview).toBe(2.5)
+    useVideoStore.getState().setPendingPreview(null)
+    expect(useVideoStore.getState().pendingPreview).toBeNull()
   })
 })
 

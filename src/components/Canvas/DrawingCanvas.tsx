@@ -12,6 +12,9 @@ import { useLiveReveal } from '@/hooks/useLiveReveal'
 import { shadowForStyle, arrowHeadSize } from '@/utils/annotationStyle'
 import { textFormatProps } from '@/utils/textFormat'
 
+/** Tools whose pointer-down starts a new drawing, which stops the video on that frame. */
+const DRAW_FRAME_TOOLS = new Set(['pen', 'line', 'arrow', 'arc-arrow', 'rectangle', 'circle', 'text', 'spotlight', 'magnifier'])
+
 /** Fabric object carrying the magnifier id this component stamps on it. */
 type MagnifierTaggedObject = fabric.Object & { magnifierId?: string }
 
@@ -48,6 +51,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   const startPointRef = useRef({ x: 0, y: 0 })
   const currentShapeRef = useRef<fabric.Line | fabric.Circle | fabric.Rect | fabric.Ellipse | fabric.Group | fabric.Path | null>(null)
   const arcPointsRef = useRef<{ x: number; y: number }[]>([])
+  // Frame time captured at pointer-down, stamped on the drawing when it is committed.
+  const drawTimeRef = useRef<number | null>(null)
 
   // Calculate video display dimensions based on the actual video element position
   const calcDimensions = useCallback(() => {
@@ -397,15 +402,17 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // the annotation can register under the same id.
   const createAnnotation = useCallback((object: fabric.Object, toolType: string, id?: string) => {
     const defaults = getToolDefaults(toolType)
+    const startTime = drawTimeRef.current ?? currentTime
+    drawTimeRef.current = null
     const endTime = duration > 0
-      ? Math.min(currentTime + defaults.duration, duration)
-      : currentTime + defaults.duration
+      ? Math.min(startTime + defaults.duration, duration)
+      : startTime + defaults.duration
     const annotationId = id || `${toolType}-${Date.now()}`
 
     addAnnotation({
       id: annotationId,
       object,
-      startTime: currentTime,
+      startTime,
       endTime,
       layer: 0,
       toolType,
@@ -413,6 +420,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       fadeOut: defaults.fadeOut,
       drawIn: defaults.drawIn,
     })
+    useDrawingStore.getState().syncFrames([startTime], { createFreeze: true })
+    useVideoStore.getState().setPendingPreview(startTime)
 
     return annotationId
   }, [addAnnotation, currentTime, duration])
@@ -465,6 +474,10 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     let isErasing = false
 
     const handleMouseDown = (e: fabric.IEvent) => {
+      // Every pointer-down with a drawing tool starts a new drawing (the pen's
+      // stroke has already begun: Fabric fires this right after the brush's
+      // own mouse-down), so stop the video on the exact frame now.
+      drawTimeRef.current = DRAW_FRAME_TOOLS.has(currentTool) ? useVideoStore.getState().captureDrawFrame() : null
       if (currentTool === 'pen' || currentTool === 'select' || currentTool === 'laser') return
 
       // Erase tool: start collecting path
@@ -721,7 +734,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           // persisting an invisible placeholder.
           text.on('editing:exited', () => {
             if (!text.text || text.text.trim() === '') {
-              useDrawingStore.getState().removeAnnotations([textId])
+              useDrawingStore.getState().discardNewAnnotation(textId)
             }
           })
 

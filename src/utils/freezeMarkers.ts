@@ -1,4 +1,5 @@
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
+import { frameIndexAt } from '@/utils/frames'
 import { MIN_RECORDED_HOLD_SECONDS, MAX_RECORDED_HOLD_SECONDS, MAX_PAUSE_DRIFT_SECONDS, findFreezeCarrierAt, freezeMarkerAnnotation } from '@/utils/freezeFrame'
 
 export { MIN_RECORDED_HOLD_SECONDS, MAX_RECORDED_HOLD_SECONDS, MAX_PAUSE_DRIFT_SECONDS, findFreezeCarrierAt }
@@ -23,6 +24,13 @@ export function recordedHold(pauseTime: number, resumeTime: number, pausedSecond
 export function findFreezeAt(annotations: Annotation[], time: number, fps: number): Annotation | undefined {
   const carrier = findFreezeCarrierAt(annotations, time, fps)
   return carrier && (carrier.freezeDuration ?? 0) > 0 ? carrier : undefined
+}
+
+/** True when `time`'s frame has drawings or an automatic freeze: its hold is calculated, not recorded from a pause. */
+export function autoFreezeOwnsFrame(annotations: Annotation[], time: number, fps: number): boolean {
+  const frame = frameIndexAt(time, fps)
+  if (annotations.some((a) => a.toolType !== 'freeze' && frameIndexAt(a.startTime, fps) === frame)) return true
+  return findFreezeCarrierAt(annotations, time, fps)?.freezeAuto === true
 }
 
 /** Adds an invisible freeze-frame marker annotation at `time`; returns its id. */

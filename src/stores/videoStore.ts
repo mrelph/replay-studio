@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { DEFAULT_FPS, stepFrames, nextForwardRate, nextReverseRate } from '@/utils/frames'
+import { DEFAULT_FPS, stepFrames, snapToFrame, nextForwardRate, nextReverseRate } from '@/utils/frames'
 
 interface VideoState {
   videoElement: HTMLVideoElement | null
@@ -18,8 +18,10 @@ interface VideoState {
   reverseRate: number
   /** playbackRate to restore when a forward shuttle (L L…) is stopped; null when not shuttling. */
   shuttleBaseRate: number | null
-  /** Set while Freeze is timing a freeze on the stopped frame (where and when it started); resuming records it. */
-  freezeTiming: { time: number; at: number } | null
+  /** Set while Freeze is timing a freeze on the stopped frame (where and when it started, and the frame it will resume from); resuming records it. */
+  freezeTiming: { time: number; at: number; resumeTime: number } | null
+  /** Frame time just drawn on, awaiting its first Play. */
+  pendingPreview: number | null
   /** Set while the player holds on an automatic freeze frame (not a user pause); endedAt is set once the hold has finished. */
   autoHold: { time: number; startedAt: number; endedAt: number | null } | null
 
@@ -39,6 +41,11 @@ interface VideoState {
   toggleFreeze: () => void
   /** Stops timing without recording anything. */
   cancelFreezeTiming: () => void
+  /** Moves the frame a timed freeze will be recorded on (frame steps while paused); no-op when not timing. */
+  noteFreezeFrame: (time: number) => void
+  /** Pauses if playing, snaps the video to its current frame start, updates the store's currentTime, returns that time. */
+  captureDrawFrame: () => number
+  setPendingPreview: (time: number | null) => void
   beginAutoHold: (time: number) => void
   endAutoHold: () => void
   clearAutoHold: () => void
@@ -89,9 +96,10 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   reverseRate: 0,
   shuttleBaseRate: null,
   freezeTiming: null,
+  pendingPreview: null,
   autoHold: null,
 
-  setVideoElement: (element) => set({ videoElement: element, freezeTiming: null, autoHold: null }),
+  setVideoElement: (element) => set({ videoElement: element, freezeTiming: null, pendingPreview: null, autoHold: null }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration }),
@@ -130,9 +138,23 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     }
     if (reverseRate > 0 || shuttleBaseRate !== null) get().shuttleStop()
     else if (!videoElement.paused) videoElement.pause()
-    set({ freezeTiming: { time: videoElement.currentTime, at: performance.now() } })
+    const time = videoElement.currentTime
+    set({ freezeTiming: { time, at: performance.now(), resumeTime: time } })
   },
   cancelFreezeTiming: () => set({ freezeTiming: null }),
+  noteFreezeFrame: (time) =>
+    set((state) => (state.freezeTiming ? { freezeTiming: { ...state.freezeTiming, resumeTime: time } } : state)),
+  captureDrawFrame: () => {
+    const { videoElement, reverseRate, shuttleBaseRate, fps } = get()
+    if (!videoElement) return get().currentTime
+    if (reverseRate > 0 || shuttleBaseRate !== null) get().shuttleStop()
+    else if (!videoElement.paused) videoElement.pause()
+    const time = snapToFrame(videoElement.currentTime, fps)
+    if (videoElement.currentTime !== time) videoElement.currentTime = time
+    set({ currentTime: time })
+    return time
+  },
+  setPendingPreview: (time) => set({ pendingPreview: time }),
   beginAutoHold: (time) => set({ autoHold: { time, startedAt: performance.now(), endedAt: null } }),
   endAutoHold: () =>
     set((state) => (state.autoHold ? { autoHold: { ...state.autoHold, endedAt: performance.now() } } : state)),
