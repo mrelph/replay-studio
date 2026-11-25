@@ -6,6 +6,7 @@ import { toast } from '@/components/ui'
 import { formatTimecode, frameIndexAt, snapToFrame } from '@/utils/frames'
 import { MAX_PAUSE_DRIFT_SECONDS, autoFreezeOwnsFrame, frameHasDrawings, recordedHold, setFrameFreeze } from '@/utils/freezeMarkers'
 import { previewHoldFor } from '@/utils/holdPreview'
+import { useSpeedPlayback } from '@/hooks/useSpeedPlayback'
 import type { Annotation } from '@/stores/drawingStore'
 
 interface VideoPlayerProps {
@@ -20,7 +21,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
 
   const {
     isPlaying,
-    playbackRate,
+    videoElement,
     setIsPlaying,
     setCurrentTime,
     setDuration,
@@ -282,12 +283,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     }
   }, [setCurrentTime, setDuration, setIsPlaying, resetFreezes])
 
-  // Sync playback rate
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.playbackRate = playbackRate
-    }
-  }, [playbackRate])
+  useSpeedPlayback(videoElement)
 
   return (
     <div ref={containerRef} className="flex flex-col h-full w-full overflow-hidden">

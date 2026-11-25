@@ -26,6 +26,8 @@ interface VideoState {
   autoHold: { time: number; startedAt: number; endedAt: number | null } | null
   /** Set by the player: asked before Play starts the video; returns true when it held the frame instead (the first Play after drawing previews the freeze). */
   interceptPlay: (() => boolean) | null
+  /** Set while a slow-motion region is being recorded live: where and when it started, and the speed it plays at. */
+  slowRecording: { startSrc: number; at: number; speed: number } | null
 
   // Actions
   setVideoElement: (element: HTMLVideoElement | null) => void
@@ -102,16 +104,15 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   pendingPreview: null,
   autoHold: null,
   interceptPlay: null,
+  slowRecording: null,
 
-  setVideoElement: (element) => set({ videoElement: element, freezeTiming: null, pendingPreview: null, autoHold: null }),
+  setVideoElement: (element) =>
+    set({ videoElement: element, freezeTiming: null, pendingPreview: null, autoHold: null, slowRecording: null }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration }),
   setPlaybackRate: (rate) => {
-    const { videoElement } = get()
-    if (videoElement) {
-      videoElement.playbackRate = rate
-    }
+    // useSpeedPlayback applies it to the element.
     // An explicit speed choice replaces whatever a shuttle would restore.
     set({ playbackRate: rate, shuttleBaseRate: null })
   },
@@ -122,13 +123,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     }
     set({ volume })
   },
-  setIsMuted: (muted) => {
-    const { videoElement } = get()
-    if (videoElement) {
-      videoElement.muted = muted
-    }
-    set({ isMuted: muted })
-  },
+  setIsMuted: (muted) => set({ isMuted: muted }),
   setInPoint: (time) => set({ inPoint: time }),
   setOutPoint: (time) => set({ outPoint: time }),
   setIsLooping: (looping) => set({ isLooping: looping }),
@@ -213,7 +208,6 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     stopReverseLoop()
     const base = shuttleBaseRate ?? playbackRate
     const rate = nextForwardRate(direction, playbackRate, base)
-    videoElement.playbackRate = rate
     set({ reverseRate: 0, playbackRate: rate, shuttleBaseRate: rate === base ? null : base })
     if (videoElement.paused) void videoElement.play()
   },
@@ -224,7 +218,6 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     if (!videoElement.paused) videoElement.pause()
     const { shuttleBaseRate } = get()
     if (shuttleBaseRate !== null) {
-      videoElement.playbackRate = shuttleBaseRate
       set({ playbackRate: shuttleBaseRate, shuttleBaseRate: null })
     }
     set({ reverseRate: rate })
@@ -267,10 +260,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   shuttleStop: () => {
     const { videoElement, shuttleBaseRate } = get()
     stopReverseLoop()
-    if (videoElement) {
-      videoElement.pause()
-      if (shuttleBaseRate !== null) videoElement.playbackRate = shuttleBaseRate
-    }
+    videoElement?.pause()
     set((state) => ({
       reverseRate: 0,
       shuttleBaseRate: null,
@@ -307,13 +297,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
       videoElement.currentTime = outPoint
     }
   },
-  toggleMute: () => {
-    const { videoElement, isMuted } = get()
-    if (videoElement) {
-      videoElement.muted = !isMuted
-    }
-    set({ isMuted: !isMuted })
-  },
+  toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
   reset: () => {
     stopReverseLoop()
     set({
@@ -325,6 +309,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
       duration: 0,
       inPoint: null,
       outPoint: null,
+      slowRecording: null,
     })
   },
 }))

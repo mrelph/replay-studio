@@ -4,10 +4,12 @@ import {
   Volume2, Volume1, VolumeX, Maximize, Minimize, Snowflake
 } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
+import { useSpeedStore } from '@/stores/speedStore'
 import { useState, useRef, useEffect } from 'react'
 import { IconButton, Select, Slider } from '@/components/ui'
 import { useShortcutKeyLabel } from '@/stores/shortcutsStore'
 import { formatTimecode } from '@/utils/frames'
+import { regionBadge } from '@/utils/liveRate'
 
 // 4x/8x are reachable by tapping the forward shuttle (L), so the picker must be able to show them.
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8]
@@ -82,6 +84,9 @@ export default function VideoControls() {
     setOutPoint,
     setIsLooping,
   } = useVideoStore()
+
+  const speedRegions = useSpeedStore((s) => s.regions)
+  const speedBadge = regionBadge(speedRegions, currentTime)
 
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -263,6 +268,11 @@ export default function VideoControls() {
               </option>
             ))}
           </Select>
+          {speedBadge && (
+            <span className="ml-1.5 text-xs font-mono text-accent tabular-nums" title="Speed region under the playhead">
+              {speedBadge}
+            </span>
+          )}
         </div>
 
         {/* Center - Time display */}
