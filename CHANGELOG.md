@@ -30,9 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A freeze recorded with H no longer lands one or two frames late.
 - Undo after deleting all the words in a text brings the text back as it was,
   instead of an empty box.
-- Exported clips no longer show a drawing one frame late, or drop a
-  Freeze only drawing, when the clip starts at the very beginning of the
-  video. A magnifier's zoom now starts on the same frame as its ring.
+- At some frame rates and clip lengths, an export that starts at the very
+  beginning of the video could leave a drawing off its first frame when that
+  frame has no freeze, and could leave out a one-frame (Freeze only) drawing
+  entirely. Both now show.
+- A magnifier's zoom in an export no longer starts a frame after its ring.
 
 ### Planned
 - Audio waveform visualization in timeline

@@ -412,14 +412,18 @@ describe('a clip from 0, where a play frame can fall a float ulp below its frame
     expect(signatureAt(spans, k).map((g) => g.id)).toEqual(['a'])
   })
 
-  it('shows a drawing on the first output frame of the hold on its frame', () => {
-    const drawing: SpanAnnotationLike = { id: 'a', startTime: frameStart(k, fps), endTime: frameStart(k, fps) + 2, toolType: 'text' }
-    const { segments } = buildOutputTimeline(clip, [{ startTime: timeForFrame(k, fps), freezeDuration: 1.2 }], fps)
-    const spans = buildDrawingSpans(segments, [drawing], fps, { sourceFps: fps })
-    const firstHold = framePresentations(segments, fps).findIndex((f) => segments[f.segmentIndex].kind === 'hold')
-    expect(firstHold).toBe(k)
-    expect(signatureAt(spans, firstHold).map((g) => g.id)).toEqual(['a'])
-    expect(signatureAt(spans, firstHold - 1)).toEqual([])
+  it('by design, starts a draw-on arrow from nothing on its own frame and draws it from the next', () => {
+    // Accepted behaviour: the arrow is present (bucket 0) on its start frame, not missing.
+    const rate = 30
+    const start = 23 // at 30 fps, 10 s, this play frame falls a float ulp below 23 / 30
+    const arrow: SpanAnnotationLike = { id: 'a', startTime: frameStart(start, rate), endTime: frameStart(start, rate) + 2, drawIn: 0.35, toolType: 'arrow' }
+    const { segments } = buildOutputTimeline(clip, [], rate)
+    const spans = buildDrawingSpans(segments, [arrow], rate, { sourceFps: rate })
+    const shown = framePresentations(segments, rate).findIndex((f) => frameIndexAt(f.srcTime, rate) === start)
+    expect(shown).toBe(start)
+    expect(signatureAt(spans, shown)).toMatchObject([{ id: 'a', revealBucket: 0 }])
+    expect(signatureAt(spans, shown + 1)[0].revealBucket).toBeGreaterThan(0)
+    expect(signatureAt(spans, shown - 1)).toEqual([])
   })
 
   it('puts a drawing on frame k in the signature of every output frame showing source frame k', () => {

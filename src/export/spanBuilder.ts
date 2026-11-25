@@ -89,6 +89,15 @@ export function computeFrameSignature(
 }
 
 /**
+ * A play frame's source time, lifted to its frame's exact start when it sits in
+ * the sliver just below it (float error in the even spacing of
+ * `frameSourceTimes`), so a drawing starting exactly on the frame shows on it.
+ */
+function sampleTime(srcTime: number, sourceFps: number): number {
+  return Math.max(srcTime, frameStart(frameIndexAt(srcTime, sourceFps), sourceFps))
+}
+
+/**
  * Walks every output frame (via `framePresentations`) and groups consecutive
  * frames with an identical visual signature into spans. Each span renders to
  * exactly one drawing-layer PNG (see `clipRenderer.renderClip`): a clip with
@@ -101,15 +110,6 @@ export function computeFrameSignature(
  * freeze marker recorded a frame or two later) keeps the reveal running while
  * the source frame is frozen.
  */
-/**
- * A play frame's source time, lifted to its frame's exact start when it sits in
- * the sliver just below it (float error in the even spacing of
- * `frameSourceTimes`), so a drawing starting exactly on the frame shows on it.
- */
-function sampleTime(srcTime: number, sourceFps: number): number {
-  return Math.max(srcTime, frameStart(frameIndexAt(srcTime, sourceFps), sourceFps))
-}
-
 export function buildDrawingSpans(
   segments: OutputSegment[],
   annotations: SpanAnnotationLike[],
