@@ -146,13 +146,22 @@ you paused yourself does the same.
 - `H` with no drawings still records the time you held the frame. If you draw
   after pressing `H`, the freeze becomes automatic and the paused time is
   ignored.
+- Freezes set from drawings, or typed in the Freeze field, are kept: `H` on
+  such a frame doesn't change them and shows a message instead. On a drawn
+  frame with no freeze (a project from an earlier version, or drawings moved
+  off their freeze), `H` records one as usual and the drawings draw on in
+  order during it.
 
-- It works while playing or already paused. Stepping a few frames while timing
-  (up to about ½ s) is fine: the freeze goes on the frame you resume from.
-- Seeking or scrubbing further away cancels the freeze. A freeze shorter than
+Using `H`:
+
+- `H` works while playing or already paused. Stepping a few frames while
+  timing (up to about ½ s) is fine: the freeze goes on the frame you resume
+  from.
+- Seeking or scrubbing further away cancels the `H` freeze. One shorter than
   0.3 s (a double-tap) isn't recorded.
-- Freezes are capped at 30 s. Freezing a frame that already has one replaces
-  its length, including while an existing freeze is playing back.
+- Freezes are capped at 30 s. Pressing `H` on a frame that already has a freeze
+  you recorded with `H` replaces its length, including while that freeze is
+  playing back.
 - To change a freeze's length or delete it, use its marker in the annotation
   details on the timeline.
 

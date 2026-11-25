@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for you. The freeze lasts as long as the drawings need plus a second to
   read, however long you took to draw.
 - Drawings on one frozen frame draw on one after another, in the order you
-  drew them, live and in exported MP4s and GIFs.
+  drew them, live and in exported MP4s and GIFs. A frame set to Freeze 0 shows
+  its drawings together.
 - Pressing Play after drawing previews the freeze before the video resumes.
 - "Stays" chips in the toolbar (Freeze only, 1s, 2s, 4s, To end) set how long
   drawings remain on screen, and re-time the drawings you have selected.
