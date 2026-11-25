@@ -106,6 +106,7 @@ export function useKeyboardShortcuts() {
     switch (action) {
       case 'video.playPause':
         e.preventDefault()
+        if (e.repeat) return
         togglePlay()
         return
       case 'video.stepForward':
