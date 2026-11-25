@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { fabric } from '@/lib/fabric'
 import {
   recordedHold,
@@ -12,6 +12,19 @@ import {
 } from './freezeMarkers'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
 import { timeForFrame } from './frames'
+
+// Fabric schedules renders on requestAnimationFrame; dispose each test canvas
+// so none fires after the mocked 2D context is restored (jsdom's returns null).
+const canvases: Array<InstanceType<typeof fabric.Canvas>> = []
+function testCanvas() {
+  const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+  canvases.push(canvas)
+  return canvas
+}
+afterEach(() => {
+  canvases.splice(0).forEach((canvas) => canvas.dispose())
+})
+
 
 describe('recordedHold', () => {
   it('records the paused time, rounded to 0.1 s', () => {
@@ -86,7 +99,7 @@ describe('setFrameFreeze', () => {
   })
 
   it('keeps one carrier when the freeze is set to 0 and then changed', () => {
-    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    const canvas = testCanvas()
     useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
     addFreezeMarker(4, 1.4, { auto: true })
     const freezes = () => useDrawingStore.getState().annotations.filter((a) => a.toolType === 'freeze')
@@ -103,7 +116,7 @@ describe('setFrameFreeze', () => {
   })
 
   it('setFreezeAt leaves a legacy carrier without a freezeAuto key, and makes an automatic one hand-set', () => {
-    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    const canvas = testCanvas()
     useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
     const legacy = addFreezeMarker(4, 1)
     expect(setFreezeAt(4, 3, 30)).toBe(legacy)

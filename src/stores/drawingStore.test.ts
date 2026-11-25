@@ -1,6 +1,19 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { fabric } from '@/lib/fabric'
 import { useDrawingStore, type Annotation } from './drawingStore'
+
+// Fabric schedules renders on requestAnimationFrame; dispose each test canvas
+// so none fires after the mocked 2D context is restored (jsdom's returns null).
+const canvases: Array<InstanceType<typeof fabric.Canvas>> = []
+function testCanvas() {
+  const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+  canvases.push(canvas)
+  return canvas
+}
+afterEach(() => {
+  canvases.splice(0).forEach((canvas) => canvas.dispose())
+})
+
 
 const originalGetContext = HTMLCanvasElement.prototype.getContext
 
@@ -27,7 +40,7 @@ afterAll(() => {
 describe('drawingStore undo', () => {
 
   it('keeps drawIn across undo', () => {
-    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    const canvas = testCanvas()
     useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
     const object = new fabric.Line([0, 0, 40, 20], { stroke: '#f00', strokeWidth: 4 })
     useDrawingStore.getState().addAnnotation({
@@ -46,7 +59,7 @@ describe('drawingStore undo', () => {
   })
 
   it('keeps revealDelay and freezeAuto across undo', () => {
-    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    const canvas = testCanvas()
     useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
     const object = new fabric.Line([0, 0, 40, 20], { stroke: '#f00', strokeWidth: 4 })
     useDrawingStore.getState().addAnnotation({
@@ -84,7 +97,7 @@ describe('drawingStore frame sync', () => {
       drawIn,
     }) as Annotation
   const reset = () => {
-    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    const canvas = testCanvas()
     useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false, selectedAnnotationId: null })
   }
   const draw = (a: Annotation) => {
