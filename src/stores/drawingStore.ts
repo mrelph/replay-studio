@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import type { fabric } from 'fabric'
 import { stripReveal } from '@/export/reveal'
+import { useVideoStore } from '@/stores/videoStore'
+import { frameIndexAt } from '@/utils/frames'
+import { findFreezeCarrierAt, createFreezeMarkerObject } from '@/utils/freezeFrame'
+import { sequenceFrame } from '@/utils/freezeSequence'
 
 export interface Annotation {
   id: string
@@ -176,11 +180,15 @@ interface DrawingState {
   setCanvas: (canvas: fabric.Canvas | null) => void
 
   // Annotation actions
-  addAnnotation: (annotation: Annotation) => void
+  addAnnotation: (annotation: Annotation, opts?: { history?: boolean }) => void
   removeAnnotation: (id: string) => void
   removeAnnotations: (ids: string[]) => void
   replaceAnnotations: (annotations: Annotation[]) => void
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void
+  /** Re-sequences each frame: assigns revealDelay in array order; resizes the hold if the carrier is automatic;
+   *  creates an automatic marker when `createFreeze` and the frame has drawings but no carrier;
+   *  removes an automatic marker when the frame has no drawings left. Never saves undo state. */
+  syncFrames: (times: number[], opts?: { createFreeze?: boolean }) => void
   selectAnnotation: (id: string | null) => void
   clearAnnotations: () => void
   getVisibleAnnotations: (currentTime: number) => Annotation[]
@@ -237,11 +245,11 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }
   },
 
-  addAnnotation: (annotation) => {
+  addAnnotation: (annotation, opts) => {
     const { saveState, activeLayerId, canvas, isRestoring } = get()
     if (isRestoring) return
 
-    saveState()
+    if (opts?.history !== false) saveState()
 
     // Ensure annotation is on active layer if not specified
     const ann = {
@@ -296,6 +304,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
         : state.selectedAnnotationId,
     }))
     canvas?.requestRenderAll()
+    get().syncFrames(annotationsToRemove.filter((a) => a.toolType !== 'freeze').map((a) => a.startTime))
   },
 
   replaceAnnotations: (annotations) => {
@@ -328,11 +337,85 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
 
   updateAnnotation: (id, updates) => {
     if (get().isRestoring) return
+    const before = get().annotations.find((a) => a.id === id)
     set((state) => ({
       annotations: state.annotations.map((a) =>
         a.id === id ? { ...a, ...updates } : a
       ),
     }))
+    if (before && before.toolType !== 'freeze' && ('drawIn' in updates || 'startTime' in updates)) {
+      get().syncFrames([before.startTime, updates.startTime ?? before.startTime])
+    }
+  },
+
+  syncFrames: (times, opts) => {
+    const { annotations, canvas, isRestoring } = get()
+    if (isRestoring || times.length === 0) return
+    const { fps } = useVideoStore.getState()
+
+    const updates = new Map<string, Partial<Annotation>>()
+    const removeIds = new Set<string>()
+    const create: Array<{ time: number; hold: number }> = []
+    const seen = new Set<number>()
+
+    for (const time of times) {
+      const frame = frameIndexAt(time, fps)
+      if (seen.has(frame)) continue
+      seen.add(frame)
+
+      const drawings = annotations.filter((a) => a.toolType !== 'freeze' && frameIndexAt(a.startTime, fps) === frame)
+      const carrier = findFreezeCarrierAt(annotations, time, fps)
+
+      if (drawings.length === 0) {
+        if (carrier?.toolType === 'freeze' && carrier.freezeAuto === true) removeIds.add(carrier.id)
+        continue
+      }
+
+      const willHaveCarrier = !!carrier || !!opts?.createFreeze
+      const { delays, hold } = sequenceFrame(drawings)
+      for (const drawing of drawings) {
+        // Drawn-order reveal belongs to a frozen frame; a frame without a
+        // freeze plays its drawings together, as before this release.
+        const revealDelay = willHaveCarrier ? delays.get(drawing.id) : undefined
+        if (drawing.revealDelay !== revealDelay) updates.set(drawing.id, { revealDelay })
+      }
+
+      if (carrier) {
+        if (carrier.freezeAuto === true && carrier.freezeDuration !== hold) {
+          updates.set(carrier.id, { ...updates.get(carrier.id), freezeDuration: hold })
+        }
+      } else if (willHaveCarrier) {
+        create.push({ time, hold })
+      }
+    }
+
+    if (updates.size > 0 || removeIds.size > 0) {
+      if (canvas && removeIds.size > 0) {
+        annotations.filter((a) => removeIds.has(a.id)).forEach((a) => canvas.remove(a.object))
+      }
+      set((state) => ({
+        annotations: state.annotations
+          .filter((a) => !removeIds.has(a.id))
+          .map((a) => (updates.has(a.id) ? { ...a, ...updates.get(a.id) } : a)),
+        selectedAnnotationId: state.selectedAnnotationId && removeIds.has(state.selectedAnnotationId)
+          ? null
+          : state.selectedAnnotationId,
+      }))
+    }
+
+    for (const { time, hold } of create) {
+      get().addAnnotation({
+        id: `freeze-${Date.now()}`,
+        object: createFreezeMarkerObject(),
+        startTime: time,
+        endTime: time + 0.1,
+        layer: 1,
+        toolType: 'freeze',
+        freezeDuration: hold,
+        freezeAuto: true,
+      }, { history: false })
+    }
+    if (removeIds.size > 0) canvas?.requestRenderAll()
   },
 
   selectAnnotation: (id) => {

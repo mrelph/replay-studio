@@ -1,4 +1,4 @@
-import { MAX_RECORDED_HOLD_SECONDS } from '@/utils/freezeMarkers'
+import { MAX_RECORDED_HOLD_SECONDS } from '@/utils/freezeFrame'
 
 export const NO_DRAW_STEP_SECONDS = 0.15
 export const READ_TIME_SECONDS = 1.0

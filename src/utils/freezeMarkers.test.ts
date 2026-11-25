@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest'
-import { recordedHold, findFreezeAt, MAX_RECORDED_HOLD_SECONDS } from './freezeMarkers'
-import type { Annotation } from '@/stores/drawingStore'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { fabric } from '@/lib/fabric'
+import {
+  recordedHold,
+  findFreezeAt,
+  findFreezeCarrierAt,
+  setFrameFreeze,
+  addFreezeMarker,
+  MAX_RECORDED_HOLD_SECONDS,
+} from './freezeMarkers'
+import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
 import { timeForFrame } from './frames'
 
 describe('recordedHold', () => {
@@ -40,5 +48,55 @@ describe('findFreezeAt', () => {
 
   it('ignores annotations without a freeze', () => {
     expect(findFreezeAt([ann('a', 5)], 5, 30)).toBeUndefined()
+  })
+})
+
+describe('findFreezeCarrierAt', () => {
+  const ann = (id: string, startTime: number, toolType: string, freezeDuration?: number) =>
+    ({ id, startTime, freezeDuration, endTime: startTime + 1, layer: 1, toolType }) as unknown as Annotation
+
+  it('returns a marker whose freeze is 0', () => {
+    expect(findFreezeCarrierAt([ann('m', 5, 'freeze', 0)], 5, 30)?.id).toBe('m')
+  })
+
+  it('prefers the marker over a drawing that also has a freeze', () => {
+    const list = [ann('d', 5, 'arrow', 3), ann('m', 5, 'freeze', 2)]
+    expect(findFreezeCarrierAt(list, 5, 30)?.id).toBe('m')
+  })
+
+  it('returns a legacy drawing carrier when there is no marker', () => {
+    const list = [ann('x', 5, 'arrow'), ann('d', 5, 'arrow', 3)]
+    expect(findFreezeCarrierAt(list, 5, 30)?.id).toBe('d')
+  })
+
+  it('findFreezeAt ignores a 0 carrier', () => {
+    expect(findFreezeAt([ann('m', 5, 'freeze', 0)], 5, 30)).toBeUndefined()
+  })
+})
+
+describe('setFrameFreeze', () => {
+  const originalGetContext = HTMLCanvasElement.prototype.getContext
+  beforeAll(() => {
+    HTMLCanvasElement.prototype.getContext = (() => new Proxy({}, { get: () => () => undefined })) as unknown as HTMLCanvasElement['getContext']
+  })
+  afterAll(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext
+  })
+
+  it('keeps one carrier when the freeze is set to 0 and then changed', () => {
+    const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 100, height: 100 })
+    useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
+    addFreezeMarker(4, 1.4, { auto: true })
+    const freezes = () => useDrawingStore.getState().annotations.filter((a) => a.toolType === 'freeze')
+
+    const id = setFrameFreeze(4, 0, 30, { auto: false })
+    expect(freezes()).toHaveLength(1)
+    expect(freezes()[0].id).toBe(id)
+    expect(freezes()[0].freezeDuration).toBe(0)
+    expect(freezes()[0].freezeAuto).toBe(false)
+
+    expect(setFrameFreeze(4, 2, 30, { auto: false })).toBe(id)
+    expect(freezes()).toHaveLength(1)
+    expect(freezes()[0].freezeDuration).toBe(2)
   })
 })
