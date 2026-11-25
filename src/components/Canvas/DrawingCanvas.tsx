@@ -10,6 +10,7 @@ import { annotationStateAt } from '@/export/annotationTiming'
 import { stripReveal } from '@/export/reveal'
 import { useLiveReveal } from '@/hooks/useLiveReveal'
 import { shadowForStyle, arrowHeadSize } from '@/utils/annotationStyle'
+import { textFormatProps } from '@/utils/textFormat'
 
 /** Fabric object carrying the magnifier id this component stamps on it. */
 type MagnifierTaggedObject = fabric.Object & { magnifierId?: string }
@@ -30,7 +31,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // Track magnifiers for live video zoom updates
   const magnifiersRef = useRef<Map<string, { circle: fabric.Circle, centerX: number, centerY: number, radius: number }>>(new Map())
 
-  const { currentTool, strokeColor, strokeWidth, annotationStyle, setIsDrawing } = useToolStore()
+  const { currentTool, strokeColor, strokeWidth, annotationStyle, textFormat, setIsDrawing } = useToolStore()
   const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
   const laserColor = useAudienceStore((s) => s.laserColor)
   const { setCanvas, addAnnotation, annotations } = useDrawingStore()
@@ -705,7 +706,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           const text = new fabric.IText('', {
             left: pointer.x,
             top: pointer.y,
-            fontSize: 24,
+            ...textFormatProps(textFormat),
             fill: strokeColor,
             fontFamily: 'Arial',
             shadow: shadowForStyle(annotationStyle, strokeColor),
@@ -979,7 +980,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       canvas.off('mouse:move', handleMouseMove)
       canvas.off('mouse:up', handleMouseUp)
     }
-  }, [currentTool, strokeColor, strokeWidth, annotationStyle, setIsDrawing, createAnnotation])
+  }, [currentTool, strokeColor, strokeWidth, annotationStyle, textFormat, setIsDrawing, createAnnotation])
 
   // Update brush when path is created (for pen tool)
   useEffect(() => {

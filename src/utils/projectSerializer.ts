@@ -46,6 +46,11 @@ export interface SerializedAnnotation {
     text?: string
     fontSize?: number
     fontFamily?: string
+    /** Absent in files saved before text formatting existed. */
+    fontWeight?: string | number
+    fontStyle?: string
+    underline?: boolean
+    textPlate?: boolean
     // For groups
     objects?: SerializedFabricData[]
   }
@@ -85,6 +90,10 @@ type SerializableFabricObject = fabric.Object & {
   text?: string
   fontSize?: number
   fontFamily?: string
+  fontWeight?: string | number
+  fontStyle?: string
+  underline?: boolean
+  textPlate?: boolean
   _objects?: SerializableFabricObject[]
 }
 
@@ -124,7 +133,16 @@ export function serializeFabricObject(input: fabric.Object): SerializedAnnotatio
       return { ...base, path: obj.path }
     case 'i-text':
     case 'text':
-      return { ...base, text: obj.text, fontSize: obj.fontSize, fontFamily: obj.fontFamily }
+      return {
+        ...base,
+        text: obj.text,
+        fontSize: obj.fontSize,
+        fontFamily: obj.fontFamily,
+        fontWeight: obj.fontWeight,
+        fontStyle: obj.fontStyle,
+        underline: !!obj.underline,
+        textPlate: !!obj.textPlate,
+      }
     case 'triangle':
       return { ...base, width: obj.width, height: obj.height }
     case 'group':
@@ -323,6 +341,10 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
         ...commonProps,
         fontSize: data.fontSize,
         fontFamily: data.fontFamily,
+        fontWeight: data.fontWeight ?? 'normal',
+        fontStyle: data.fontStyle ?? 'normal',
+        underline: data.underline ?? false,
+        textPlate: data.textPlate ?? false,
         ...(hasStoredShadow ? { shadow } : {}),
       })
 

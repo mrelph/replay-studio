@@ -1,5 +1,9 @@
 @import './theme/tokens.css';
 @import '@fontsource-variable/inter';
+/* Caption fonts for text annotations (see utils/textFormat.ts) */
+@import '@fontsource-variable/oswald';
+@import '@fontsource-variable/roboto-slab';
+@import '@fontsource/permanent-marker';
 
 @tailwind base;
 @tailwind components;

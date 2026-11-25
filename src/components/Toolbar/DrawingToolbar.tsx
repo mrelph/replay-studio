@@ -1,12 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
-  Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser
+  Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser, Bold, Italic, Underline, Plus, RectangleHorizontal
 } from 'lucide-react'
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { fabric } from '@/lib/fabric'
 import { Modal, Button } from '@/components/ui'
 import { restyleObject, STYLED_TOOL_TYPES, type AnnotationStyle } from '@/utils/annotationStyle'
+import {
+  applyTextFormat, ensureFontLoaded, isTextObject, readTextFormat, stepFontSize,
+  FONT_FAMILIES, FONT_SIZES, type TextFormat,
+} from '@/utils/textFormat'
 
 const ANNOTATION_STYLES: { value: AnnotationStyle; label: string; title: string }[] = [
   { value: 'outline', label: 'Outline', title: 'Dark outline: readable on bright ice' },
@@ -58,6 +63,43 @@ function VerticalDivider() {
   return <div className="w-px h-8 bg-border-subtle mx-1.5 flex-shrink-0 self-center" />
 }
 
+const SELECTION_EVENTS = ['selection:created', 'selection:updated', 'selection:cleared', 'object:modified', 'object:removed']
+
+/** Text objects in the canvas selection, re-read whenever the selection or an object changes. */
+function useSelectedText() {
+  const canvas = useDrawingStore((s) => s.canvas)
+  const [, refresh] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => {
+    if (!canvas) return
+    const onChange = () => refresh()
+    SELECTION_EVENTS.forEach((event) => canvas.on(event, onChange))
+    return () => SELECTION_EVENTS.forEach((event) => canvas.off(event, onChange))
+  }, [canvas])
+  return { selectedText: canvas ? canvas.getActiveObjects().filter(isTextObject) : [], refresh }
+}
+
+// Keeps keyboard focus in the text being edited when a format button is clicked.
+const keepFocus = (e: React.MouseEvent) => e.preventDefault()
+
+function FormatToggle({ active, label, onClick, children }: {
+  active: boolean; label: string; onClick: () => void; children: React.ReactNode
+}) {
+  return (
+    <button
+      onMouseDown={keepFocus}
+      onClick={onClick}
+      className={`w-7 h-7 rounded flex items-center justify-center transition-all ${
+        active ? 'bg-accent-subtle ring-1 ring-accent text-text-primary' : 'hover:bg-surface-sunken text-text-secondary'
+      }`}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+    >
+      {children}
+    </button>
+  )
+}
+
 const COLOR_NAMES: Record<string, string> = {
   '#FF3B30': 'Red (1)',
   '#FF9500': 'Orange (2)',
@@ -72,7 +114,32 @@ const COLOR_NAMES: Record<string, string> = {
 }
 
 export default function DrawingToolbar() {
-  const { strokeColor, strokeWidth, annotationStyle, setStrokeColor, setStrokeWidth, setAnnotationStyle } = useToolStore()
+  const {
+    currentTool, strokeColor, strokeWidth, annotationStyle, textFormat,
+    setStrokeColor, setStrokeWidth, setAnnotationStyle, setTextFormat,
+  } = useToolStore()
+  const { selectedText, refresh: refreshSelectedText } = useSelectedText()
+  const showTextGroup = currentTool === 'text' || selectedText.length > 0
+  // Show the selected text's own format; otherwise the format new text will get.
+  const shownFormat = selectedText.length > 0 ? readTextFormat(selectedText[0]) : textFormat
+
+  const changeTextFormat = (changes: Partial<TextFormat>) => {
+    setTextFormat(changes)
+    if (selectedText.length === 0) return
+    const { canvas, saveState } = useDrawingStore.getState()
+    saveState()
+    selectedText.forEach((text) => applyTextFormat(text, changes))
+    canvas?.requestRenderAll()
+    refreshSelectedText()
+  }
+
+  const changeFontFamily = async (fontFamily: string) => {
+    await ensureFontLoaded(fontFamily)
+    fabric.util.clearFabricFontCache(fontFamily)
+    changeTextFormat({ fontFamily })
+    // The dropdown took keyboard focus; hand it back to the text being typed.
+    selectedText.find((text) => text.isEditing)?.hiddenTextarea?.focus()
+  }
   const { undo, redo, clearAnnotations, undoStack, redoStack, annotations } = useDrawingStore()
 
   const chooseAnnotationStyle = (style: AnnotationStyle) => {
@@ -114,6 +181,66 @@ export default function DrawingToolbar() {
         <ToolButton tool="circle" label="Ellipse" shortcut="C" icon={<Circle className="w-4 h-4" />} />
         <ToolButton tool="text" label="Text" shortcut="T" icon={<Type className="w-4 h-4" />} />
       </ToolGroup>
+
+      {showTextGroup && (
+        <>
+          <VerticalDivider />
+
+          {/* Text format: applies to selected text and to new text. Sits beside the Text tool so it stays on screen in a narrow window. */}
+          <ToolGroup label="Text">
+            <select
+              value={shownFormat.fontFamily}
+              onChange={(e) => void changeFontFamily(e.target.value)}
+              className="h-7 w-24 rounded bg-surface-sunken border border-border-subtle text-xs text-text-primary px-1 mr-1"
+              style={{ fontFamily: shownFormat.fontFamily }}
+              title="Font"
+              aria-label="Font"
+            >
+              {FONT_FAMILIES.some((f) => f.value === shownFormat.fontFamily) ? null : (
+                <option value={shownFormat.fontFamily}>{shownFormat.fontFamily}</option>
+              )}
+              {FONT_FAMILIES.map(({ label, value }) => (
+                <option key={value} value={value} style={{ fontFamily: value }}>{label}</option>
+              ))}
+            </select>
+            <button
+              onMouseDown={keepFocus}
+              onClick={() => changeTextFormat({ fontSize: stepFontSize(shownFormat.fontSize, -1) })}
+              disabled={shownFormat.fontSize <= FONT_SIZES[0]}
+              className="w-6 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-sunken disabled:opacity-25 disabled:hover:bg-transparent"
+              title="Smaller text"
+              aria-label="Smaller text"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <span className="w-7 text-center text-xs tabular-nums text-text-primary select-none" title="Text size">
+              {shownFormat.fontSize}
+            </span>
+            <button
+              onMouseDown={keepFocus}
+              onClick={() => changeTextFormat({ fontSize: stepFontSize(shownFormat.fontSize, 1) })}
+              disabled={shownFormat.fontSize >= FONT_SIZES[FONT_SIZES.length - 1]}
+              className="w-6 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-sunken disabled:opacity-25 disabled:hover:bg-transparent"
+              title="Larger text"
+              aria-label="Larger text"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <FormatToggle active={shownFormat.bold} label="Bold" onClick={() => changeTextFormat({ bold: !shownFormat.bold })}>
+              <Bold className="w-3.5 h-3.5" />
+            </FormatToggle>
+            <FormatToggle active={shownFormat.italic} label="Italic" onClick={() => changeTextFormat({ italic: !shownFormat.italic })}>
+              <Italic className="w-3.5 h-3.5" />
+            </FormatToggle>
+            <FormatToggle active={shownFormat.underline} label="Underline" onClick={() => changeTextFormat({ underline: !shownFormat.underline })}>
+              <Underline className="w-3.5 h-3.5" />
+            </FormatToggle>
+            <FormatToggle active={shownFormat.plate} label="Background plate" onClick={() => changeTextFormat({ plate: !shownFormat.plate })}>
+              <RectangleHorizontal className="w-3.5 h-3.5" fill="currentColor" fillOpacity={0.35} />
+            </FormatToggle>
+          </ToolGroup>
+        </>
+      )}
 
       <VerticalDivider />
 

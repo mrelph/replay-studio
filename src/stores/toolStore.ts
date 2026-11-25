@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AnnotationStyle } from '@/utils/annotationStyle'
+import { DEFAULT_TEXT_FORMAT, type TextFormat } from '@/utils/textFormat'
 
 export type ToolType =
   | 'select'
@@ -21,7 +22,7 @@ interface ToolState {
   strokeColor: string
   fillColor: string
   strokeWidth: number
-  fontSize: number
+  textFormat: TextFormat
   isDrawing: boolean
   annotationStyle: AnnotationStyle
 
@@ -30,7 +31,7 @@ interface ToolState {
   setStrokeColor: (color: string) => void
   setFillColor: (color: string) => void
   setStrokeWidth: (width: number) => void
-  setFontSize: (size: number) => void
+  setTextFormat: (changes: Partial<TextFormat>) => void
   setIsDrawing: (drawing: boolean) => void
   setAnnotationStyle: (style: AnnotationStyle) => void
 }
@@ -40,7 +41,7 @@ export const useToolStore = create<ToolState>((set) => ({
   strokeColor: '#FF3B30',
   fillColor: 'transparent',
   strokeWidth: 4,
-  fontSize: 24,
+  textFormat: DEFAULT_TEXT_FORMAT,
   isDrawing: false,
   annotationStyle: 'outline',
 
@@ -48,7 +49,7 @@ export const useToolStore = create<ToolState>((set) => ({
   setStrokeColor: (color) => set({ strokeColor: color }),
   setFillColor: (color) => set({ fillColor: color }),
   setStrokeWidth: (width) => set({ strokeWidth: width }),
-  setFontSize: (size) => set({ fontSize: size }),
+  setTextFormat: (changes) => set((state) => ({ textFormat: { ...state.textFormat, ...changes } })),
   setIsDrawing: (drawing) => set({ isDrawing: drawing }),
   setAnnotationStyle: (style) => set({ annotationStyle: style }),
 }))

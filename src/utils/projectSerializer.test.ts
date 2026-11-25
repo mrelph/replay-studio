@@ -421,6 +421,32 @@ describe('serializeFabricObject / deserializeFabricObject round-trip (real fabri
     expect(restored.fontFamily).toBe('Inter')
   })
 
+  it('round-trips text formatting', () => {
+    const text = new fabric.IText('Hello', {
+      fontSize: 48, fontFamily: 'Inter', fontWeight: 'bold', fontStyle: 'italic', underline: true,
+    })
+    ;(text as fabric.IText & { textPlate?: boolean }).textPlate = true
+
+    const restored = deserializeFabricObject(fabric, serializeFabricObject(text))
+    expect(restored.fontSize).toBe(48)
+    expect(restored.fontWeight).toBe('bold')
+    expect(restored.fontStyle).toBe('italic')
+    expect(restored.underline).toBe(true)
+    expect(restored.textPlate).toBe(true)
+    // Undo snapshots and export clones use toObject rather than the project serializer.
+    expect(text.toObject().textPlate).toBe(true)
+  })
+
+  it('loads text saved before formatting existed as plain', () => {
+    const restored = deserializeFabricObject(fabric, {
+      type: 'i-text', left: 0, top: 0, text: 'Old', fontSize: 24, fontFamily: 'Arial',
+    })
+    expect(restored.fontWeight).toBe('normal')
+    expect(restored.fontStyle).toBe('normal')
+    expect(restored.underline).toBe(false)
+    expect(restored.textPlate).toBe(false)
+  })
+
   it('round-trips a group', () => {
     const rect = new fabric.Rect({ left: 0, top: 0, width: 20, height: 20, fill: '#FFCC00' })
     const line = new fabric.Line([0, 0, 20, 20], { stroke: '#FFCC00' })

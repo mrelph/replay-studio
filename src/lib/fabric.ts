@@ -8,11 +8,14 @@
  */
 import fabricModule from 'fabric'
 import type { fabric as fabricNamespace } from 'fabric'
+import { installTextPlate } from './textPlate'
 
 export type FabricNamespace = typeof fabricNamespace
 
 const resolved: FabricNamespace =
   (fabricModule as { fabric?: FabricNamespace }).fabric ??
   (fabricModule as unknown as FabricNamespace)
+
+installTextPlate(resolved)
 
 export const fabric = resolved
