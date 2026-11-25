@@ -130,6 +130,8 @@ const QUALITIES: ClipExportQuality[] = ['high', 'medium', 'low']
 export const MAX_OVERLAYS_PER_JOB = 500
 export const MAX_MAGNIFIERS_PER_JOB = 20
 export const MAX_ENABLE_WINDOWS_PER_MAGNIFIER = 200
+const MIN_SPEED = 0.1
+const MAX_SPEED = 4
 
 /** Returns an error message, or null when `options` is well-formed. */
 export function validateClipEncodeOptions(options: ClipEncodeStartOptions): string | null {
@@ -152,7 +154,8 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
     return 'Invalid segments: at least one required'
   }
 
-  for (const segment of segments) {
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]
     if (!segment || typeof segment !== 'object') return 'Invalid segment'
     if (segment.kind === 'play') {
       if (!Number.isFinite(segment.srcStart) || !Number.isFinite(segment.srcEnd)) {
@@ -160,6 +163,12 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
       }
       if (segment.srcStart < 0 || segment.srcEnd <= segment.srcStart) {
         return 'Invalid play segment range'
+      }
+      if (
+        segment.speed !== undefined &&
+        (typeof segment.speed !== 'number' || !Number.isFinite(segment.speed) || segment.speed < MIN_SPEED || segment.speed > MAX_SPEED)
+      ) {
+        return `Invalid speed for segment ${i}: must be between ${MIN_SPEED} and ${MAX_SPEED}`
       }
     } else if (segment.kind === 'hold') {
       if (!Number.isFinite(segment.srcTime) || segment.srcTime < 0) {
@@ -291,7 +300,12 @@ export function frameWindowStart(t: number, fps: number): number {
 export function alignSegmentsToFrames(segments: OutputSegment[], fps: number): OutputSegment[] {
   return segments.map((segment) =>
     segment.kind === 'play'
-      ? { kind: 'play', srcStart: frameWindowStart(segment.srcStart, fps), srcEnd: frameWindowStart(segment.srcEnd, fps) }
+      ? {
+          kind: 'play',
+          srcStart: frameWindowStart(segment.srcStart, fps),
+          srcEnd: frameWindowStart(segment.srcEnd, fps),
+          ...(segment.speed !== undefined ? { speed: segment.speed } : {}),
+        }
       : { kind: 'hold', srcTime: frameWindowStart(segment.srcTime, fps), duration: segment.duration }
   )
 }
@@ -336,12 +350,31 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
 
   const filterParts: string[] = []
 
+  // A slowed (or sped-up) segment with no planned frames is left out of both
+  // concats rather than fed in empty.
+  const included = segments
+    .map((segment, i) => ({ segment, i }))
+    .filter(({ segment, i }) => !(segment.kind === 'play' && (segment.speed ?? 1) !== 1 && segFrameCounts[i] === 0))
+
   // --- Base video timeline: per-segment trim/hold, concatenated, CFR-locked. ---
-  segments.forEach((segment, i) => {
+  included.forEach(({ segment, i }) => {
     if (segment.kind === 'play') {
       const start = segment.srcStart - seekOffset
       const end = segment.srcEnd - seekOffset
-      filterParts.push(`[0:v]trim=start=${fmt(start)}:end=${fmt(end)},setpts=PTS-STARTPTS[v${i}]`)
+      const speed = segment.speed ?? 1
+      if (speed === 1) {
+        filterParts.push(`[0:v]trim=start=${fmt(start)}:end=${fmt(end)},setpts=PTS-STARTPTS[v${i}]`)
+      } else {
+        // `concat` judges a segment's length from its frames, so resample to
+        // the output rate here and force exactly the planned count (clone the
+        // last frame if short, cut if long) with sequential timestamps.
+        const frames = segFrameCounts[i]
+        filterParts.push(
+          `[0:v]trim=start=${fmt(start)}:end=${fmt(end)},setpts=(PTS-STARTPTS)/${speed},` +
+            `fps=${fmt(fps)},tpad=stop_mode=clone:stop=${frames},trim=end_frame=${frames},` +
+            `setpts=N/(${fmt(fps)}*TB)[v${i}]`
+        )
+      }
     } else {
       const t = segment.srcTime - seekOffset
       const oneFrame = 1 / sourceFps
@@ -358,8 +391,8 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
       )
     }
   })
-  const vConcatInputs = segments.map((_, i) => `[v${i}]`).join('')
-  filterParts.push(`${vConcatInputs}concat=n=${segments.length}:v=1:a=0[vbase0]`)
+  const vConcatInputs = included.map(({ i }) => `[v${i}]`).join('')
+  filterParts.push(`${vConcatInputs}concat=n=${included.length}:v=1:a=0[vbase0]`)
   // Segment trims can each lose a frame to timestamp rounding (a 20 s clip
   // with a hold came out 2 frames short). Clone the last frame for a moment
   // and let `-frames:v frameCount` cut the stream to the exact length.
@@ -417,8 +450,8 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
 
   // --- Audio: same source input (seeked identically), so times use the same offset. ---
   if (includeAudio) {
-    segments.forEach((segment, i) => {
-      if (segment.kind === 'play') {
+    included.forEach(({ segment, i }) => {
+      if (segment.kind === 'play' && (segment.speed ?? 1) === 1) {
         const start = segment.srcStart - seekOffset
         const end = segment.srcEnd - seekOffset
         filterParts.push(
@@ -427,15 +460,16 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
             `aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
         )
       } else {
+        const duration = segment.kind === 'play' ? playOutputDuration(segment) : segment.duration
         filterParts.push(
           `anullsrc=channel_layout=stereo:sample_rate=${AUDIO_SAMPLE_RATE},` +
-            `atrim=duration=${fmt(segment.duration)},asetpts=PTS-STARTPTS,` +
+            `atrim=duration=${fmt(duration)},asetpts=PTS-STARTPTS,` +
             `aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
         )
       }
     })
-    const aConcatInputs = segments.map((_, i) => `[a${i}]`).join('')
-    filterParts.push(`${aConcatInputs}concat=n=${segments.length}:v=0:a=1[aout]`)
+    const aConcatInputs = included.map(({ i }) => `[a${i}]`).join('')
+    filterParts.push(`${aConcatInputs}concat=n=${included.length}:v=0:a=1[aout]`)
   }
 
   const args: string[] = ['-y', '-ss', fmt(seekOffset), '-i', sourcePath]
@@ -478,13 +512,13 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
  * module has no dependency on the renderer-side export code — it needs to
  * be usable from a plain Node test/process without pulling in `src/`.
  */
-function segmentFrameCountsForBuilder(segments: OutputSegment[], fps: number): number[] {
+export function segmentFrameCountsForBuilder(segments: OutputSegment[], fps: number): number[] {
   const counts: number[] = []
   let cumulativeDuration = 0
   let cumulativeFrames = 0
 
   for (const seg of segments) {
-    const segDuration = seg.kind === 'play' ? seg.srcEnd - seg.srcStart : seg.duration
+    const segDuration = seg.kind === 'play' ? playOutputDuration(seg) : seg.duration
     cumulativeDuration += segDuration
     const targetFrames = Math.round(cumulativeDuration * fps)
     const segFrameCount = Math.max(0, targetFrames - cumulativeFrames)
@@ -493,6 +527,10 @@ function segmentFrameCountsForBuilder(segments: OutputSegment[], fps: number): n
   }
 
   return counts
+}
+
+function playOutputDuration(seg: Extract<OutputSegment, { kind: 'play' }>): number {
+  return (seg.srcEnd - seg.srcStart) / (seg.speed ?? 1)
 }
 
 /**
