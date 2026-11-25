@@ -151,3 +151,25 @@ describe('renderClip draw-on', () => {
     expect(rendered.every((d) => !d)).toBe(true)
   })
 })
+
+describe('renderClip speed regions', () => {
+  it('fails before encoding when more than 40 regions fall in the clip', async () => {
+    const clipEncodeStart = vi.fn().mockResolvedValue({ ok: true, jobId: 'job' })
+    Object.defineProperty(window, 'electronAPI', { configurable: true, value: { clipEncodeStart } })
+    const speedRegions = Array.from({ length: 41 }, (_, i) => ({ start: i * 0.2, end: i * 0.2 + 0.15, speed: 0.5 }))
+    const result = await renderClip({
+      clip: { start: 0, end: 10 },
+      probe: { width: 64, height: 36, fps: 30, duration: 10, hasAudio: false },
+      annotations: [],
+      speedRegions,
+      includeDrawings: false,
+      quality: 'high',
+      outputPath: '/out.mp4',
+      sourcePath: '/src.mp4',
+      onProgress: () => {},
+      signal: new AbortController().signal,
+    })
+    expect(result).toEqual({ success: false, error: 'Too many speed regions in this clip (max 40)' })
+    expect(clipEncodeStart).not.toHaveBeenCalled()
+  })
+})

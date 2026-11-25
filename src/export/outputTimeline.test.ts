@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildOutputTimeline, framePresentations, frameSourceTimes, segmentFrameCounts } from './outputTimeline'
 import type { OutputSegment } from '@/types/clip'
+import { buildSpeedSteps, presentationOffset, speedAt } from './speedMap'
 
 describe('buildOutputTimeline', () => {
   it('produces a single play segment when there are no qualifying holds', () => {
@@ -192,5 +193,76 @@ describe('framePresentations', () => {
     expect(p[10]).toEqual({ srcTime: 1, segmentIndex: 1, holdElapsed: 0 })
     expect(p[14].holdElapsed).toBeCloseTo(0.4)
     expect(p[15]).toEqual({ srcTime: 1, segmentIndex: 2, holdElapsed: 0 })
+  })
+})
+
+describe('buildOutputTimeline with speed steps', () => {
+  const fps = 30
+  const steps = buildSpeedSteps([{ start: 2, end: 4, speed: 0.5 }], 10, fps)
+  const plays = (segments: OutputSegment[]) => segments.filter((s) => s.kind === 'play')
+
+  it('splits a clip across a region into constant-speed play segments', () => {
+    const { segments, duration, frameCount } = buildOutputTimeline({ start: 1, end: 5 }, [], fps, steps)
+    const speeds = plays(segments).map((s) => s.speed)
+    const expected = [undefined, 0.9, 0.8, 0.7, 0.6, 0.5, 0.6, 0.7, 0.8, 0.9, undefined]
+    expect(speeds).toHaveLength(expected.length)
+    speeds.forEach((speed, i) => (expected[i] === undefined ? expect(speed).toBeUndefined() : expect(speed).toBeCloseTo(expected[i]!, 9)))
+    expect(duration).toBeCloseTo(1 + presentationOffset(steps, 2, 4) + 1, 9)
+    expect(frameCount).toBe(Math.round(duration * fps))
+    expect(segmentFrameCounts(segments, fps).reduce((a, b) => a + b, 0)).toBe(frameCount)
+
+    const times = frameSourceTimes(segments, fps)
+    const slowIndex = segments.findIndex((s) => s.kind === 'play' && s.speed === 0.5)
+    const first = segmentFrameCounts(segments, fps).slice(0, slowIndex).reduce((a, b) => a + b, 0)
+    for (let i = first + 1; i < first + 40; i++) expect(times[i] - times[i - 1]).toBeCloseTo(0.5 / fps, 9)
+  })
+
+  it('starts and ends a clip inside the ramps', () => {
+    const { segments, frameCount } = buildOutputTimeline({ start: 2.1, end: 3.9 }, [], fps, steps)
+    const first = segments[0]
+    expect(first).toMatchObject({ kind: 'play', srcStart: 2.1, speed: speedAt(steps, 2.1) })
+    expect(segmentFrameCounts(segments, fps).reduce((a, b) => a + b, 0)).toBe(frameCount)
+    const times = frameSourceTimes(segments, fps)
+    expect(times).toHaveLength(frameCount)
+    expect(times[times.length - 1]).toBeLessThan(3.9)
+  })
+
+  it('holds a freeze inside the region between two slowed play segments', () => {
+    const { segments } = buildOutputTimeline({ start: 1, end: 5 }, [{ startTime: 3, freezeDuration: 1.5 }], fps, steps)
+    const h = segments.findIndex((s) => s.kind === 'hold')
+    expect(segments[h - 1]).toMatchObject({ kind: 'play', srcEnd: 3, speed: 0.5 })
+    expect(segments[h]).toEqual({ kind: 'hold', srcTime: 3, duration: 1.5 })
+    expect(segments[h + 1]).toMatchObject({ kind: 'play', srcStart: 3, speed: 0.5 })
+    expect(segmentFrameCounts(segments, fps)[h]).toBe(45)
+  })
+
+  it('matches the no-speed result with no steps or a single speed-1 step', () => {
+    const freezes = [{ startTime: 7, freezeDuration: 1 }, { startTime: 3, freezeDuration: 0.5 }]
+    const today = buildOutputTimeline({ start: 0, end: 10 }, freezes, 10)
+    expect(buildOutputTimeline({ start: 0, end: 10 }, freezes, 10, undefined)).toEqual(today)
+    expect(buildOutputTimeline({ start: 0, end: 10 }, freezes, 10, [{ start: 0, end: 10, speed: 1 }])).toEqual(today)
+  })
+})
+
+describe('frame counts shared with the main process', () => {
+  // Twin of the segmentFrameCountsForBuilder case in electron/clipExport.test.ts; keep the two in step.
+  it('counts a slowed segment between plays and a hold', () => {
+    const segments: OutputSegment[] = [
+      { kind: 'play', srcStart: 1, srcEnd: 2 },
+      { kind: 'play', srcStart: 2, srcEnd: 3, speed: 0.5 },
+      { kind: 'hold', srcTime: 3, duration: 1 },
+      { kind: 'play', srcStart: 3, srcEnd: 4 },
+    ]
+    expect(segmentFrameCounts(segments, 30)).toEqual([30, 60, 30, 30])
+  })
+
+  it('agrees with the main process alignment for an in point off-frame inside a ramp', () => {
+    const fps = 30
+    const steps = buildSpeedSteps([{ start: 2, end: 4, speed: 0.5 }], 10, fps)
+    const { segments } = buildOutputTimeline({ start: 2.1017, end: 4.5 }, [{ startTime: 3.0123, freezeDuration: 0.5 }], fps, steps)
+    // The main process's rule: each edge moves to the frame start of floor(t * fps + 1e-3).
+    const align = (t: number) => Math.floor(t * fps + 1e-3) / fps
+    const aligned = segments.map((s) => (s.kind === 'play' ? { ...s, srcStart: align(s.srcStart), srcEnd: align(s.srcEnd) } : s))
+    expect(segmentFrameCounts(segments, fps)).toEqual(segmentFrameCounts(aligned, fps))
   })
 })

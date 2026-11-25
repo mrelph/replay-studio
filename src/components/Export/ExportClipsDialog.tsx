@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { CheckCircle2, XCircle, Loader2, AlertTriangle, FolderOpen, Ban, Circle } from 'lucide-react'
 import { useClipStore } from '@/stores/clipStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useSpeedStore } from '@/stores/speedStore'
 import { Modal, Button, Select } from '@/components/ui'
 import { toast } from '@/components/ui/Toast'
-import { buildOutputTimeline } from '@/export/outputTimeline'
+import { buildOutputTimeline, exportSpeedSteps } from '@/export/outputTimeline'
 import { renderClip } from '@/export/clipRenderer'
 import { saveEditableCopy as saveEditableCopyFiles } from '@/export/saveEditableCopy'
 import { buildClipBaseName, orderLabel } from '@/export/clipFilename'
@@ -91,6 +92,7 @@ function statusLabel(status: ClipStatus | undefined): string {
 export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDialogProps) {
   const clips = useClipStore((s) => s.clips)
   const annotations = useDrawingStore((s) => s.annotations)
+  const speedRegions = useSpeedStore((s) => s.regions)
 
   const { sourcePath, probe, error: probeError, loading: loadingProbe } = useVideoProbe(videoSrc)
 
@@ -131,8 +133,9 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
   const totalDuration = useMemo(() => {
     if (!probe) return 0
-    return selectedClips.reduce((sum, { clip }) => sum + buildOutputTimeline(clip, annotations, probe.fps).duration, 0)
-  }, [selectedClips, annotations, probe])
+    const speedSteps = exportSpeedSteps(speedRegions, probe)
+    return selectedClips.reduce((sum, { clip }) => sum + buildOutputTimeline(clip, annotations, probe.fps, speedSteps).duration, 0)
+  }, [selectedClips, annotations, speedRegions, probe])
 
   const toggleClip = useCallback((id: string) => {
     setSelected((s) => ({ ...s, [id]: !s[id] }))
@@ -237,6 +240,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
           clip,
           probe,
           annotations,
+          speedRegions,
           includeDrawings: burnIn,
           quality,
           outputPath,
@@ -341,6 +345,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     selectedClips,
     selectedCount,
     annotations,
+    speedRegions,
     burnIn,
     saveEditableCopy,
     quality,

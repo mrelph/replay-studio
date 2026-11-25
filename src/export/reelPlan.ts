@@ -2,6 +2,7 @@
 // what order, how many frames each, and where the chapters fall.
 import type { Clip, ClipExportQuality, OutputSegment, ReelChapter } from '@/types/clip'
 import { buildOutputTimeline, type FreezeAnnotationLike } from './outputTimeline'
+import type { SpeedStep } from './speedMap'
 import { sanitizeFilenameComponent } from './clipFilename'
 
 export const MIN_CARD_SECONDS = 1
@@ -44,13 +45,15 @@ export function clampCardSeconds(seconds: number): number {
  * Orders `clips` into reel parts (an optional card before each clip) using
  * the same output timeline as single-clip export, so a clip's holds play in
  * the reel exactly as in its own file. Chapter boundaries are cumulative
- * frame counts, matching the frames the parts actually contain.
+ * frame counts, matching the frames the parts actually contain. Pass the
+ * same `speedSteps` the parts are rendered with.
  */
 export function buildReelPlan(
   clips: Clip[],
   annotations: FreezeAnnotationLike[],
   fps: number,
-  options: ReelPlanOptions
+  options: ReelPlanOptions,
+  speedSteps?: SpeedStep[]
 ): ReelPlan {
   if (clips.length === 0) throw new Error('Choose at least one clip for the reel')
   if (!Number.isFinite(fps) || fps <= 0) throw new Error('Unknown frame rate')
@@ -69,7 +72,7 @@ export function buildReelPlan(
       parts.push({ kind: 'card', clip, number, segments, frameCount })
       frame += frameCount
     }
-    const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps)
+    const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps, speedSteps)
     parts.push({ kind: 'clip', clip, number, segments, frameCount })
     frame += frameCount
     chapters.push({ title: clip.name, startFrame: chapterStart, frameCount: frame - chapterStart })

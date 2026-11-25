@@ -2,7 +2,8 @@ import { fabric } from '@/lib/fabric'
 import type { Annotation } from '@/stores/drawingStore'
 import { deserializeFabricObject, serializeFabricObject } from '@/utils/projectSerializer'
 import type { Clip, ClipEncodeReelPart, ClipExportFormat, ClipExportQuality, ClipExportResult, OverlaySpan, VideoProbe } from '@/types/clip'
-import { buildOutputTimeline } from './outputTimeline'
+import { buildOutputTimeline, exportSpeedSteps, speedRegionLimitError } from './outputTimeline'
+import type { SpeedRegionLike } from './speedMap'
 import { buildDrawingSpansWithinBudget, signatureKey, type DrawingSpan, type SpanAnnotationLike } from './spanBuilder'
 import { applyReveal, stripReveal } from './reveal'
 import { buildMagnifierOps, computeMagnifierSampleRect, MAGNIFIER_ZOOM_LEVEL, type MagnifierAnnotationLike } from './magnifierOps'
@@ -20,6 +21,8 @@ export interface RenderClipOptions {
   format?: ClipExportFormat
   /** Live annotations from `useDrawingStore` (not touched — everything is cloned). */
   annotations: Annotation[]
+  /** Slow-motion regions from `useSpeedStore`, in source seconds. */
+  speedRegions?: SpeedRegionLike[]
   includeDrawings: boolean
   quality: ClipExportQuality
   outputPath: string
@@ -117,7 +120,12 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
   const format = opts.format ?? 'mp4'
   const fps = format === 'gif' ? Math.min(opts.fps ?? probe.fps, 15) : opts.fps ?? probe.fps
 
-  const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps)
+  const speedRegions = opts.speedRegions ?? []
+  const limitError = speedRegionLimitError(clip, speedRegions)
+  if (limitError) return { success: false, error: limitError }
+  const speedSteps = exportSpeedSteps(speedRegions, probe)
+
+  const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps, speedSteps, probe.fps)
 
   if (signal.aborted) return { success: false, error: 'Cancelled' }
 
@@ -169,7 +177,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
       toolType: a.toolType,
     }))
 
-    const spans = buildDrawingSpansWithinBudget(segments, spanAnnotations, fps, { sourceFps: probe.fps })
+    const spans = buildDrawingSpansWithinBudget(segments, spanAnnotations, fps, { sourceFps: probe.fps, speedSteps })
 
     // No retina scaling: the layer must be exactly the video's native pixel size.
     staticCanvas = new fabric.StaticCanvas(null, { width: probe.width, height: probe.height, enableRetinaScaling: false })
@@ -220,7 +228,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
         },
       }
     })
-    const magnifiers = buildMagnifierOps(clip, segments, magnifierLikes, fps, probe, MAGNIFIER_ZOOM_LEVEL, probe.fps)
+    const magnifiers = buildMagnifierOps(clip, segments, magnifierLikes, fps, probe, MAGNIFIER_ZOOM_LEVEL, probe.fps, speedSteps)
 
     onProgress(5)
     if (signal.aborted) throw new Error('Cancelled')

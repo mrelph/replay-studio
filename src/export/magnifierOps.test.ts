@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { buildMagnifierOps, type MagnifierAnnotationLike } from './magnifierOps'
 import { buildDrawingSpans } from './spanBuilder'
 import type { OutputSegment, VideoProbe } from '@/types/clip'
+import { buildOutputTimeline } from './outputTimeline'
+import { buildSpeedSteps, presentationOffset } from './speedMap'
 
 const PROBE: Pick<VideoProbe, 'width' | 'height'> = { width: 1920, height: 1080 }
 
@@ -161,5 +163,39 @@ describe('buildMagnifierOps in a clip from 0', () => {
       expect(ops[0].enable[0].start).toBeLessThanOrEqual(ring.frameStart / fps + 1e-9)
       expect(ops[0].enable[0].start).toBeGreaterThan((ring.frameStart - 1) / fps)
     }
+  })
+})
+
+describe('buildMagnifierOps in a slow-motion region', () => {
+  const fps = 30
+  const steps = buildSpeedSteps([{ start: 2, end: 4, speed: 0.5 }], 10, fps)
+  const clip = { start: 1, end: 5 }
+  const { segments } = buildOutputTimeline(clip, [], fps, steps)
+
+  it('stretches the zoom by the region speed, as one window', () => {
+    const [inside] = buildMagnifierOps(clip, segments, [magnifier({ startTime: 2.5, endTime: 3.5 })], fps, PROBE, undefined, fps, steps)
+    expect(inside.enable).toHaveLength(1)
+    expect(Math.abs(inside.enable[0].end - inside.enable[0].start - 2)).toBeLessThanOrEqual(1 / fps + 1e-9)
+
+    const [across] = buildMagnifierOps(clip, segments, [magnifier({ startTime: 1.5, endTime: 4.5 })], fps, PROBE, undefined, fps, steps)
+    expect(across.enable).toHaveLength(1)
+    expect(across.enable[0].end - across.enable[0].start).toBeCloseTo(1 + presentationOffset(steps, 2, 4), 1)
+  })
+
+  it('starts a delayed zoom on the frame its ring appears', () => {
+    const mag = magnifier({ startTime: 3, endTime: 3.6, revealDelay: 0.35 })
+    const [op] = buildMagnifierOps(clip, segments, [mag], fps, PROBE, undefined, fps, steps)
+    const ring = buildDrawingSpans(segments, [{ ...mag, toolType: 'magnifier' }], fps, { sourceFps: fps, speedSteps: steps }).find((s) => s.signature.length > 0)!
+    expect(op.enable[0].start).toBeCloseTo(ring.frameStart / fps, 9)
+  })
+
+  it('leaves the hold fixture unchanged with no regions', () => {
+    const { segments: held } = buildOutputTimeline({ start: 0, end: 4 }, [{ startTime: 2, freezeDuration: 1 }], 10)
+    const ops = buildMagnifierOps({ start: 0, end: 4 }, held, [magnifier({ startTime: 1.5, endTime: 2.5 })], 10, PROBE)
+    expect(ops[0].enable).toEqual([
+      { start: 1.5, end: 2 },
+      { start: 2, end: 3 },
+      { start: 3, end: 3.5 },
+    ])
   })
 })

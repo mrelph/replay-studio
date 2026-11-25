@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { CheckCircle, AlertTriangle } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useSpeedStore } from '@/stores/speedStore'
 import { Modal, Button, Select } from '@/components/ui'
 import { renderClip } from '@/export/clipRenderer'
 import { buildOutputTimeline } from '@/export/outputTimeline'
@@ -93,6 +94,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
         clip: { start: startTime, end: settings.useInOutPoints ? endTime : probe.duration },
         probe,
         annotations: settings.includeAnnotations ? annotations : [],
+        speedRegions: useSpeedStore.getState().regions,
         includeDrawings: settings.includeAnnotations && annotations.length > 0,
         sourcePath: inputPath,
         outputPath: savePath,

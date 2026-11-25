@@ -5,6 +5,7 @@ import type { Annotation } from '@/stores/drawingStore'
 import type { ClipExportQuality, ClipExportResult, VideoProbe } from '@/types/clip'
 import { renderClip as defaultRenderClip, type RenderClipOptions } from './clipRenderer'
 import { estimateEncodeBytes, type ReelPart, type ReelPlan } from './reelPlan'
+import type { SpeedRegionLike } from './speedMap'
 import { renderTitleCardRgba, type TitleCardInput } from './titleCard'
 
 /** Share of the progress bar given to the final join (it copies video, so it's quick). */
@@ -28,6 +29,8 @@ export interface RenderReelOptions {
   probe: VideoProbe
   /** Live annotations; drawings are always burned in. */
   annotations: Annotation[]
+  /** Slow-motion regions; the plan must be built with the same ones. */
+  speedRegions?: SpeedRegionLike[]
   quality: ClipExportQuality
   sourcePath: string
   /** The reel MP4, inside an authorized export folder. */
@@ -116,7 +119,7 @@ async function renderCardPart(
 }
 
 export async function renderReel(opts: RenderReelOptions, deps: ReelRenderDeps = defaultDeps): Promise<RenderReelResult> {
-  const { plan, probe, annotations, quality, sourcePath, outputPath, keptClipPaths, onProgress, onLowSpace, signal } = opts
+  const { plan, probe, annotations, speedRegions, quality, sourcePath, outputPath, keptClipPaths, onProgress, onLowSpace, signal } = opts
   const api = window.electronAPI
   const keptClips: Record<string, ReelClipOutcome> = {}
   const markRemainingKept = (outcome: ReelClipOutcome) => {
@@ -167,6 +170,7 @@ export async function renderReel(opts: RenderReelOptions, deps: ReelRenderDeps =
           clip: part.clip,
           probe,
           annotations,
+          speedRegions,
           includeDrawings: true,
           quality,
           outputPath: keptPath ?? TEMP_PART_PLACEHOLDER,

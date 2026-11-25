@@ -1,7 +1,8 @@
 import type { Clip, MagnifierOp, OutputSegment, VideoProbe } from '@/types/clip'
 import type { AnnotationTimingInput } from './annotationTiming'
 import { segmentFrameCounts } from './outputTimeline'
-import { firstDueFrame } from './spanBuilder'
+import { firstDueFrame, presentationElapsed } from './spanBuilder'
+import type { SpeedStep } from './speedMap'
 
 /** Magnifier zoom factor, matching `updateMagnifierContent` in DrawingCanvas.tsx. */
 export const MAGNIFIER_ZOOM_LEVEL = 2.5
@@ -76,11 +77,14 @@ export interface MagnifierAnnotationLike extends AnnotationTimingInput {
  * output-time range whenever the hold's `srcTime` itself falls inside the
  * magnifier's visible window (so a magnifier spanning a freeze-frame stays
  * on through the whole hold, matching the live view where the magnifier
- * would otherwise flicker on a single repeated frame).
+ * would otherwise flicker on a single repeated frame). A play segment's
+ * output range already reflects its speed; windows from consecutive play
+ * segments (split at speed-step edges) that touch are joined into one.
  *
  * A magnifier with a `revealDelay` is enabled only from the output frame its
  * delay has passed (`firstDueFrame`, matching its ring's span; `sourceFps`
- * matches holds to its start frame). Magnifiers with no resulting enable
+ * matches holds to its start frame; `speedSteps` measures the delay in
+ * presentation time). Magnifiers with no resulting enable
  * window (never visible or never due during the clip) are omitted.
  */
 export function buildMagnifierOps(
@@ -90,8 +94,10 @@ export function buildMagnifierOps(
   fps: number,
   probe: Pick<VideoProbe, 'width' | 'height'>,
   zoomLevel: number = MAGNIFIER_ZOOM_LEVEL,
-  sourceFps: number = fps
+  sourceFps: number = fps,
+  speedSteps?: SpeedStep[]
 ): MagnifierOp[] {
+  const elapsed = presentationElapsed(speedSteps)
   const counts = segmentFrameCounts(segments, fps)
   let cumulativeFrames = 0
   const segmentTimeRanges = segments.map((seg, i) => {
@@ -108,6 +114,7 @@ export function buildMagnifierOps(
     const visEnd = Math.min(magnifier.endTime, clip.end)
 
     const enable: { start: number; end: number }[] = []
+    let lastFromPlay = false
     if (visEnd > visStart) {
       for (const { seg, outStart, outEnd } of segmentTimeRanges) {
         if (seg.kind === 'play') {
@@ -117,19 +124,23 @@ export function buildMagnifierOps(
             const segDuration = seg.srcEnd - seg.srcStart
             const frac0 = segDuration > 0 ? (overlapStart - seg.srcStart) / segDuration : 0
             const frac1 = segDuration > 0 ? (overlapEnd - seg.srcStart) / segDuration : 0
-            enable.push({
-              start: outStart + frac0 * (outEnd - outStart),
-              end: outStart + frac1 * (outEnd - outStart),
-            })
+            const range = { start: outStart + frac0 * (outEnd - outStart), end: outStart + frac1 * (outEnd - outStart) }
+            const last = enable[enable.length - 1]
+            // Speed steps split one play stretch into many segments; their windows touch, so join them.
+            if (lastFromPlay && last && Math.abs(range.start - last.end) <= 1e-6) last.end = range.end
+            else enable.push(range)
+            lastFromPlay = true
+            continue
           }
         } else if (seg.srcTime >= visStart && seg.srcTime <= visEnd) {
           if (outEnd > outStart) enable.push({ start: outStart, end: outEnd })
         }
+        lastFromPlay = false
       }
     }
 
     // A delayed magnifier's zoom waits for its turn, the same output frame its ring's span starts on.
-    const dueFrom = firstDueFrame(segments, magnifier, fps, sourceFps) / fps
+    const dueFrom = firstDueFrame(segments, magnifier, fps, sourceFps, elapsed) / fps
     const due = dueFrom > 0 ? enable.filter((w) => w.end > dueFrom).map((w) => ({ start: Math.max(w.start, dueFrom), end: w.end })) : enable
 
     if (due.length === 0) continue

@@ -101,6 +101,11 @@ function sampleTime(srcTime: number, sourceFps: number): number {
   return Math.max(srcTime, frameStart(frameIndexAt(srcTime, sourceFps), sourceFps))
 }
 
+/** Presentation time between two source times under `speedSteps`; undefined (source time) without them. */
+export function presentationElapsed(speedSteps: SpeedStep[] | undefined): ElapsedBetween | undefined {
+  return speedSteps ? (a, b) => presentationOffset(speedSteps, a, b) : undefined
+}
+
 /**
  * Walks every output frame (via `framePresentations`) and groups consecutive
  * frames with an identical visual signature into spans. Each span renders to
@@ -126,8 +131,7 @@ export function buildDrawingSpans(
   const spans: DrawingSpan[] = []
 
   const holdElapsedAt = holdElapsedResolver(segments, annotations, sourceFps)
-  const { speedSteps } = opts
-  const elapsed: ElapsedBetween | undefined = speedSteps ? (a, b) => presentationOffset(speedSteps, a, b) : undefined
+  const elapsed = presentationElapsed(opts.speedSteps)
 
   let currentKey: string | null = null
   let currentSignature: AnnotationVisualState[] = []
@@ -189,12 +193,18 @@ export function holdElapsedResolver<A extends AnnotationTimingInput>(
  * (the same rule `computeFrameSignature` applies), 0 when it has no delay, or
  * `Infinity` when it never comes due in these segments.
  */
-export function firstDueFrame(segments: OutputSegment[], annotation: AnnotationTimingInput, fps: number, sourceFps: number = fps): number {
+export function firstDueFrame(
+  segments: OutputSegment[],
+  annotation: AnnotationTimingInput,
+  fps: number,
+  sourceFps: number = fps,
+  elapsed?: ElapsedBetween
+): number {
   if (!(annotation.revealDelay !== undefined && annotation.revealDelay > 0)) return 0
   const holdElapsedAt = holdElapsedResolver(segments, [annotation], sourceFps)
   const frames = framePresentations(segments, fps)
   for (let i = 0; i < frames.length; i++) {
-    if (isRevealDue(annotation.startTime, sampleTime(frames[i].srcTime, sourceFps), holdElapsedAt(annotation, frames[i]), annotation.revealDelay)) return i
+    if (isRevealDue(annotation.startTime, sampleTime(frames[i].srcTime, sourceFps), holdElapsedAt(annotation, frames[i]), annotation.revealDelay, elapsed)) return i
   }
   return Infinity
 }

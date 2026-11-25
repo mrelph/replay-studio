@@ -1,4 +1,6 @@
-import type { Clip, OutputSegment } from '@/types/clip'
+import type { Clip, OutputSegment, VideoProbe } from '@/types/clip'
+import { frameIndexAt, frameStart } from '@/utils/frames'
+import { buildSpeedSteps, speedAt, type SpeedRegionLike, type SpeedStep } from './speedMap'
 
 /**
  * The fields of a live `Annotation` (see `src/stores/drawingStore.ts`) that
@@ -35,11 +37,19 @@ export interface OutputTimelineResult {
  * "hold, then immediately hold again on the same frame" — a longer single
  * hold is the more useful and less surprising result for a coach reviewing
  * the export.
+ *
+ * With `speedSteps`, each play stretch is split at the step edges inside it,
+ * so every play segment has one constant speed; `speed` is set only when it
+ * is not 1. Play edges are then snapped to source-frame starts (at
+ * `sourceFps`), the way the main process aligns them before encoding, so both
+ * sides count the same frames even when a clip edge or freeze is off-frame.
  */
 export function buildOutputTimeline(
   clip: Pick<Clip, 'start' | 'end'>,
   annotations: FreezeAnnotationLike[],
-  fps: number
+  fps: number,
+  speedSteps?: SpeedStep[],
+  sourceFps: number = fps
 ): OutputTimelineResult {
   const holdDurationByTime = new Map<number, number>()
 
@@ -59,26 +69,64 @@ export function buildOutputTimeline(
 
   const segments: OutputSegment[] = []
   let cursor = clip.start
+  const pushPlay = (srcStart: number, srcEnd: number) => segments.push(...playSegments(srcStart, srcEnd, speedSteps, sourceFps))
 
   for (const holdTime of holdTimes) {
     if (holdTime > cursor) {
-      segments.push({ kind: 'play', srcStart: cursor, srcEnd: holdTime })
+      pushPlay(cursor, holdTime)
     }
     segments.push({ kind: 'hold', srcTime: holdTime, duration: holdDurationByTime.get(holdTime)! })
     cursor = holdTime
   }
 
   if (clip.end > cursor) {
-    segments.push({ kind: 'play', srcStart: cursor, srcEnd: clip.end })
+    pushPlay(cursor, clip.end)
   }
 
-  const duration = segments.reduce(
-    (sum, seg) => sum + (seg.kind === 'play' ? seg.srcEnd - seg.srcStart : seg.duration),
-    0
-  )
+  const duration = segments.reduce((sum, seg) => sum + segmentOutputDuration(seg), 0)
   const frameCount = Math.round(duration * fps)
 
   return { segments, duration, frameCount }
+}
+
+// Step edges closer than this to a play stretch's ends do not split it.
+const EDGE_EPSILON = 1e-9
+
+/** [srcStart, srcEnd) as play segments of constant speed, split at the step edges inside it. */
+function playSegments(rawStart: number, rawEnd: number, speedSteps: SpeedStep[] | undefined, sourceFps: number): OutputSegment[] {
+  if (!speedSteps || speedSteps.length === 0) return [{ kind: 'play', srcStart: rawStart, srcEnd: rawEnd }]
+  const srcStart = frameStart(frameIndexAt(rawStart, sourceFps), sourceFps)
+  const srcEnd = frameStart(frameIndexAt(rawEnd, sourceFps), sourceFps)
+  if (srcEnd <= srcStart) return []
+  const cuts = [srcStart]
+  for (const step of speedSteps) {
+    if (step.start > srcStart + EDGE_EPSILON && step.start < srcEnd - EDGE_EPSILON) cuts.push(step.start)
+  }
+  cuts.push(srcEnd)
+  const segments: OutputSegment[] = []
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const speed = speedAt(speedSteps, (cuts[i] + cuts[i + 1]) / 2)
+    segments.push(speed === 1 ? { kind: 'play', srcStart: cuts[i], srcEnd: cuts[i + 1] } : { kind: 'play', srcStart: cuts[i], srcEnd: cuts[i + 1], speed })
+  }
+  return segments
+}
+
+/** Seconds a segment lasts in the output: a play segment's source length divided by its speed. */
+export function segmentOutputDuration(segment: OutputSegment): number {
+  return segment.kind === 'play' ? (segment.srcEnd - segment.srcStart) / (segment.speed ?? 1) : segment.duration
+}
+
+/** The speed steps an export uses: built at the source rate over the whole video, or undefined with no regions. */
+export function exportSpeedSteps(regions: SpeedRegionLike[], probe: Pick<VideoProbe, 'duration' | 'fps'>): SpeedStep[] | undefined {
+  return regions.length > 0 ? buildSpeedSteps(regions, probe.duration, probe.fps) : undefined
+}
+
+export const MAX_SPEED_REGIONS_PER_CLIP = 40
+
+/** The export error when more than `MAX_SPEED_REGIONS_PER_CLIP` regions intersect the clip's [start, end), else null. */
+export function speedRegionLimitError(clip: Pick<Clip, 'start' | 'end'>, regions: SpeedRegionLike[]): string | null {
+  const inClip = regions.filter((r) => r.end > clip.start && r.start < clip.end).length
+  return inClip > MAX_SPEED_REGIONS_PER_CLIP ? `Too many speed regions in this clip (max ${MAX_SPEED_REGIONS_PER_CLIP})` : null
 }
 
 /**
@@ -101,8 +149,7 @@ export function segmentFrameCounts(segments: OutputSegment[], fps: number): numb
   let cumulativeFrames = 0
 
   for (const seg of segments) {
-    const segDuration = seg.kind === 'play' ? seg.srcEnd - seg.srcStart : seg.duration
-    cumulativeDuration += segDuration
+    cumulativeDuration += segmentOutputDuration(seg)
     const targetFrames = Math.round(cumulativeDuration * fps)
     const segFrameCount = Math.max(0, targetFrames - cumulativeFrames)
     counts.push(segFrameCount)

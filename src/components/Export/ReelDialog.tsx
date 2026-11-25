@@ -4,10 +4,11 @@ import {
 } from 'lucide-react'
 import { useClipStore } from '@/stores/clipStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useSpeedStore } from '@/stores/speedStore'
 import { useClipPrefsStore } from '@/stores/clipPrefsStore'
 import { Modal, Button, Select } from '@/components/ui'
 import { toast } from '@/components/ui/Toast'
-import { buildOutputTimeline } from '@/export/outputTimeline'
+import { buildOutputTimeline, exportSpeedSteps } from '@/export/outputTimeline'
 import { buildReelBaseName, buildReelPlan, defaultReelName, MAX_CARD_SECONDS, MIN_CARD_SECONDS } from '@/export/reelPlan'
 import { renderReel, type ReelClipOutcome, type ReelProgress } from '@/export/reelRenderer'
 import { inclusionForTags, individualBaseNames, moveInOrder, reelClips, reelProgressLabel, syncOrder } from '@/export/reelSelection'
@@ -59,6 +60,7 @@ function KeptIcon({ outcome }: { outcome: ReelClipOutcome | 'saving-copy' | unde
 export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialogProps) {
   const clips = useClipStore((s) => s.clips)
   const annotations = useDrawingStore((s) => s.annotations)
+  const speedRegions = useSpeedStore((s) => s.regions)
   const { sourcePath, probe, error: probeError, loading: loadingProbe } = useVideoProbe(videoSrc)
 
   const titleCards = useClipPrefsStore((s) => s.reelTitleCards)
@@ -110,10 +112,11 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
   const effectiveName = nameTouched ? name : defaultName
 
   const inReel = useMemo(() => reelClips(clips, order, included), [clips, order, included])
+  const speedSteps = useMemo(() => (probe ? exportSpeedSteps(speedRegions, probe) : undefined), [probe, speedRegions])
   const plan = useMemo(() => {
     if (!probe || inReel.length === 0) return null
-    return buildReelPlan(inReel, annotations, probe.fps, { titleCards, cardSeconds })
-  }, [probe, inReel, annotations, titleCards, cardSeconds])
+    return buildReelPlan(inReel, annotations, probe.fps, { titleCards, cardSeconds }, speedSteps)
+  }, [probe, inReel, annotations, titleCards, cardSeconds, speedSteps])
 
   const clipById = useMemo(() => new Map(clips.map((c) => [c.id, c])), [clips])
 
@@ -160,6 +163,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
       plan,
       probe,
       annotations,
+      speedRegions,
       quality,
       sourcePath,
       outputPath,
@@ -212,7 +216,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
       setPhase({ kind: 'failed', message: result.error || 'Reel export failed' })
       toast('error', 'Reel export failed')
     }
-  }, [probe, sourcePath, folder, plan, effectiveName, saveIndividual, inReel, annotations, quality, saveEditable])
+  }, [probe, sourcePath, folder, plan, effectiveName, saveIndividual, inReel, annotations, speedRegions, quality, saveEditable])
 
   const percent = phase.kind === 'exporting' ? phase.progress?.percent ?? 0 : 0
 
@@ -325,7 +329,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
                 const clip = clipById.get(id)
                 if (!clip) return null
                 const on = !!included[id]
-                const seconds = probe ? buildOutputTimeline(clip, annotations, probe.fps).duration : clip.end - clip.start
+                const seconds = probe ? buildOutputTimeline(clip, annotations, probe.fps, speedSteps).duration : clip.end - clip.start
                 const reelNumber = on ? inReel.indexOf(clip) + 1 : null
                 return (
                   <li
