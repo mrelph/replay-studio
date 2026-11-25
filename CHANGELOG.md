@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collaborative annotation features
 - Cloud storage integration
 
+## [1.7.0] - 2026-11-25
+
+### Added
+- Text options in the toolbar, shown while the Text tool is active or a text
+  annotation is selected: size (12 to 128), bold, italic and underline.
+- Font choice for text: Arial, Inter, Oswald, Roboto Slab and Marker. The
+  bundled fonts look the same on Linux and Windows.
+- Background plate for text: a rounded backing that keeps captions readable
+  over busy video. It is dark under light text and light under dark text.
+
 ## [1.6.0] - 2026-11-25
 
 ### Added
