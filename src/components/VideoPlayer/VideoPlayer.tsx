@@ -221,8 +221,11 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     video.addEventListener('seeking', handleSeeking)
     // Pressing Freeze while an existing freeze is playing out takes it over:
     // stop the auto-resume so the coach's own timing replaces its length.
+    // Starting a drawing clears the hold, which stops the auto-resume too.
     const unsubscribeFreeze = useVideoStore.subscribe((state, prev) => {
-      if (state.freezeTiming && !prev.freezeTiming && freezeTimeoutRef.current) {
+      const takenOver = state.freezeTiming && !prev.freezeTiming
+      const holdCleared = prev.autoHold && !state.autoHold
+      if ((takenOver || holdCleared) && freezeTimeoutRef.current) {
         clearTimeout(freezeTimeoutRef.current)
         freezeTimeoutRef.current = null
         useVideoStore.getState().clearAutoHold()

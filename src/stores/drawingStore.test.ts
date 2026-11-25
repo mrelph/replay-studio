@@ -211,6 +211,16 @@ describe('drawingStore frame sync', () => {
     expect(store().undoStack).toHaveLength(0)
   })
 
+  it('discarding a text that is already gone leaves the undo history alone', () => {
+    draw(drawing('a', 1, 0.35))
+    draw({ ...drawing('t', 3), toolType: 'text' })
+    store().undo()
+    const undoBefore = store().undoStack.length
+    expect(undoBefore).toBe(1)
+    store().discardNewAnnotation('t')
+    expect(store().undoStack).toHaveLength(undoBefore)
+  })
+
   it('addAnnotation with history false saves no undo state', () => {
     store().addAnnotation(drawing('a', 3), { history: false })
     expect(store().undoStack).toHaveLength(0)

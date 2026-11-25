@@ -311,7 +311,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
   },
 
   discardNewAnnotation: (id) => {
-    const { undoStack } = get()
+    const { undoStack, annotations } = get()
+    if (!annotations.some((a) => a.id === id)) return
     const addEntry = undoStack[undoStack.length - 1]
     // The entry saved by the add is the last one that doesn't contain it yet.
     const ownEntry = addEntry && !addEntry.annotations.some((a) => a.id === id) ? addEntry : null

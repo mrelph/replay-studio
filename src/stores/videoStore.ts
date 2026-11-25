@@ -43,7 +43,7 @@ interface VideoState {
   cancelFreezeTiming: () => void
   /** Moves the frame a timed freeze will be recorded on (frame steps while paused); no-op when not timing. */
   noteFreezeFrame: (time: number) => void
-  /** Pauses if playing, snaps the video to its current frame start, updates the store's currentTime, returns that time. */
+  /** Pauses if playing (ending any automatic hold), snaps the video to its current frame start, updates the store's currentTime, returns that time. */
   captureDrawFrame: () => number
   setPendingPreview: (time: number | null) => void
   beginAutoHold: (time: number) => void
@@ -151,7 +151,8 @@ export const useVideoStore = create<VideoState>((set, get) => ({
     else if (!videoElement.paused) videoElement.pause()
     const time = snapToFrame(videoElement.currentTime, fps)
     if (videoElement.currentTime !== time) videoElement.currentTime = time
-    set({ currentTime: time })
+    // Clearing the hold tells the player to drop its pending auto-resume.
+    set({ currentTime: time, autoHold: null })
     return time
   },
   setPendingPreview: (time) => set({ pendingPreview: time }),

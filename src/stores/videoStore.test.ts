@@ -106,6 +106,22 @@ describe('captureDrawFrame', () => {
     expect(useVideoStore.getState().currentTime).toBe(snapped)
   })
 
+  it('ends an automatic hold it lands on, so the player drops its auto-resume', () => {
+    const snapped = snapToFrame(3.0569, 30)
+    const video = fakeVideo(true, snapped)
+    useVideoStore.setState({ videoElement: video as unknown as HTMLVideoElement })
+    useVideoStore.getState().beginAutoHold(snapped)
+    const seen: Array<unknown> = []
+    const unsubscribe = useVideoStore.subscribe((state, prev) => {
+      if (prev.autoHold && !state.autoHold) seen.push(prev.autoHold)
+    })
+    useVideoStore.getState().captureDrawFrame()
+    unsubscribe()
+    expect(useVideoStore.getState().autoHold).toBeNull()
+    expect(seen).toHaveLength(1)
+    expect(video.pause).not.toHaveBeenCalled()
+  })
+
   it('returns the store time when there is no video', () => {
     useVideoStore.setState({ currentTime: 4.2 })
     expect(useVideoStore.getState().captureDrawFrame()).toBe(4.2)

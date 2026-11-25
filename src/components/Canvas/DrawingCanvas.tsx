@@ -420,8 +420,11 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       fadeOut: defaults.fadeOut,
       drawIn: defaults.drawIn,
     })
-    useDrawingStore.getState().syncFrames([startTime], { createFreeze: true })
-    useVideoStore.getState().setPendingPreview(startTime)
+    // The pen's strokes arrive as 'path'; hidden tools stay out of freeze timing.
+    if (toolType === 'path' || DRAW_FRAME_TOOLS.has(toolType)) {
+      useDrawingStore.getState().syncFrames([startTime], { createFreeze: true })
+      useVideoStore.getState().setPendingPreview(startTime)
+    }
 
     return annotationId
   }, [addAnnotation, currentTime, duration])
