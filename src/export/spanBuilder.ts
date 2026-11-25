@@ -1,5 +1,5 @@
 import type { OutputSegment } from '@/types/clip'
-import { frameIndexAt } from '@/utils/frames'
+import { frameIndexAt, frameStart } from '@/utils/frames'
 import { annotationStateAt, hasPresentationTiming, isRevealDue, revealElapsed, revealFraction, type AnnotationTimingInput } from './annotationTiming'
 import { framePresentations, type FramePresentation } from './outputTimeline'
 import { revealKind } from './reveal'
@@ -101,6 +101,15 @@ export function computeFrameSignature(
  * freeze marker recorded a frame or two later) keeps the reveal running while
  * the source frame is frozen.
  */
+/**
+ * A play frame's source time, lifted to its frame's exact start when it sits in
+ * the sliver just below it (float error in the even spacing of
+ * `frameSourceTimes`), so a drawing starting exactly on the frame shows on it.
+ */
+function sampleTime(srcTime: number, sourceFps: number): number {
+  return Math.max(srcTime, frameStart(frameIndexAt(srcTime, sourceFps), sourceFps))
+}
+
 export function buildDrawingSpans(
   segments: OutputSegment[],
   annotations: SpanAnnotationLike[],
@@ -119,7 +128,7 @@ export function buildDrawingSpans(
   let spanStart = 0
 
   frames.forEach((frame, i) => {
-    const signature = computeFrameSignature(annotations, frame.srcTime, revealSteps, (annotation) => holdElapsedAt(annotation, frame))
+    const signature = computeFrameSignature(annotations, sampleTime(frame.srcTime, sourceFps), revealSteps, (annotation) => holdElapsedAt(annotation, frame))
     const key = signatureKey(signature)
     if (key !== currentKey) {
       if (currentKey !== null) {
@@ -179,7 +188,7 @@ export function firstDueFrame(segments: OutputSegment[], annotation: AnnotationT
   const holdElapsedAt = holdElapsedResolver(segments, [annotation], sourceFps)
   const frames = framePresentations(segments, fps)
   for (let i = 0; i < frames.length; i++) {
-    if (isRevealDue(annotation.startTime, frames[i].srcTime, holdElapsedAt(annotation, frames[i]), annotation.revealDelay)) return i
+    if (isRevealDue(annotation.startTime, sampleTime(frames[i].srcTime, sourceFps), holdElapsedAt(annotation, frames[i]), annotation.revealDelay)) return i
   }
   return Infinity
 }

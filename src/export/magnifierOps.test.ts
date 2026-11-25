@@ -148,3 +148,18 @@ describe('buildMagnifierOps with revealDelay', () => {
     }
   })
 })
+
+describe('buildMagnifierOps in a clip from 0', () => {
+  it('starts the zoom on the output frame its ring appears, for a magnifier on an exact frame start', () => {
+    const fps = 25
+    const segments: OutputSegment[] = [{ kind: 'play', srcStart: 0, srcEnd: 10 }]
+    for (const revealDelay of [undefined, 0.2]) {
+      const mag = magnifier({ startTime: 11 / fps, endTime: 11 / fps + 2, revealDelay })
+      const ops = buildMagnifierOps({ start: 0, end: 10 }, segments, [mag], fps, PROBE, undefined, fps)
+      const ring = buildDrawingSpans(segments, [{ ...mag, toolType: 'magnifier' }], fps, { sourceFps: fps }).find((s) => s.signature.length > 0)!
+      expect(ring.frameStart).toBe(revealDelay ? 16 : 11)
+      expect(ops[0].enable[0].start).toBeLessThanOrEqual(ring.frameStart / fps + 1e-9)
+      expect(ops[0].enable[0].start).toBeGreaterThan((ring.frameStart - 1) / fps)
+    }
+  })
+})

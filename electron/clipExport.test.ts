@@ -347,6 +347,23 @@ describe('buildClipEncodeFilterGraph', () => {
     expect(filter).toContain('[vmagfinal][ovl]overlay=0:0:format=auto:eof_action=pass[vov]')
   })
 
+  it('starts a magnifier window no later than its first output frame when the start has more than six decimals', () => {
+    // 14 / 30 rounds up to 0.466667, after frame 14's timestamp; the zoom would start a frame after its ring.
+    const magnifiers: MagnifierOp[] = [
+      { sourceRect: { x: 0, y: 0, width: 40, height: 40 }, destCircle: { centerX: 100, centerY: 100, radius: 40 }, enable: [{ start: 14 / 30, end: 1 }] },
+    ]
+    const args = buildClipEncodeFilterGraph({
+      ...BASE_INPUT,
+      frameCount: 30,
+      quality: 'high',
+      segments: [{ kind: 'play', srcStart: 0, srcEnd: 1 }],
+      hasAudio: false,
+      magnifiers,
+    })
+    const filter = args[args.indexOf('-filter_complex') + 1]
+    expect(filter).toContain("enable='between(t\\,0.466666\\,1.000000)'")
+  })
+
   it('scales for quality only after all compositing (magnifier + overlay)', () => {
     const segments: OutputSegment[] = [{ kind: 'play', srcStart: 0, srcEnd: 1 }]
     const magnifiers: MagnifierOp[] = [

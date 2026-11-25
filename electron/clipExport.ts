@@ -389,7 +389,8 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
           `format=rgba,geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='${circleAlpha}'[magcirc${j}]`
       )
 
-      const enableExpr = enable.map((w) => `between(t\\,${fmt(w.start)}\\,${fmt(w.end)})`).join('+')
+      // Round the start down: rounding up can land after the first frame's timestamp and start the zoom a frame after its ring.
+      const enableExpr = enable.map((w) => `between(t\\,${fmt(Math.floor(w.start * 1e6) / 1e6)}\\,${fmt(w.end)})`).join('+')
       const nextLabel = j === magnifiers.length - 1 ? 'vmagfinal' : `vmag${j}`
       filterParts.push(
         `[${running}][magcirc${j}]overlay=${destX}:${destY}:enable='${enableExpr}':eof_action=pass[${nextLabel}]`

@@ -385,3 +385,60 @@ describe('a drawing on the exact start of its frame', () => {
     }
   })
 })
+
+describe('a clip from 0, where a play frame can fall a float ulp below its frame start', () => {
+  const signatureAt = (spans: DrawingSpan[], frame: number) =>
+    spans.find((s) => frame >= s.frameStart && frame < s.frameStart + s.frameCount)!.signature
+  const framesWith = (spans: DrawingSpan[], id: string) =>
+    spans.filter((s) => s.signature.some((g) => g.id === id)).reduce((n, s) => n + s.frameCount, 0)
+  const fps = 25
+  const clip = { start: 0, end: 10 }
+  const k = 11
+
+  it('shows a drawing on its own output frame', () => {
+    const drawing: SpanAnnotationLike = { id: 'a', startTime: frameStart(k, fps), endTime: frameStart(k, fps) + 2, toolType: 'text' }
+    const { segments } = buildOutputTimeline(clip, [], fps)
+    const spans = buildDrawingSpans(segments, [drawing], fps)
+    expect(signatureAt(spans, k).map((g) => g.id)).toEqual(['a'])
+    expect(signatureAt(spans, k - 1)).toEqual([])
+  })
+
+  it('shows a Freeze only drawing on a frame with no hold on exactly one output frame', () => {
+    const startTime = frameStart(k, fps)
+    const drawing: SpanAnnotationLike = { id: 'a', startTime, ...stayTiming('freeze', startTime, 10, fps, { fadeIn: 0, fadeOut: 0 }), toolType: 'text' }
+    const { segments } = buildOutputTimeline(clip, [], fps)
+    const spans = buildDrawingSpans(segments, [drawing], fps)
+    expect(framesWith(spans, 'a')).toBe(1)
+    expect(signatureAt(spans, k).map((g) => g.id)).toEqual(['a'])
+  })
+
+  it('shows a drawing on the first output frame of the hold on its frame', () => {
+    const drawing: SpanAnnotationLike = { id: 'a', startTime: frameStart(k, fps), endTime: frameStart(k, fps) + 2, toolType: 'text' }
+    const { segments } = buildOutputTimeline(clip, [{ startTime: timeForFrame(k, fps), freezeDuration: 1.2 }], fps)
+    const spans = buildDrawingSpans(segments, [drawing], fps, { sourceFps: fps })
+    const firstHold = framePresentations(segments, fps).findIndex((f) => segments[f.segmentIndex].kind === 'hold')
+    expect(firstHold).toBe(k)
+    expect(signatureAt(spans, firstHold).map((g) => g.id)).toEqual(['a'])
+    expect(signatureAt(spans, firstHold - 1)).toEqual([])
+  })
+
+  it('puts a drawing on frame k in the signature of every output frame showing source frame k', () => {
+    for (const rate of [24000 / 1001, 25, 30000 / 1001, 30, 50, 60]) {
+      for (const seconds of [4, 10, 30]) {
+        const end = Math.round(seconds * rate) / rate
+        const count = Math.round(end * rate)
+        const drawings: SpanAnnotationLike[] = Array.from({ length: count }, (_, i) => {
+          const startTime = frameStart(i, rate)
+          return { id: `d${i}`, startTime, ...stayTiming('freeze', startTime, end, rate, { fadeIn: 0, fadeOut: 0 }), toolType: 'text' }
+        })
+        const { segments } = buildOutputTimeline({ start: 0, end }, [], rate)
+        const spans = buildDrawingSpans(segments, drawings, rate, { sourceFps: rate })
+        const late = framePresentations(segments, rate).flatMap((f, i) => {
+          const shown = frameIndexAt(f.srcTime, rate)
+          return signatureAt(spans, i).some((g) => g.id === `d${shown}`) ? [] : [i]
+        })
+        expect(late, `fps ${rate.toFixed(3)}, ${seconds} s`).toEqual([])
+      }
+    }
+  })
+})
