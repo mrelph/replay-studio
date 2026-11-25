@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Drawing while the video plays now pauses on that frame and adds a freeze
+  for you. The freeze lasts as long as the drawings need plus a second to
+  read, however long you took to draw.
+- Drawings on one frozen frame draw on one after another, in the order you
+  drew them, live and in exported MP4s and GIFs.
+- Pressing Play after drawing previews the freeze before the video resumes.
+- "Stays" chips in the toolbar (Freeze only, 1s, 2s, 4s, To end) set how long
+  drawings remain on screen, and re-time the drawings you have selected.
+- Timeline bars snap to the playhead, freeze frames and whole frames. Hold Alt
+  to turn snapping off.
+
+### Changed
+- The inspector's Freeze field now edits the freeze on that frame, up to 30 s.
+  0 keeps the frame freeze-free, and the new Auto button restores the
+  calculated length.
+
+### Fixed
+- A freeze recorded with H no longer lands one or two frames late.
+
 ### Planned
 - Audio waveform visualization in timeline
 - Annotation data import/export (JSON format)
