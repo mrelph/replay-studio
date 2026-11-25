@@ -303,6 +303,8 @@ export default function AnnotationTimeline() {
     const rect = timelineRef.current.getBoundingClientRect()
     const x = (e.clientX - rect.left) / rect.width
     seek(x * duration)
+    // A click that reaches the track landed on empty space (bars stop propagation).
+    useSpeedStore.getState().select(null)
   }, [duration, seek])
 
   const handleUpdateTime = useCallback((id: string, startTime: number, endTime: number) => {
@@ -330,6 +332,7 @@ export default function AnnotationTimeline() {
         selectedAnnotationId,
       )
       if (what === 'region' && selectedSpeedId) useSpeedStore.getState().remove(selectedSpeedId)
+      else if (what === 'deselect-region') useSpeedStore.getState().select(null)
       else if (what === 'annotation') handleDeleteSelected()
     }
     window.addEventListener('keydown', handleKeyDown)

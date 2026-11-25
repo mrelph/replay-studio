@@ -74,6 +74,11 @@ describe('deleteKeyTarget', () => {
     expect(deleteKeyTarget(key('Delete'), null, null)).toBeNull()
     expect(deleteKeyTarget(key('x'), 's1', 'a1')).toBeNull()
   })
+  it('clears a selected speed region on Escape', () => {
+    expect(deleteKeyTarget(key('Escape'), 's1', null)).toBe('deselect-region')
+    expect(deleteKeyTarget(key('Escape'), null, 'a1')).toBeNull()
+    expect(deleteKeyTarget(key('Escape', 'INPUT'), 's1', null)).toBeNull()
+  })
   it('never fires while typing', () => {
     expect(deleteKeyTarget(key('Delete', 'INPUT'), 's1', null)).toBeNull()
     expect(deleteKeyTarget(key('Backspace', 'TEXTAREA'), null, 'a1')).toBeNull()

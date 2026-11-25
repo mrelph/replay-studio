@@ -55,14 +55,20 @@ export interface DeleteKeyEvent {
   isContentEditable: boolean
 }
 
-/** What Delete / Backspace removes: a selected speed region first, else the selected annotation; nothing while typing. */
+/**
+ * What Delete / Backspace removes: a selected speed region first, else the
+ * selected annotation. Escape clears a selected speed region instead (regions
+ * have no undo, so a stale selection should not wait for a later Delete).
+ * Nothing while typing.
+ */
 export function deleteKeyTarget(
   event: DeleteKeyEvent,
   selectedRegionId: string | null,
   selectedAnnotationId: string | null,
-): 'region' | 'annotation' | null {
-  if (event.key !== 'Delete' && event.key !== 'Backspace') return null
+): 'region' | 'annotation' | 'deselect-region' | null {
+  if (event.key !== 'Delete' && event.key !== 'Backspace' && event.key !== 'Escape') return null
   if (event.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.tagName)) return null
+  if (event.key === 'Escape') return selectedRegionId ? 'deselect-region' : null
   if (selectedRegionId) return 'region'
   return selectedAnnotationId ? 'annotation' : null
 }
