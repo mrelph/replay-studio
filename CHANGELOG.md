@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Audio waveform visualization in timeline
+- Annotation data import/export (JSON format)
+- Customizable keyboard shortcuts
+- Plugin system for custom drawing tools
+- Collaborative annotation features
+- Cloud storage integration
+
+## [1.6.0] - 2026-11-25
+
 ### Added
 - Drawings now draw themselves on along the stroke during playback and in
   exported MP4s and GIFs. Set the time per annotation with the new Draw-on
@@ -16,14 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Arrowheads scale with stroke width.
-
-### Planned
-- Audio waveform visualization in timeline
-- Annotation data import/export (JSON format)
-- Customizable keyboard shortcuts
-- Plugin system for custom drawing tools
-- Collaborative annotation features
-- Cloud storage integration
 
 ## [1.5.1] - 2026-11-05
 
