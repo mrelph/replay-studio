@@ -303,3 +303,24 @@ describe('drawn-order visibility (revealDelay)', () => {
     }
   })
 })
+
+describe('Freeze only annotations', () => {
+  it('is in the signature of every hold frame and of no frame after the hold', () => {
+    const segments: OutputSegment[] = [
+      { kind: 'play', srcStart: 0, srcEnd: 3 },
+      { kind: 'hold', srcTime: 3, duration: 2 },
+      { kind: 'play', srcStart: 3, srcEnd: 6 },
+    ]
+    const fps = 30
+    const annotations: SpanAnnotationLike[] = [{ id: 'a', startTime: 3, endTime: 3 + 0.5 / fps }]
+    const spans = buildDrawingSpans(segments, annotations, fps)
+    const holdStart = 3 * fps
+    const holdEnd = holdStart + 2 * fps
+    const visible = spans.filter((s) => s.signature.length > 0)
+    expect(visible).toHaveLength(1)
+    expect(visible[0].frameStart).toBeLessThanOrEqual(holdStart)
+    // The play segment after a hold restarts at the held source time, so its first frame
+    // is the same source frame as the hold; the drawing ends there and not a frame later.
+    expect(visible[0].frameStart + visible[0].frameCount).toBe(holdEnd + 1)
+  })
+})

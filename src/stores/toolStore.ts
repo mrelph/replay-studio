@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AnnotationStyle } from '@/utils/annotationStyle'
+import type { StayPreset } from '@/utils/stayPreset'
 import { DEFAULT_TEXT_FORMAT, type TextFormat } from '@/utils/textFormat'
 
 export type ToolType =
@@ -25,6 +26,7 @@ interface ToolState {
   textFormat: TextFormat
   isDrawing: boolean
   annotationStyle: AnnotationStyle
+  stayPreset: StayPreset
 
   // Actions
   setCurrentTool: (tool: ToolType) => void
@@ -34,6 +36,7 @@ interface ToolState {
   setTextFormat: (changes: Partial<TextFormat>) => void
   setIsDrawing: (drawing: boolean) => void
   setAnnotationStyle: (style: AnnotationStyle) => void
+  setStayPreset: (preset: StayPreset) => void
 }
 
 export const useToolStore = create<ToolState>((set) => ({
@@ -44,6 +47,7 @@ export const useToolStore = create<ToolState>((set) => ({
   textFormat: DEFAULT_TEXT_FORMAT,
   isDrawing: false,
   annotationStyle: 'outline',
+  stayPreset: 2,
 
   setCurrentTool: (tool) => set({ currentTool: tool }),
   setStrokeColor: (color) => set({ strokeColor: color }),
@@ -52,6 +56,7 @@ export const useToolStore = create<ToolState>((set) => ({
   setTextFormat: (changes) => set((state) => ({ textFormat: { ...state.textFormat, ...changes } })),
   setIsDrawing: (drawing) => set({ isDrawing: drawing }),
   setAnnotationStyle: (style) => set({ annotationStyle: style }),
+  setStayPreset: (preset) => set({ stayPreset: preset }),
 }))
 
 // Broadcast-standard color palette (desaturated, brightness-balanced)

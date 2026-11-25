@@ -7,6 +7,9 @@ import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/sto
 import { useDrawingStore } from '@/stores/drawingStore'
 import { fabric } from '@/lib/fabric'
 import { Modal, Button } from '@/components/ui'
+import { STAY_PRESETS, STAY_TOOL_TYPES, stayTiming, type StayPreset } from '@/utils/stayPreset'
+import { getToolDefaults } from '@/utils/annotationDefaults'
+import { useVideoStore } from '@/stores/videoStore'
 import { restyleObject, STYLED_TOOL_TYPES, type AnnotationStyle } from '@/utils/annotationStyle'
 import {
   applyTextFormat, ensureFontLoaded, isTextObject, readTextFormat, stepFontSize,
@@ -115,8 +118,8 @@ const COLOR_NAMES: Record<string, string> = {
 
 export default function DrawingToolbar() {
   const {
-    currentTool, strokeColor, strokeWidth, annotationStyle, textFormat,
-    setStrokeColor, setStrokeWidth, setAnnotationStyle, setTextFormat,
+    currentTool, strokeColor, strokeWidth, annotationStyle, stayPreset, textFormat,
+    setStrokeColor, setStrokeWidth, setAnnotationStyle, setStayPreset, setTextFormat,
   } = useToolStore()
   const { selectedText, refresh: refreshSelectedText } = useSelectedText()
   const showTextGroup = currentTool === 'text' || selectedText.length > 0
@@ -152,6 +155,19 @@ export default function DrawingToolbar() {
     saveState()
     targets.forEach((a) => restyleObject(a.object, a.toolType, style))
     canvas.requestRenderAll()
+  }
+  const chooseStayPreset = (preset: StayPreset) => {
+    setStayPreset(preset)
+    const { canvas, annotations: all, saveState, updateAnnotation } = useDrawingStore.getState()
+    if (!canvas) return
+    const selected = new Set(canvas.getActiveObjects())
+    const targets = all.filter((a) => selected.has(a.object) && STAY_TOOL_TYPES.has(a.toolType))
+    if (targets.length === 0) return
+    const { duration, fps } = useVideoStore.getState()
+    saveState()
+    targets.forEach((a) => {
+      updateAnnotation(a.id, stayTiming(preset, a.startTime, duration, fps, getToolDefaults(a.toolType)))
+    })
   }
   const [showClearConfirm, setShowClearConfirm] = useState(false)
 
@@ -312,6 +328,27 @@ export default function DrawingToolbar() {
             }`}
             title={title}
             aria-pressed={annotationStyle === value}
+          >
+            {label}
+          </button>
+        ))}
+      </ToolGroup>
+
+      <VerticalDivider />
+
+      {/* How long new drawings stay; re-times selected drawings */}
+      <ToolGroup label="Stays">
+        {STAY_PRESETS.map(({ value, label }) => (
+          <button
+            key={String(value)}
+            onClick={() => chooseStayPreset(value)}
+            className={`px-2 h-7 rounded text-xs whitespace-nowrap transition-all ${
+              stayPreset === value
+                ? 'bg-accent-subtle ring-1 ring-accent'
+                : 'hover:bg-surface-sunken'
+            }`}
+            title={value === 'freeze' ? 'Only on the freeze; gone when play resumes' : `Stays ${label === 'To end' ? 'to the end of the video' : label}`}
+            aria-pressed={stayPreset === value}
           >
             {label}
           </button>

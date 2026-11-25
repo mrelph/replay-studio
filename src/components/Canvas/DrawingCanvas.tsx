@@ -6,6 +6,7 @@ import { useVideoStore } from '@/stores/videoStore'
 import { useAudienceStore } from '@/stores/audienceStore'
 import { PlayerTracker } from './tools/PlayerTracker'
 import { getToolDefaults } from '@/utils/annotationDefaults'
+import { STAY_TOOL_TYPES, stayTiming } from '@/utils/stayPreset'
 import { annotationStateAt } from '@/export/annotationTiming'
 import { stripReveal } from '@/export/reveal'
 import { useLiveReveal } from '@/hooks/useLiveReveal'
@@ -404,9 +405,13 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const defaults = getToolDefaults(toolType)
     const startTime = drawTimeRef.current ?? currentTime
     drawTimeRef.current = null
-    const endTime = duration > 0
-      ? Math.min(startTime + defaults.duration, duration)
-      : startTime + defaults.duration
+    const { endTime, fadeIn, fadeOut } = STAY_TOOL_TYPES.has(toolType)
+      ? stayTiming(useToolStore.getState().stayPreset, startTime, duration, useVideoStore.getState().fps, defaults)
+      : {
+          endTime: duration > 0 ? Math.min(startTime + defaults.duration, duration) : startTime + defaults.duration,
+          fadeIn: defaults.fadeIn,
+          fadeOut: defaults.fadeOut,
+        }
     const annotationId = id || `${toolType}-${Date.now()}`
 
     addAnnotation({
@@ -416,8 +421,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       endTime,
       layer: 0,
       toolType,
-      fadeIn: defaults.fadeIn,
-      fadeOut: defaults.fadeOut,
+      fadeIn,
+      fadeOut,
       drawIn: defaults.drawIn,
     })
     // The pen's strokes arrive as 'path'; hidden tools stay out of freeze timing.
