@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, barStart } from './timelineSnap'
+import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, barStart, carrierDropCollides } from './timelineSnap'
 import { snapToFrame, frameIndexAt, frameStart, timeForFrame } from './frames'
 import type { Annotation } from '@/stores/drawingStore'
 
@@ -89,5 +89,19 @@ describe('dragEndSyncTimes', () => {
   it('skips end-edge drags and hand-moved freeze markers', () => {
     expect(dragEndSyncTimes('path', 'end', 1, 1)).toBeNull()
     expect(dragEndSyncTimes('freeze', 'move', 1, 2)).toBeNull()
+  })
+})
+
+describe('carrierDropCollides', () => {
+  const marker = (id: string, frame: number, extra: Partial<Annotation> = {}) => ann(id, timeForFrame(frame, 30), { toolType: 'freeze', freezeDuration: 1, ...extra })
+  it('is true when a dragged carrier lands on another carrier\'s frame', () => {
+    expect(carrierDropCollides([marker('freeze-1', 90), marker('freeze-2', 90)], 'freeze-2', 30)).toBe(true)
+    expect(carrierDropCollides([marker('freeze-1', 90, { freezeDuration: 0 }), marker('freeze-2', 90)], 'freeze-2', 30)).toBe(true)
+    expect(carrierDropCollides([ann('arrow-1', frameStart(90, 30), { freezeDuration: 2 }), marker('freeze-2', 90)], 'freeze-2', 30)).toBe(true)
+  })
+  it('is false on a free frame, beside plain drawings, or for a dragged drawing', () => {
+    expect(carrierDropCollides([marker('freeze-1', 90), marker('freeze-2', 91)], 'freeze-2', 30)).toBe(false)
+    expect(carrierDropCollides([ann('arrow-1', frameStart(90, 30)), marker('freeze-2', 90)], 'freeze-2', 30)).toBe(false)
+    expect(carrierDropCollides([marker('freeze-1', 90), ann('arrow-1', frameStart(90, 30))], 'arrow-1', 30)).toBe(false)
   })
 })

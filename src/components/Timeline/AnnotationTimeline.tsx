@@ -9,7 +9,7 @@ import type { Clip } from '@/types/clip'
 import WaveformDisplay from './WaveformDisplay'
 import { revealKind } from '@/export/reveal'
 import { parseDrawIn } from '@/utils/drawInInput'
-import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, startsOnFrameStart, barStart } from '@/utils/timelineSnap'
+import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, startsOnFrameStart, barStart, carrierDropCollides } from '@/utils/timelineSnap'
 import { setFrameFreeze } from '@/utils/freezeMarkers'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
@@ -132,6 +132,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
   const [isHovered, setIsHovered] = useState(false)
   const markerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef(annotation.startTime)
+  const dragEndRef = useRef(annotation.endTime)
 
   const left = (annotation.startTime / duration) * 100
   const width = ((annotation.endTime - annotation.startTime) / duration) * 100
@@ -139,6 +140,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
   const handleMouseDown = (e: React.MouseEvent, type: 'move' | 'start' | 'end') => {
     e.stopPropagation()
     dragStartRef.current = annotation.startTime
+    dragEndRef.current = annotation.endTime
     setIsDragging(type)
     onSelect()
   }
@@ -175,6 +177,11 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
       setIsDragging(null)
       const finalStart = useDrawingStore.getState().annotations.find((a) => a.id === annotation.id)?.startTime
       if (finalStart === undefined) return
+      // One freeze per frame: a carrier dropped on another carrier's frame goes back.
+      if (carrierDropCollides(useDrawingStore.getState().annotations, annotation.id, useVideoStore.getState().fps)) {
+        onUpdateTime(dragStartRef.current, dragEndRef.current)
+        return
+      }
       const times = dragEndSyncTimes(annotation.toolType, isDragging, dragStartRef.current, finalStart)
       if (times) useDrawingStore.getState().syncFrames(times)
     }

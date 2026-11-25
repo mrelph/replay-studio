@@ -11,7 +11,7 @@ import {
   MAX_RECORDED_HOLD_SECONDS,
 } from './freezeMarkers'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
-import { timeForFrame } from './frames'
+import { frameStart, timeForFrame } from './frames'
 
 // Fabric schedules renders on requestAnimationFrame; dispose each test canvas
 // so none fires after the mocked 2D context is restored (jsdom's returns null).
@@ -115,6 +115,22 @@ describe('setFrameFreeze', () => {
     expect(freezes()[0].freezeDuration).toBe(2)
   })
 
+  it('an H hold recorded on a drawn frame with no freeze sequences its drawings', () => {
+    const canvas = testCanvas()
+    const line = (id: string) => ({ id, object: new fabric.Rect({ width: 1, height: 1 }), startTime: frameStart(120, 30), endTime: 6, layer: 1, toolType: 'arrow', drawIn: 0.35 }) as Annotation
+    useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
+    useDrawingStore.getState().addAnnotation(line('a'))
+    useDrawingStore.getState().addAnnotation(line('b'))
+    const time = timeForFrame(120, 30)
+    expect(autoFreezeOwnsFrame(useDrawingStore.getState().annotations, time, 30)).toBe(false)
+    setFrameFreeze(time, 2.5, 30, { auto: false })
+    useDrawingStore.getState().syncFrames([time])
+    const all = useDrawingStore.getState().annotations
+    expect(all.filter((a) => a.toolType === 'freeze').map((a) => [a.freezeDuration, a.freezeAuto])).toEqual([[2.5, false]])
+    expect(all.find((a) => a.id === 'b')?.revealDelay).toBeCloseTo(0.35)
+    expect(autoFreezeOwnsFrame(all, time, 30)).toBe(true)
+  })
+
   it('setFreezeAt leaves a legacy carrier without a freezeAuto key, and makes an automatic one hand-set', () => {
     const canvas = testCanvas()
     useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
@@ -136,8 +152,14 @@ describe('autoFreezeOwnsFrame', () => {
   const ann = (id: string, startTime: number, extra: Partial<Annotation> = {}) =>
     ({ id, startTime, endTime: startTime + 2, layer: 1, toolType: 'arrow', object: {} as never, ...extra }) as Annotation
 
-  it('is true when the frame has a drawing', () => {
-    expect(autoFreezeOwnsFrame([ann('a', timeForFrame(91, 30))], 3.0569, 30)).toBe(true)
+  it('is true when the frame has a drawing and a freeze carrier', () => {
+    const marker = ann('f', timeForFrame(91, 30), { toolType: 'freeze', freezeDuration: 2, freezeAuto: false })
+    expect(autoFreezeOwnsFrame([ann('a', frameStart(91, 30)), marker], 3.0569, 30)).toBe(true)
+    expect(autoFreezeOwnsFrame([ann('a', frameStart(91, 30)), { ...marker, freezeDuration: 0 }], 3.0569, 30)).toBe(true)
+  })
+
+  it('is false for drawings with no freeze carrier (a 1.7.0 frame, or drawings moved off their freeze)', () => {
+    expect(autoFreezeOwnsFrame([ann('a', frameStart(91, 30))], 3.0569, 30)).toBe(false)
   })
 
   it('is true for an automatic marker without drawings', () => {

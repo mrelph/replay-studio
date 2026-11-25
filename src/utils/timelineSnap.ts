@@ -55,6 +55,14 @@ export function dragEndSyncTimes(toolType: string, edge: 'move' | 'start' | 'end
   return [startBefore, finalStart]
 }
 
+/** True when the dragged bar is a freeze carrier that ended on a frame another carrier already holds: the drop is reverted, keeping one freeze per frame. */
+export function carrierDropCollides(annotations: Annotation[], draggedId: string, fps: number): boolean {
+  const dragged = annotations.find((a) => a.id === draggedId)
+  if (!dragged || typeof dragged.freezeDuration !== 'number') return false
+  const frame = frameIndexAt(dragged.startTime, fps)
+  return annotations.some((a) => a.id !== draggedId && typeof a.freezeDuration === 'number' && frameIndexAt(a.startTime, fps) === frame)
+}
+
 export interface FreezeFieldState {
   seconds: number
   isAuto: boolean

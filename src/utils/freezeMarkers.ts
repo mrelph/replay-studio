@@ -26,11 +26,18 @@ export function findFreezeAt(annotations: Annotation[], time: number, fps: numbe
   return carrier && (carrier.freezeDuration ?? 0) > 0 ? carrier : undefined
 }
 
-/** True when `time`'s frame has drawings or an automatic freeze: its hold is calculated, not recorded from a pause. */
+/** True when `time`'s frame has an automatic freeze, or a freeze on a drawn-on frame (set from its drawings or the inspector): H must not overwrite it. */
 export function autoFreezeOwnsFrame(annotations: Annotation[], time: number, fps: number): boolean {
+  const carrier = findFreezeCarrierAt(annotations, time, fps)
+  if (!carrier) return false
+  if (carrier.freezeAuto === true) return true
+  return frameHasDrawings(annotations, time, fps)
+}
+
+/** True when `time`'s frame has at least one drawing (freeze markers aside). */
+export function frameHasDrawings(annotations: Annotation[], time: number, fps: number): boolean {
   const frame = frameIndexAt(time, fps)
-  if (annotations.some((a) => a.toolType !== 'freeze' && frameIndexAt(a.startTime, fps) === frame)) return true
-  return findFreezeCarrierAt(annotations, time, fps)?.freezeAuto === true
+  return annotations.some((a) => a.toolType !== 'freeze' && frameIndexAt(a.startTime, fps) === frame)
 }
 
 /** Adds an invisible freeze-frame marker annotation at `time`; returns its id. */

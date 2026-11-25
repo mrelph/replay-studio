@@ -4,7 +4,7 @@ import { useDrawingStore } from '@/stores/drawingStore'
 import VideoControls from './VideoControls'
 import { toast } from '@/components/ui'
 import { formatTimecode, frameIndexAt, snapToFrame } from '@/utils/frames'
-import { MAX_PAUSE_DRIFT_SECONDS, autoFreezeOwnsFrame, recordedHold, setFrameFreeze } from '@/utils/freezeMarkers'
+import { MAX_PAUSE_DRIFT_SECONDS, autoFreezeOwnsFrame, frameHasDrawings, recordedHold, setFrameFreeze } from '@/utils/freezeMarkers'
 import { previewHoldFor } from '@/utils/holdPreview'
 import type { Annotation } from '@/stores/drawingStore'
 
@@ -196,8 +196,11 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       // the pause was resumed from.
       const { fps } = useVideoStore.getState()
       const time = snapToFrame(timing.resumeTime, fps)
-      // A drawn-on frame's freeze is calculated, not timed: leave it alone.
-      if (autoFreezeOwnsFrame(useDrawingStore.getState().annotations, time, fps)) return
+      // A drawn-on frame's freeze is calculated or typed, not timed: leave it alone.
+      if (autoFreezeOwnsFrame(useDrawingStore.getState().annotations, time, fps)) {
+        toast('info', "This frame's freeze is set from its drawings")
+        return
+      }
       const hold = recordedHold(timing.time, time, (performance.now() - timing.at) / 1000)
       if (!hold.record) {
         if (hold.reason === 'too-short') toast('info', 'Freeze too short: nothing recorded')
@@ -205,6 +208,8 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       }
       const id = setFrameFreeze(time, hold.seconds, fps, { auto: false })
       if (!id) return
+      // Drawings already on the frame (a 1.7.0 project) reveal in order in the new hold.
+      if (frameHasDrawings(useDrawingStore.getState().annotations, time, fps)) useDrawingStore.getState().syncFrames([time])
       // Playback is resuming from this very frame; the coach already held it
       // live, so don't let the new freeze fire again right now.
       triggeredFreezesRef.current.add(id)
