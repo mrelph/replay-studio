@@ -587,6 +587,24 @@ function speedTimelineInputs(
 }
 
 /**
+ * Longest filter graph passed inline. Windows caps a whole command line at
+ * 32,767 characters, and a speed region adds a few KB of graph, so longer
+ * graphs go to a file instead.
+ */
+export const MAX_INLINE_FILTER_GRAPH = 8000
+
+/**
+ * `args` unchanged when its `-filter_complex` graph is short; otherwise the
+ * argv reading the graph from `scriptPath` with `-filter_complex_script`, and
+ * the graph to write there.
+ */
+export function withFilterScript(args: string[], scriptPath: string): { args: string[]; script: string | null } {
+  const at = args.indexOf('-filter_complex')
+  if (at < 0 || args[at + 1].length <= MAX_INLINE_FILTER_GRAPH) return { args, script: null }
+  return { args: [...args.slice(0, at), '-filter_complex_script', scriptPath, ...args.slice(at + 2)], script: args[at + 1] }
+}
+
+/**
  * Same per-segment frame distribution as `src/export/outputTimeline.ts`'s
  * `segmentFrameCounts`, duplicated here (rather than imported) so this
  * module has no dependency on the renderer-side export code — it needs to
@@ -798,7 +816,7 @@ export async function runClipEncodeJob(
     }
   }
 
-  const args = buildClipEncodeFilterGraph({
+  const built = buildClipEncodeFilterGraph({
     outputPath: job.outputPath,
     sourcePath: job.sourcePath,
     fps: job.fps,
@@ -811,6 +829,16 @@ export async function runClipEncodeJob(
     overlayConcatListPath,
     magnifiers: input.magnifiers,
   })
+  const scriptPath = path.join(job.tmpDir, 'filter_graph.txt')
+  const { args, script } = withFilterScript(built, scriptPath)
+  if (script !== null) {
+    try {
+      await fsp.writeFile(scriptPath, script)
+    } catch (err) {
+      await cleanupJob(jobId)
+      return { success: false, error: err instanceof Error ? err.message : 'Could not write the filter graph' }
+    }
+  }
 
   let child: ChildProcessWithoutNullStreams
   try {

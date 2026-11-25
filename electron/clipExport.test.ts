@@ -21,6 +21,8 @@ import {
   encodeRgbaPng,
   runClipEncodeJob,
   cancelClipEncodeJob,
+  withFilterScript,
+  MAX_INLINE_FILTER_GRAPH,
 } from './clipExport'
 import { getFfmpegBinaryPath } from './ffmpegExport'
 import type { ClipEncodeStartOptions, MagnifierOp, OutputSegment, OverlaySpan } from '../src/types/clip'
@@ -549,6 +551,24 @@ describe('slowed segments', () => {
   })
 })
 
+describe('withFilterScript', () => {
+  const argsWith = (graph: string) => ['-y', '-i', 'in.mp4', '-filter_complex', graph, '-map', '[vout]', 'out.mp4']
+
+  it('keeps a short graph inline, argv unchanged', () => {
+    const args = argsWith('[0:v]null[vout]')
+    expect(withFilterScript(args, '/tmp/job/filter_graph.txt')).toEqual({ args, script: null })
+  })
+
+  it('moves a graph longer than the threshold into a script file', () => {
+    const graph = '[0:v]null[vout];' + 'x'.repeat(MAX_INLINE_FILTER_GRAPH)
+    expect(MAX_INLINE_FILTER_GRAPH).toBeLessThan(32_767 / 2)
+    expect(withFilterScript(argsWith(graph), '/tmp/job/filter_graph.txt')).toEqual({
+      args: ['-y', '-i', 'in.mp4', '-filter_complex_script', '/tmp/job/filter_graph.txt', '-map', '[vout]', 'out.mp4'],
+      script: graph,
+    })
+  })
+})
+
 // ---------------------------------------------------------------------------
 // buildOverlayConcatList
 // ---------------------------------------------------------------------------
@@ -1038,10 +1058,24 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
     expect(Math.abs(audioSeconds - frameCount / 30)).toBeLessThanOrEqual(1 / 30)
   }, 60_000)
 
+  // 6 s at 30 fps, 160x32, with audio; each frame shows its own index in binary.
+  const numberedSource = (): string => {
+    const source = path.join(tmpDir, 'numbered10.mp4')
+    if (!fs.existsSync(source)) {
+      const generated = spawnSync(ffmpegPath as string, [
+        '-y', '-f', 'lavfi', '-i',
+        `color=black:size=160x32:rate=30:duration=6,format=gray,geq=lum='if(mod(floor(N/pow(2\\,floor(X*10/W)))\\,2)\\,235\\,16)'`,
+        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '1', '-c:a', 'aac', '-shortest', source,
+      ])
+      expect(generated.status, generated.stderr.toString()).toBe(0)
+    }
+    return source
+  }
+
   describe('speed ramps decode to exactly the planned source frames', () => {
     const W = 160
     const H = 32
-    const source = path.join(tmpDir, 'numbered10.mp4')
     // Each frame shows its own index in binary: 10 columns, white = bit set.
     const frameIds = (file: string): number[] => {
       const decoded = spawnSync(ffmpegPath as string, ['-v', 'error', '-i', file, '-map', '0:v', '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 27 })
@@ -1063,15 +1097,7 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
       ['from0', 30, 'mp4'], ['cut', 30, 'mp4'], ['cut', 15, 'gif'], ['odd', 15, 'gif'],
     ] as const)('case %s at %i fps %s', async (name, fps, format) => {
       const bin = ffmpegPath as string
-      if (!fs.existsSync(source)) {
-        const generated = spawnSync(bin, [
-          '-y', '-f', 'lavfi', '-i',
-          `color=black:size=${W}x${H}:rate=30:duration=6,format=gray,geq=lum='if(mod(floor(N/pow(2\\,floor(X*10/W)))\\,2)\\,235\\,16)'`,
-          '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
-          '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '1', '-c:a', 'aac', '-shortest', source,
-        ])
-        expect(generated.status, generated.stderr.toString()).toBe(0)
-      }
+      const source = numberedSource()
       const planned = plannedSourceFrames(SPEED_CASES[name], fps, 30)
       const output = path.join(tmpDir, `ramp-${name}-${fps}.${format}`)
       const started = await startClipEncodeJob({
@@ -1089,6 +1115,34 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
       }
     }, 60_000)
   })
+
+  it('exports a graph too long for one command-line argument through a filter script', async () => {
+    const bin = ffmpegPath as string
+    const source = numberedSource()
+    // 60 two-frame speed segments alternating 0.5 and 2: well over the inline limit.
+    const frames: FrameSegment[] = Array.from({ length: 60 }, (_, k) => [30 + 2 * k, 32 + 2 * k, k % 2 === 0 ? 0.5 : 2])
+    const segments = toSegments(frames, 30)
+    const planned = plannedSourceFrames(frames, 30, 30)
+    const graph = buildClipEncodeFilterGraph({ ...BASE_INPUT, sourcePath: source, sourceFps: 30, frameCount: planned.length, quality: 'high', segments, hasAudio: true, magnifiers: [] })
+    expect(graph[graph.indexOf('-filter_complex') + 1].length).toBeGreaterThan(MAX_INLINE_FILTER_GRAPH)
+    const output = path.join(tmpDir, 'long-graph.mp4')
+    const started = await startClipEncodeJob({
+      outputPath: output, sourcePath: source, width: 160, height: 32, fps: 30,
+      frameCount: planned.length, quality: 'high', segments,
+    }, true, 30)
+    expect(started.ok).toBe(true)
+    if (!started.ok) return
+    const result = await runClipEncodeJob(started.jobId, { spans: [], magnifiers: [] }, bin)
+    expect(result, result.error).toEqual({ success: true })
+    const decoded = spawnSync(bin, ['-v', 'error', '-i', output, '-map', '0:v', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 26 })
+    const ids: number[] = []
+    for (let k = 0; k < decoded.stdout.length / (160 * 32); k++) {
+      let id = 0
+      for (let bit = 0; bit < 10; bit++) if (decoded.stdout[k * 160 * 32 + 16 * 160 + bit * 16 + 8] > 128) id |= 1 << bit
+      ids.push(id)
+    }
+    expect(ids).toEqual(planned)
+  }, 60_000)
 
   it('cancel kills ffmpeg mid-run and removes the partial output file', async () => {
     const bin = ffmpegPath as string
