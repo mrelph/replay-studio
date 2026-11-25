@@ -1,11 +1,23 @@
 import { frameIndexAt } from '@/utils/frames'
-import { revealElapsed, revealFraction } from './annotationTiming'
+import { isRevealDue, revealElapsed, revealFraction } from './annotationTiming'
 
 export interface LiveRevealAnnotation {
   id: string
   startTime: number
   endTime: number
   drawIn?: number
+  revealDelay?: number
+}
+
+/** An armed annotation's peak reveal fraction so far, and whether its turn has come (latched). */
+export interface ArmedReveal {
+  peak: number
+  due: boolean
+}
+
+export interface LiveRevealState {
+  fraction: number
+  due: boolean
 }
 
 export interface LiveRevealInput {
@@ -16,21 +28,24 @@ export interface LiveRevealInput {
   autoHold: { time: number; startedAt: number; endedAt: number | null } | null
   now: number
   fps: number
-  armed: Map<string, number>
+  armed: Map<string, ArmedReveal>
 }
 
+const FINISHED: LiveRevealState = { fraction: 1, due: true }
+
 /**
- * Returns the reveal fraction for every annotation id (1 = finished).
- * `armed` maps each armed id to its peak fraction so far.
+ * Returns the reveal fraction (1 = finished) and whether the annotation's
+ * `revealDelay` has passed, for every annotation id. Unarmed annotations are
+ * finished and due. `armed` holds each armed id's peak fraction and latched due.
  */
-export function stepLiveReveal(input: LiveRevealInput): Map<string, number> {
+export function stepLiveReveal(input: LiveRevealInput): Map<string, LiveRevealState> {
   const { annotations, prevTime, time, playing, autoHold, now, fps, armed } = input
-  const result = new Map<string, number>()
+  const result = new Map<string, LiveRevealState>()
   const holdActive = autoHold !== null && autoHold.endedAt === null
 
   if (!playing && !holdActive) {
     armed.clear()
-    for (const annotation of annotations) result.set(annotation.id, 1)
+    for (const annotation of annotations) result.set(annotation.id, FINISHED)
     return result
   }
 
@@ -38,10 +53,10 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, number> {
   const frameTolerance = 1 / fps
 
   for (const annotation of annotations) {
-    const { id, startTime, endTime, drawIn } = annotation
-    if (!(drawIn !== undefined && drawIn > 0)) {
+    const { id, startTime, endTime, drawIn, revealDelay } = annotation
+    if (!(drawIn !== undefined && drawIn > 0) && !(revealDelay !== undefined && revealDelay > 0)) {
       armed.delete(id)
-      result.set(id, 1)
+      result.set(id, FINISHED)
       continue
     }
 
@@ -50,21 +65,22 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, number> {
     const holdCounts = holdFrame !== null && holdFrame >= frameIndexAt(startTime, fps) && holdFrame <= frameIndexAt(time, fps)
     const arrived = playing && prevTime < startTime && startTime <= time && time - prevTime < 1
     const heldOnStart = holdActive && holdCounts && time >= startTime - frameTolerance && time <= endTime
-    if ((arrived || heldOnStart) && !armed.has(id)) armed.set(id, 0)
+    if ((arrived || heldOnStart) && !armed.has(id)) armed.set(id, { peak: 0, due: false })
     if (time < startTime - frameTolerance || time > endTime) armed.delete(id)
 
-    const peak = armed.get(id)
-    if (peak === undefined) {
-      result.set(id, 1)
+    const state = armed.get(id)
+    if (state === undefined) {
+      result.set(id, FINISHED)
       continue
     }
 
     // A freeze snaps playback back to the start frame after it ran a little
-    // past it; never let an armed shape un-draw.
+    // past it; never let an armed shape un-draw or disappear again.
     const holdElapsed = holdCounts && autoHold ? ((autoHold.endedAt ?? now) - autoHold.startedAt) / 1000 : 0
-    const fraction = Math.max(peak, revealFraction(revealElapsed(startTime, time, holdElapsed), drawIn))
-    armed.set(id, fraction)
-    result.set(id, fraction)
+    const due = state.due || isRevealDue(startTime, time, holdElapsed, revealDelay)
+    const fraction = Math.max(state.peak, revealFraction(revealElapsed(startTime, time, holdElapsed, revealDelay), drawIn))
+    armed.set(id, { peak: fraction, due })
+    result.set(id, { fraction, due })
   }
 
   return result

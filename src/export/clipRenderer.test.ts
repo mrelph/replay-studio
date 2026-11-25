@@ -90,7 +90,7 @@ describe('renderClip draw-on', () => {
     HTMLCanvasElement.prototype.getContext = originalGetContext
   })
 
-  async function overlayCallsFor(drawIn: number | undefined, preReveal = false): Promise<number> {
+  async function overlayCallsFor(drawIn: number | undefined, preReveal = false, revealDelay?: number): Promise<number> {
     const clipEncodeAddOverlay = vi.fn().mockImplementation(async () => ({ ok: true, index: clipEncodeAddOverlay.mock.calls.length - 1 }))
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
@@ -111,6 +111,7 @@ describe('renderClip draw-on', () => {
       startTime: 0,
       endTime: 2,
       drawIn,
+      revealDelay,
       object,
     } as unknown as Annotation
     const result = await renderClip({
@@ -131,6 +132,7 @@ describe('renderClip draw-on', () => {
   it('burns a draw-on into several overlays, and a static drawing into one', async () => {
     expect(await overlayCallsFor(0.4)).toBeGreaterThan(2)
     expect(await overlayCallsFor(undefined)).toBe(1)
+    expect(await overlayCallsFor(undefined, false, 1)).toBe(2)
   })
 
   it('does not bake a mid-reveal live object into the export', async () => {

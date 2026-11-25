@@ -165,6 +165,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
       fadeIn: a.fadeIn,
       fadeOut: a.fadeOut,
       drawIn: a.drawIn,
+      revealDelay: a.revealDelay,
       toolType: a.toolType,
     }))
 
@@ -211,6 +212,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
         fadeIn: a.fadeIn,
         fadeOut: a.fadeOut,
         drawIn: a.drawIn,
+        revealDelay: a.revealDelay,
         circle: {
           left: circleObject.left || 0,
           top: circleObject.top || 0,

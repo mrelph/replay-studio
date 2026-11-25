@@ -5,8 +5,10 @@ import {
   computeFrameSignature,
   MAX_DISTINCT_OVERLAYS,
   signatureKey,
+  type DrawingSpan,
   type SpanAnnotationLike,
 } from './spanBuilder'
+import { framePresentations } from './outputTimeline'
 import type { OutputSegment } from '@/types/clip'
 
 describe('signatureKey / computeFrameSignature', () => {
@@ -211,5 +213,93 @@ describe('draw-on reveal buckets', () => {
     expect(new Set(buildDrawingSpans([play(0, 60)], anns, 30).map((s) => signatureKey(s.signature))).size).toBeGreaterThan(MAX_DISTINCT_OVERLAYS)
     const spans = buildDrawingSpansWithinBudget([play(0, 60)], anns, 30)
     expect(new Set(spans.map((s) => signatureKey(s.signature))).size).toBeLessThanOrEqual(MAX_DISTINCT_OVERLAYS)
+  })
+})
+
+describe('drawn-order visibility (revealDelay)', () => {
+  const play = (a: number, b: number): OutputSegment => ({ kind: 'play', srcStart: a, srcEnd: b })
+  const HELD: OutputSegment[] = [play(2.9, 3.0), { kind: 'hold', srcTime: 3.0, duration: 2.3 }, play(3.0, 4.0)]
+  const anns: SpanAnnotationLike[] = [
+    { id: 'a', startTime: 3, endTime: 5, drawIn: 0.35, revealDelay: 0, toolType: 'line' },
+    { id: 'b', startTime: 3, endTime: 5, drawIn: 0.4, revealDelay: 0.35, toolType: 'pen' },
+    { id: 't', startTime: 3, endTime: 5, revealDelay: 0.75, toolType: 'text' },
+  ]
+  const HOLD_START = 3 // play 2.9 -> 3.0 at 30 fps is 3 frames
+  const firstFrameWith = (spans: DrawingSpan[], id: string) => spans.find((s) => s.signature.some((g) => g.id === id))!
+  const stateOf = (span: DrawingSpan, id: string) => span.signature.find((g) => g.id === id)!
+
+  it('shows only the first drawing on the first hold frame', () => {
+    const spans = buildDrawingSpans(HELD, anns, 30, { sourceFps: 30 })
+    const at = spans.find((s) => s.frameStart <= HOLD_START && HOLD_START < s.frameStart + s.frameCount)!
+    expect(at.signature.map((g) => g.id)).toEqual(['a'])
+  })
+
+  it('brings each drawing in once its delay of hold time has passed', () => {
+    for (const maxRevealSteps of [12, 1]) {
+      const spans = buildDrawingSpans(HELD, anns, 30, { sourceFps: 30, maxRevealSteps })
+      const b = firstFrameWith(spans, 'b')
+      const t = firstFrameWith(spans, 't')
+      expect(b.frameStart).toBe(HOLD_START + 11) // first f with f / 30 >= 0.35
+      expect(t.frameStart).toBe(HOLD_START + 23) // first f with f / 30 >= 0.75
+      expect(firstFrameWith(spans, 'a').frameStart).toBe(HOLD_START)
+      expect(stateOf(t, 't').revealBucket).toBe(maxRevealSteps)
+      if (maxRevealSteps === 1) {
+        for (const span of spans) for (const g of span.signature) expect(g.revealBucket).toBe(1)
+      }
+    }
+  })
+
+  it('uses source time when there is no hold (Review Focus 3)', () => {
+    const segs = [play(2.9, 4.0)]
+    const times = framePresentations(segs, 30).map((f) => f.srcTime)
+    const spans = buildDrawingSpans(segs, anns, 30, { sourceFps: 30 })
+    const b = firstFrameWith(spans, 'b').frameStart
+    const t = firstFrameWith(spans, 't').frameStart
+    expect(times[b]).toBeGreaterThanOrEqual(3.35 - 1e-6)
+    expect(times[b - 1]).toBeLessThan(3.35)
+    expect(times[t]).toBeGreaterThanOrEqual(3.75 - 1e-6)
+    expect(times[t - 1]).toBeLessThan(3.75)
+
+    const late = buildDrawingSpans([play(3.5, 4.0)], anns, 30, { sourceFps: 30 })
+    expect(late[0].frameStart).toBe(0)
+    expect(late[0].signature.map((g) => g.id)).toContain('b')
+  })
+
+  it('leaves annotations without revealDelay exactly as before', () => {
+    const segs: OutputSegment[] = [play(2.5, 3.0567), { kind: 'hold', srcTime: 3.0567, duration: 2.7 }, play(3.0567, 5)]
+    const fixture: SpanAnnotationLike[] = [
+      { id: 'a', startTime: 3.011, endTime: 5.5, drawIn: 0.4, toolType: 'pen' },
+      { id: 'x', startTime: 3.5, endTime: 4.5, fadeIn: 0.3, toolType: 'text' },
+    ]
+    const spans = buildDrawingSpans(segs, fixture, 30, { sourceFps: 30 })
+    // Captured from the span builder before revealDelay existed.
+    expect(spans.map((s) => [s.frameStart, s.frameCount, s.signature.map((g) => [g.id, g.opacityBucket, g.revealBucket])])).toEqual([
+      [0, 16, []],
+      [16, 1, [['a', 1, 1]]],
+      [17, 1, [['a', 1, 3]]],
+      [18, 1, [['a', 1, 5]]],
+      [19, 1, [['a', 1, 7]]],
+      [20, 1, [['a', 1, 8]]],
+      [21, 1, [['a', 1, 9]]],
+      [22, 1, [['a', 1, 10]]],
+      [23, 5, [['a', 1, 11]]],
+      [28, 84, [['a', 1, 12]]],
+      [112, 4, [['a', 1, 12], ['x', 0.5, 12]]],
+      [116, 1, [['a', 1, 12], ['x', 0.54, 12]]],
+      [117, 1, [['a', 1, 12], ['x', 0.64, 12]]],
+      [118, 1, [['a', 1, 12], ['x', 0.76, 12]]],
+      [119, 1, [['a', 1, 12], ['x', 0.86, 12]]],
+      [120, 1, [['a', 1, 12], ['x', 0.98, 12]]],
+      [121, 21, [['a', 1, 12], ['x', 1, 12]]],
+      [142, 14, [['a', 1, 12]]],
+    ])
+  })
+
+  it('omits a not-yet-due annotation from a single frame signature at any step count', () => {
+    const t: SpanAnnotationLike = { id: 't', startTime: 3, endTime: 5, revealDelay: 0.75, toolType: 'text' }
+    for (const steps of [12, 1]) {
+      expect(computeFrameSignature([t], 3.5, steps)).toEqual([])
+      expect(computeFrameSignature([t], 3.5, steps, () => 0.25)).toHaveLength(1)
+    }
   })
 })

@@ -3,7 +3,7 @@ import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { annotationStateAt } from '@/export/annotationTiming'
 import { applyReveal, stripReveal } from '@/export/reveal'
-import { stepLiveReveal } from '@/export/liveReveal'
+import { stepLiveReveal, type ArmedReveal } from '@/export/liveReveal'
 
 /**
  * Draws annotations on in the live canvas while the video plays or an
@@ -23,7 +23,7 @@ export function useLiveReveal(canvasRef: RefObject<fabric.Canvas | null>, videoE
 
     const start = () => {
       if (stop) return
-      const armed = new Map<string, number>()
+      const armed = new Map<string, ArmedReveal>()
       let applied = new Map<string, { object: unknown; visible: boolean; opacity: number; fraction: number }>()
       // Annotations created while the loop runs (drawn during playback or a
       // hold) stay finished until playback leaves them.
@@ -64,7 +64,7 @@ export function useLiveReveal(canvasRef: RefObject<fabric.Canvas | null>, videoE
           }
         }
 
-        const fractions = stepLiveReveal({
+        const reveals = stepLiveReveal({
           annotations: annotations.filter((a) => !fresh.has(a.id)),
           prevTime,
           time,
@@ -78,8 +78,10 @@ export function useLiveReveal(canvasRef: RefObject<fabric.Canvas | null>, videoE
         const next = new Map<string, { object: unknown; visible: boolean; opacity: number; fraction: number }>()
         let changed = applied.size !== annotations.length
         for (const annotation of annotations) {
-          const { visible, opacity } = annotationStateAt(annotation, time)
-          const fraction = fractions.get(annotation.id) ?? 1
+          const state = annotationStateAt(annotation, time)
+          const { fraction, due } = reveals.get(annotation.id) ?? { fraction: 1, due: true }
+          const visible = state.visible && due
+          const opacity = state.opacity
           annotation.object.visible = visible
           annotation.object.opacity = opacity
           applyReveal(annotation.object, annotation.toolType, fraction)

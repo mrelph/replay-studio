@@ -1,6 +1,6 @@
 import type { OutputSegment } from '@/types/clip'
 import { frameIndexAt } from '@/utils/frames'
-import { annotationStateAt, revealElapsed, revealFraction, type AnnotationTimingInput } from './annotationTiming'
+import { annotationStateAt, isRevealDue, revealElapsed, revealFraction, type AnnotationTimingInput } from './annotationTiming'
 import { framePresentations } from './outputTimeline'
 import { revealKind } from './reveal'
 
@@ -76,8 +76,11 @@ export function computeFrameSignature(
   for (const annotation of annotations) {
     const { visible, opacity } = annotationStateAt(annotation, t)
     if (!visible || opacity <= 0) continue
+    const holdElapsed = holdElapsedFor(annotation)
+    if (!isRevealDue(annotation.startTime, t, holdElapsed, annotation.revealDelay)) continue
     const noReveal = annotation.toolType !== undefined && revealKind(annotation.toolType) === 'none'
-    const fraction = noReveal || revealSteps <= 1 ? 1 : revealFraction(revealElapsed(annotation.startTime, t, holdElapsedFor(annotation)), annotation.drawIn)
+    const fraction =
+      noReveal || revealSteps <= 1 ? 1 : revealFraction(revealElapsed(annotation.startTime, t, holdElapsed, annotation.revealDelay), annotation.drawIn)
     const revealBucket = fraction >= 1 ? revealSteps : Math.floor(fraction * revealSteps)
     states.push({ id: annotation.id, opacityBucket: quantizeOpacity(opacity), revealBucket, revealSteps })
   }
@@ -113,7 +116,7 @@ export function buildDrawingSpans(
   // started includes every such hold), and the hold time accrued before each segment.
   const holdInfo = new Map<SpanAnnotationLike, { matches: boolean[]; before: number[] }>()
   for (const annotation of annotations) {
-    if (!annotation.drawIn || annotation.drawIn <= 0) continue
+    if (!(annotation.drawIn && annotation.drawIn > 0) && !(annotation.revealDelay && annotation.revealDelay > 0)) continue
     const startFrame = frameIndexAt(annotation.startTime, sourceFps)
     const matches = segments.map((seg) => seg.kind === 'hold' && frameIndexAt(seg.srcTime, sourceFps) >= startFrame)
     const before: number[] = []
