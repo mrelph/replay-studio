@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { snapTime, snapTargets, freezeFieldState } from './timelineSnap'
-import { snapToFrame } from './frames'
+import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes } from './timelineSnap'
+import { snapToFrame, frameIndexAt } from './frames'
 import type { Annotation } from '@/stores/drawingStore'
 
 const ann = (id: string, startTime: number, extra: Partial<Annotation> = {}): Annotation =>
@@ -27,7 +27,12 @@ describe('snapTime', () => {
 describe('snapTargets', () => {
   it('has the playhead and holding frames, not the dragged one or zero holds', () => {
     const list = [ann('freeze-1', 2, { freezeDuration: 1 }), ann('freeze-2', 4, { freezeDuration: 0 }), ann('freeze-3', 6, { freezeDuration: 2 }), ann('path-1', 8)]
-    expect(snapTargets(list, 1, 'freeze-3')).toEqual([1, 2])
+    expect(snapTargets(list, 1, ann('path-9', 5))).toEqual([1, 2, 6])
+  })
+  it('gives a freeze carrier only the playhead, so it cannot land on another freeze', () => {
+    const list = [ann('freeze-1', 2, { freezeDuration: 1 }), ann('freeze-3', 6, { freezeDuration: 0 })]
+    expect(snapTargets(list, 1, list[1])).toEqual([1])
+    expect(snapTargets(list, 1, ann('path-1', 5, { freezeDuration: 1 }))).toEqual([1])
   })
 })
 
@@ -45,5 +50,31 @@ describe('freezeFieldState', () => {
   })
   it('hides the button on a lone marker with no drawings', () => {
     expect(freezeFieldState([ann('freeze-1', 2, { freezeDuration: 3 })], 2, 30).showAutoButton).toBe(false)
+  })
+})
+
+describe('frameWithin', () => {
+  it('stays on a whole frame inside the range at 25 fps', () => {
+    const t = frameWithin(5, 0, 1.9, 25)
+    expect(t).toBeLessThanOrEqual(1.9)
+    expect(1.9 - t).toBeGreaterThanOrEqual(0)
+    expect(snapToFrame(t, 25)).toBeCloseTo(t)
+    const u = frameWithin(0, 2.1, 9, 25)
+    expect(u).toBeGreaterThanOrEqual(2.1)
+    expect(frameIndexAt(u, 25)).toBe(53)
+  })
+  it('keeps a frame-aligned in-range time', () => {
+    expect(frameWithin(1.0, 0, 5, 30)).toBeCloseTo(snapToFrame(1.0, 30))
+  })
+})
+
+describe('dragEndSyncTimes', () => {
+  it('syncs the original and final start for a move or start drag', () => {
+    expect(dragEndSyncTimes('path', 'move', 1, 2)).toEqual([1, 2])
+    expect(dragEndSyncTimes('path', 'start', 1, 2)).toEqual([1, 2])
+  })
+  it('skips end-edge drags and hand-moved freeze markers', () => {
+    expect(dragEndSyncTimes('path', 'end', 1, 1)).toBeNull()
+    expect(dragEndSyncTimes('freeze', 'move', 1, 2)).toBeNull()
   })
 })

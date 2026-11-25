@@ -9,7 +9,7 @@ import type { Clip } from '@/types/clip'
 import WaveformDisplay from './WaveformDisplay'
 import { revealKind } from '@/export/reveal'
 import { parseDrawIn } from '@/utils/drawInInput'
-import { snapTime, snapTargets, freezeFieldState } from '@/utils/timelineSnap'
+import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes } from '@/utils/timelineSnap'
 import { setFrameFreeze } from '@/utils/freezeMarkers'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
@@ -154,27 +154,28 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
       const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
       const time = x * duration
       const { fps, currentTime } = useVideoStore.getState()
-      const targets = snapTargets(useDrawingStore.getState().annotations, currentTime, annotation.id)
+      const targets = snapTargets(useDrawingStore.getState().annotations, currentTime, annotation)
       const snap = (t: number) => snapTime(t, targets, rect.width / duration, fps, e.altKey)
 
       if (isDragging === 'move') {
         const annotationDuration = annotation.endTime - annotation.startTime
-        const newStart = Math.max(0, Math.min(duration - annotationDuration, snap(time - annotationDuration / 2)))
+        const newStart = frameWithin(snap(time - annotationDuration / 2), 0, duration - annotationDuration, fps)
         onUpdateTime(newStart, newStart + annotationDuration)
       } else if (isDragging === 'start') {
-        const newStart = Math.min(annotation.endTime - 0.1, snap(time))
-        onUpdateTime(Math.max(0, newStart), annotation.endTime)
+        const newStart = frameWithin(snap(time), 0, annotation.endTime - 0.1, fps)
+        onUpdateTime(newStart, annotation.endTime)
       } else if (isDragging === 'end') {
-        const newEnd = Math.max(annotation.startTime + 0.1, snap(time))
-        onUpdateTime(annotation.startTime, Math.min(duration, newEnd))
+        const newEnd = frameWithin(snap(time), annotation.startTime + 0.1, duration, fps)
+        onUpdateTime(annotation.startTime, newEnd)
       }
     }
 
     const handleMouseUp = () => {
       setIsDragging(null)
-      if (isDragging === 'end') return
       const finalStart = useDrawingStore.getState().annotations.find((a) => a.id === annotation.id)?.startTime
-      if (finalStart !== undefined) useDrawingStore.getState().syncFrames([dragStartRef.current, finalStart])
+      if (finalStart === undefined) return
+      const times = dragEndSyncTimes(annotation.toolType, isDragging, dragStartRef.current, finalStart)
+      if (times) useDrawingStore.getState().syncFrames(times)
     }
 
     window.addEventListener('mousemove', handleMouseMove)
@@ -473,7 +474,7 @@ interface AnnotationDetailsProps {
 function AnnotationDetails({ annotation, onUpdate, onUpdateAnnotation, onDelete }: AnnotationDetailsProps) {
   const { layers, annotations, syncFrames } = useDrawingStore()
   const fps = useVideoStore((s) => s.fps)
-  const startOnFocusRef = useRef(annotation.startTime)
+  const startOnFocusRef = useRef({ id: annotation.id, start: annotation.startTime })
   const freeze = freezeFieldState(annotations, annotation.startTime, fps)
 
   const handleAutoFreeze = () => {
@@ -532,10 +533,11 @@ function AnnotationDetails({ annotation, onUpdate, onUpdateAnnotation, onDelete 
             type="number"
             step="0.1"
             value={annotation.startTime.toFixed(2)}
-            onFocus={() => { startOnFocusRef.current = annotation.startTime }}
+            onFocus={() => { startOnFocusRef.current = { id: annotation.id, start: annotation.startTime } }}
             onChange={(e) => onUpdate({ startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
             onBlur={() => {
-              if (annotation.startTime !== startOnFocusRef.current) syncFrames([startOnFocusRef.current, annotation.startTime])
+              const focused = startOnFocusRef.current
+              if (focused.id === annotation.id && annotation.startTime !== focused.start) syncFrames([focused.start, annotation.startTime])
             }}
             className="w-20 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
           />
@@ -648,7 +650,7 @@ function AnnotationDetails({ annotation, onUpdate, onUpdateAnnotation, onDelete 
             value={freeze.seconds.toFixed(1)}
             onChange={(e) => {
               const val = Math.min(30, Math.max(0, parseFloat(e.target.value) || 0))
-              setFrameFreeze(annotation.startTime, val, fps, { auto: false })
+              setFrameFreeze(annotation.startTime, val, fps, { auto: false, history: false })
             }}
             className="w-16 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded border border-border focus:border-accent focus:outline-none"
           />

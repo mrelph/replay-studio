@@ -1,5 +1,5 @@
 import type { Annotation } from '@/stores/drawingStore'
-import { frameIndexAt, snapToFrame } from '@/utils/frames'
+import { frameIndexAt, snapToFrame, timeForFrame } from '@/utils/frames'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
 export const SNAP_PIXELS = 6
@@ -22,10 +22,25 @@ export function snapTime(time: number, targets: number[], pxPerSecond: number, f
   return snapToFrame(snapped, fps)
 }
 
-/** The playhead plus the start of every frame that actually holds the video, except the annotation being dragged. */
-export function snapTargets(annotations: Annotation[], playhead: number, draggedId: string): number[] {
-  const holds = annotations.filter((a) => a.id !== draggedId && (a.freezeDuration ?? 0) > 0).map((a) => a.startTime)
+/** The playhead plus the start of every frame that holds the video; a bar that is itself a freeze carrier only gets the playhead, so it never lands on another freeze's frame. */
+export function snapTargets(annotations: Annotation[], playhead: number, dragged: Annotation): number[] {
+  if (typeof dragged.freezeDuration === 'number') return [playhead]
+  const holds = annotations.filter((a) => a.id !== dragged.id && (a.freezeDuration ?? 0) > 0).map((a) => a.startTime)
   return [playhead, ...holds]
+}
+
+/** `time` clamped to [min, max], then on a whole frame that still lies inside the range. */
+export function frameWithin(time: number, min: number, max: number, fps: number): number {
+  let t = snapToFrame(Math.min(max, Math.max(min, time)), fps)
+  if (t < min) t = timeForFrame(frameIndexAt(t, fps) + 1, fps)
+  if (t > max) t = timeForFrame(frameIndexAt(t, fps) - 1, fps)
+  return t
+}
+
+/** Frames to re-sync when a bar drag ends, or null when nothing should run (end-edge drag, or a freeze marker the user placed by hand). */
+export function dragEndSyncTimes(toolType: string, edge: 'move' | 'start' | 'end', startBefore: number, finalStart: number): number[] | null {
+  if (edge === 'end' || toolType === 'freeze') return null
+  return [startBefore, finalStart]
 }
 
 export interface FreezeFieldState {
