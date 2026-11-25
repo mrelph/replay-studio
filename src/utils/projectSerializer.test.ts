@@ -155,15 +155,26 @@ describe('clips round-trip and validation', () => {
     }
   }
 
-  it('serializeProject writes version 1.2 and a deep-copied clips array', () => {
+  it('serializeProject writes version 1.3 and a deep-copied clips array', () => {
     const clips = [makeClip()]
     const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', clips)
 
-    expect(project.version).toBe('1.2')
+    expect(project.version).toBe('1.3')
     expect(project.clips).toEqual(clips)
     // Deep copy: mutating the input must not reach the serialized project.
     clips[0].name = 'Mutated'
     expect(project.clips?.[0].name).toBe('First half')
+  })
+
+  it('round-trips speed regions and loads files without them', () => {
+    const speedRegions = [{ id: 'a', start: 2, end: 4, speed: 0.5 }, { id: 'b', start: 6, end: 8, speed: 2 }]
+    const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', [], speedRegions)
+    expect(project.version).toBe('1.3')
+    expect(importProjectFromJSON(exportProjectToJSON(project)).speedRegions).toEqual(speedRegions)
+
+    const old = JSON.stringify({ version: '1.2', annotations: [], clips: [] })
+    expect(importProjectFromJSON(old).speedRegions).toBeUndefined()
+    expect(importProjectFromJSON(JSON.stringify({ version: '1.3', annotations: [], speedRegions: 'x' })).speedRegions).toEqual([])
   })
 
   it('does not save mid-reveal dash state', () => {

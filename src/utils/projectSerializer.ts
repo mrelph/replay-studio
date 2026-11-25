@@ -3,6 +3,7 @@ import type { Clip } from '@/types/clip'
 import { CLIP_COLORS } from '@/stores/clipStore'
 import { stripReveal } from '@/export/reveal'
 import { normalizeTags, clampNotes } from './clipTags'
+import type { SpeedRegion } from './speedRegions'
 
 export interface SerializedAnnotation {
   id: string
@@ -72,6 +73,8 @@ export interface ProjectData {
   annotations: SerializedAnnotation[]
   /** Added in project version 1.1; absent in older files. */
   clips?: Clip[]
+  /** Added in project version 1.3; absent in older files. */
+  speedRegions?: SpeedRegion[]
 }
 
 /**
@@ -164,12 +167,13 @@ export function serializeProject(
   inPoint?: number | null,
   outPoint?: number | null,
   projectName?: string,
-  clips?: Clip[]
+  clips?: Clip[],
+  speedRegions?: SpeedRegion[]
 ): ProjectData {
   const now = new Date().toISOString()
 
   return {
-    version: '1.2',
+    version: '1.3',
     name: projectName || 'Untitled Project',
     createdAt: now,
     modifiedAt: now,
@@ -198,6 +202,7 @@ export function serializeProject(
     // Deep-copied so mutating the store afterwards can't reach back into a
     // project that has already been serialized (e.g. while a save is pending).
     clips: (clips ?? []).map((clip) => ({ ...clip })),
+    speedRegions: (speedRegions ?? []).map((region) => ({ ...region })),
   }
 }
 
@@ -269,6 +274,14 @@ export function importProjectFromJSON(json: string): ProjectData {
     // sanitize so a hand-edited or malformed entry can't reach the app.
     if (data.clips !== undefined) {
       data.clips = sanitizeClips(data.clips)
+    }
+
+    // Duration and fps aren't known here; the store does the full cleanup
+    // (sanitizeSpeedRegions) when the regions are put in it.
+    if (data.speedRegions !== undefined) {
+      data.speedRegions = Array.isArray(data.speedRegions)
+        ? data.speedRegions.filter((entry: unknown) => entry && typeof entry === 'object')
+        : []
     }
 
     return data as ProjectData

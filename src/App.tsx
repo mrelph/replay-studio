@@ -21,6 +21,7 @@ import { useDrawingStore } from './stores/drawingStore'
 import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore } from './stores/themeStore'
 import { useClipStore } from './stores/clipStore'
+import { useSpeedStore } from './stores/speedStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject } from './utils/projectSerializer'
 import type { ProjectData } from './utils/projectSerializer'
 import type { Annotation } from './stores/drawingStore'
@@ -99,6 +100,7 @@ function App() {
       // A freshly opened video (not a project load) starts with no clips;
       // a project load restores its own clips once it is hydrated below.
       useClipStore.getState().setClips([])
+      useSpeedStore.getState().replaceAll([])
     } else if (activeProjectRequestIdRef.current !== projectRequestId) {
       return null
     }
@@ -183,7 +185,7 @@ function App() {
         actualVideoPath = await window.electronAPI.resolveVideoPath(videoSrc)
       }
 
-      const project = serializeProject(annotations, actualVideoPath, inPoint, outPoint, undefined, clips)
+      const project = serializeProject(annotations, actualVideoPath, inPoint, outPoint, undefined, clips, useSpeedStore.getState().regions)
       const json = exportProjectToJSON(project)
 
       const result = await window.electronAPI.writeFile(filePath, json)
@@ -292,6 +294,7 @@ function App() {
       setInPoint(project.inPoint ?? null)
       setOutPoint(project.outPoint ?? null)
       setClips(project.clips ?? [])
+      useSpeedStore.getState().replaceAll(project.speedRegions ?? [])
       setCurrentProjectPath(filePath)
       activeProjectRequestIdRef.current = null
       setPendingProjectLoad((pending) => pending?.requestId === requestId ? null : pending)
