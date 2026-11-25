@@ -1,10 +1,11 @@
 name: Release
 
 # Cuts a release when a `v*` tag is pushed (see RELEASING.md). Builds the
-# Linux AppImage and Windows NSIS installer and publishes them, plus the
+# Linux AppImage, Windows NSIS installer and macOS dmg (Apple silicon,
+# ad-hoc signed, manual download only) and publishes them, plus the
 # electron-updater feed files (latest-linux.yml / latest.yml), to a GitHub
-# Release matching the tag. electron-updater on end-user machines reads that
-# release to auto-update.
+# Release matching the tag. electron-updater on Linux and Windows machines
+# reads that release to auto-update.
 on:
   push:
     tags:
@@ -18,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -50,3 +51,5 @@ jobs:
         run: npx vite build && npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No Developer ID certificate yet: the mac build is ad-hoc signed.
+          CSC_IDENTITY_AUTO_DISCOVERY: false

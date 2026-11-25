@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collaborative annotation features
 - Cloud storage integration
 
+### Added
+- A macOS build (Apple silicon) is published with each release. It is a manual
+  download and does not update itself yet; see RELEASING.md for the first-launch
+  step macOS asks for.
+
 ## [1.8.0] - 2026-11-25
 
 ### Added
