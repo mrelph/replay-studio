@@ -85,7 +85,7 @@ reads the exact time the key was pressed and doesn't pause or seek. Any
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Z` | Undo |
-| `Ctrl+Y` | Redo |
+| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
 | `Ctrl+A` | Select all |
 | `Delete` | Delete selected |
 | `Escape` | Deselect / Select tool |

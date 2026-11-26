@@ -28,6 +28,20 @@ describe('shortcutsStore', () => {
     resetStore()
   })
 
+  it('Shift+Ctrl/Cmd+Z redoes without disturbing Undo or Ctrl+Y', () => {
+    const { getActionForKey } = useShortcutsStore.getState()
+    expect(getActionForKey('z', true, true, false)).toBe('edit.redo')
+    expect(getActionForKey('z', true, false, false)).toBe('edit.undo')
+    expect(getActionForKey('y', true, false, false)).toBe('edit.redo')
+    expect(getActionForKey('z', false, true, false)).toBeUndefined()
+  })
+
+  it('a user binding on Shift+Ctrl+Z wins over the redo alias', () => {
+    const { updateShortcut, getActionForKey } = useShortcutsStore.getState()
+    updateShortcut('tool.line', { key: 'z', ctrl: true, shift: true })
+    expect(getActionForKey('z', true, true, false)).toBe('tool.line')
+  })
+
   it('resolves default bindings via getActionForKey', () => {
     const { getActionForKey } = useShortcutsStore.getState()
 

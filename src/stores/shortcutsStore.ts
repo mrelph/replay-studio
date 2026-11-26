@@ -149,6 +149,9 @@ interface ShortcutsState {
   resetToDefaults: () => void
 }
 
+/** Fixed second binding for Redo, shown beside the editable one. */
+export const REDO_ALIAS_LABEL = 'Ctrl+Shift+Z'
+
 // Convert binding to display string
 export function bindingToString(binding: ShortcutBinding): string {
   const parts: string[] = []
@@ -255,7 +258,10 @@ export const useShortcutsStore = create<ShortcutsState>()(
             (b.alt || false) === alt
           )
         })
-        return match?.action
+        if (match) return match.action
+        // Fixed alias, below every user binding: Shift+Ctrl/Cmd+Z redoes (Ctrl+Z has shift false, so Undo is unaffected).
+        if (key === 'z' && ctrl && shift && !alt) return 'edit.redo'
+        return undefined
       },
 
       updateShortcut: (action, binding) => {

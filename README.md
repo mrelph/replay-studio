@@ -85,7 +85,7 @@ Press `?` in the app for the full list; most shortcuts can be rebound there. See
 | `V` `P` `A` `R` `C` `T` `S` | Select, Freehand, Arrow, Rectangle, Ellipse, Text, Spotlight |
 | `D` | Solid / Dashed |
 | `1`-`9` | Color presets |
-| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo (`Cmd` on macOS) |
+| `Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z` | Undo / Redo (`Cmd` on macOS) |
 
 ## Usage
 

@@ -1,5 +1,5 @@
 import { Modal, Kbd, Button } from './ui'
-import { useShortcutsStore, bindingToString } from '@/stores/shortcutsStore'
+import { useShortcutsStore, bindingToString, REDO_ALIAS_LABEL } from '@/stores/shortcutsStore'
 
 interface ShortcutsHelpProps {
   onClose: () => void
@@ -47,7 +47,10 @@ export default function ShortcutsHelp({ onClose, onOpenEditor }: ShortcutsHelpPr
                 {group.shortcuts.map((shortcut) => (
                   <div key={shortcut.action} className="flex items-center justify-between gap-4">
                     <span className="text-text-secondary text-sm">{shortcut.label}</span>
-                    <Kbd>{bindingToString(shortcut.binding)}</Kbd>
+                    <span className="flex items-center gap-1">
+                      <Kbd>{bindingToString(shortcut.binding)}</Kbd>
+                      {shortcut.action === 'edit.redo' && <Kbd>{REDO_ALIAS_LABEL}</Kbd>}
+                    </span>
                   </div>
                 ))}
               </div>
