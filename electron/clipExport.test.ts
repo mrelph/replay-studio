@@ -25,7 +25,7 @@ import {
   MAX_INLINE_FILTER_GRAPH,
 } from './clipExport'
 import { getFfmpegBinaryPath } from './ffmpegExport'
-import type { ClipEncodeStartOptions, MagnifierOp, OutputSegment, OverlaySpan } from '../src/types/clip'
+import type { ClipEncodeStartOptions, MagnifierOp, OutputSegment, OverlaySpan, SpeedGrid } from '../src/types/clip'
 
 // ---------------------------------------------------------------------------
 // Realistic ffmpeg -i stderr samples
@@ -1180,6 +1180,44 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
         const audio = spawnSync(bin, ['-v', 'error', '-i', output, '-map', '0:a', '-f', 's16le', '-ac', '1', '-ar', '48000', '-'], { maxBuffer: 1 << 26 })
         expect(Math.abs(audio.stdout.length / 2 / 48000 - planned.length / fps)).toBeLessThanOrEqual(1 / fps)
       }
+    }, 60_000)
+
+    // A 2x region over source frames 30-60 with a freeze inside its constant
+    // step [38, 52), as the renderer plans it, and the source frame of every
+    // output frame by frameSourceTimes. Twin of FREEZE_CASES in
+    // src/export/outputTimeline.test.ts; keep the two in step. At 15 fps the
+    // grid needs a non-zero phase on the piece before the freeze.
+    const freezeCase = (hold: number, duration: number, before: SpeedGrid, after: SpeedGrid): OutputSegment[] => [
+      ...toSegments([[0, 30, 1], [30, 32, 1.2], [32, 34, 1.4], [34, 36, 1.6], [36, 38, 1.8]], 30),
+      { kind: 'play', srcStart: 38 / 30, srcEnd: hold / 30, speed: 2, grid: before },
+      { kind: 'hold', srcTime: hold / 30, duration },
+      { kind: 'play', srcStart: hold / 30, srcEnd: 52 / 30, speed: 2, grid: after },
+      ...toSegments([[52, 54, 1.8], [54, 56, 1.6], [56, 58, 1.4], [58, 60, 1.2], [60, 90, 1]], 30),
+    ]
+    const range = (from: number, to: number, step = 1) => Array.from({ length: Math.ceil((to - from) / step) }, (_, k) => from + k * step)
+    it.each([
+      {
+        name: 'at 41 for 1 s, 30 fps mp4', fps: 30, format: 'mp4',
+        segments: freezeCase(41, 1, { sourceFrames: 14, frames: 7, phase: 0 }, { sourceFrames: 14, frames: 7, phase: 7 }),
+        planned: [...range(0, 33), 34, 36, 38, 40, ...Array(30).fill(41), 42, 44, 46, 48, 50, 52, 53, 54, 56, 58, 59, ...range(60, 90)],
+      },
+      {
+        name: 'at 43 for 0.3 s, 15 fps gif', fps: 15, format: 'gif',
+        segments: freezeCase(43, 0.3, { sourceFrames: 14, frames: 4, phase: 6 }, { sourceFrames: 14, frames: 4, phase: 0 }),
+        planned: [...range(0, 33, 2), 36, 39, ...Array(5).fill(43), 46, 50, 54, 56, ...range(60, 90, 2)],
+      },
+    ] as const)('freeze inside a 2x step $name', async ({ fps, format, segments, planned }) => {
+      const bin = ffmpegPath as string
+      const output = path.join(tmpDir, `freeze-${fps}.${format}`)
+      const started = await startClipEncodeJob({
+        outputPath: output, sourcePath: numberedSource(), width: W, height: H, fps, format,
+        frameCount: planned.length, quality: 'high', segments,
+      }, true, 30)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const result = await runClipEncodeJob(started.jobId, { spans: [], magnifiers: [] }, bin)
+      expect(result, result.error).toEqual({ success: true })
+      expect(frameIds(output)).toEqual(planned)
     }, 60_000)
   })
 

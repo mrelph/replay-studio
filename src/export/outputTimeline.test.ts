@@ -459,4 +459,27 @@ describe('a freeze inside a speed step', () => {
       '15 17 19 21 21 21 21 21 21 21 21 21 23 25 27 30 32 36 38 42 47 52 56 58 60 62 64 66 66 66 66 66 68 70 72'
     )
   })
+  // Twin of the freeze cases in electron/clipExport.test.ts, where the real
+  // ffmpeg export of each must decode to exactly these frames; keep the two in step.
+  const FREEZE_CASES = [
+    { hold: 41, duration: 1, fps: 30, before: { sourceFrames: 14, frames: 7, phase: 0 }, after: { sourceFrames: 14, frames: 7, phase: 7 } },
+    { hold: 43, duration: 0.3, fps: 15, before: { sourceFrames: 14, frames: 4, phase: 6 }, after: { sourceFrames: 14, frames: 4, phase: 0 } },
+  ]
+  const range = (from: number, to: number, step = 1) => Array.from({ length: Math.ceil((to - from) / step) }, (_, k) => from + k * step)
+  const FREEZE_PLANS = [
+    [...range(0, 33), 34, 36, 38, 40, ...Array(30).fill(41), 42, 44, 46, 48, 50, 52, 53, 54, 56, 58, 59, ...range(60, 90)],
+    [...range(0, 33, 2), 36, 39, ...Array(5).fill(43), 46, 50, 54, 56, ...range(60, 90, 2)],
+  ]
+
+  it.each(FREEZE_CASES.map((c, i) => [c.hold, c.fps, i] as const))('plans the shared freeze case at %i, %i fps', (_, __, i) => {
+    const { hold, duration, fps, before, after } = FREEZE_CASES[i]
+    const { segments } = buildOutputTimeline({ start: 0, end: 3 }, [freeze(hold, duration)], fps, steps2, sourceFps)
+    expect(segments).toEqual(fromRows([[0, 30, 1], ...RAMP_UP_2]).concat(
+      { kind: 'play', srcStart: 38 / 30, srcEnd: hold / 30, speed: 2, grid: before },
+      { kind: 'hold', srcTime: hold / 30, duration },
+      { kind: 'play', srcStart: hold / 30, srcEnd: 52 / 30, speed: 2, grid: after },
+      fromRows([...RAMP_DOWN_2, [60, 90, 1]]),
+    ))
+    expect(frameSourceTimes(segments, fps, sourceFps).map((t) => frameIndexAt(t, sourceFps))).toEqual(FREEZE_PLANS[i])
+  })
 })
