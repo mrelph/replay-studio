@@ -115,7 +115,7 @@ export function createZoneTool(): CanvasTool {
   return {
     onDown(ctx, p) {
       if (canvas && canvas !== ctx.canvas) reset()
-      const click = zoneClick(points, p)
+      const click = zoneClick(points, p, ctx.canvas.getZoom())
       if (click.type === 'finish') {
         finish(ctx)
         return
@@ -135,6 +135,8 @@ export function createZoneTool(): CanvasTool {
       if (points.length > 0) finish(ctx)
     },
     onKey(ctx, e) {
+      // Menu accelerators (Save, Open, Export, Quit) only see keys the page leaves alone.
+      if (e.metaKey || e.ctrlKey) return false
       const action = zoneKey(points.length, e.key)
       if (action === 'finish') finish(ctx)
       else if (action === 'cancel') reset()

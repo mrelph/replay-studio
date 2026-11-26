@@ -11,10 +11,13 @@ export type ZoneClick = { type: 'add'; point: ToolPoint } | { type: 'finish' } |
 
 const distance = (a: ToolPoint, b: ToolPoint) => Math.hypot(a.x - b.x, a.y - b.y)
 
-/** A click near the first corner (with ≥ 3 corners) finishes; a click within ZONE_DUPLICATE_PX of the last corner is ignored (double-click's second click). */
-export function zoneClick(points: ToolPoint[], point: ToolPoint): ZoneClick {
-  if (points.length >= ZONE_MIN_CORNERS && distance(points[0], point) <= ZONE_CLOSE_PX) return { type: 'finish' }
-  if (points.length > 0 && distance(points[points.length - 1], point) <= ZONE_DUPLICATE_PX) return { type: 'ignore' }
+/**
+ * A click near the first corner (with ≥ 3 corners) finishes; a click within ZONE_DUPLICATE_PX of the last corner is ignored (double-click's second click).
+ * Both distances are in display pixels: `scale` is display pixels per canvas pixel (the canvas zoom).
+ */
+export function zoneClick(points: ToolPoint[], point: ToolPoint, scale = 1): ZoneClick {
+  if (points.length >= ZONE_MIN_CORNERS && distance(points[0], point) <= ZONE_CLOSE_PX / scale) return { type: 'finish' }
+  if (points.length > 0 && distance(points[points.length - 1], point) <= ZONE_DUPLICATE_PX / scale) return { type: 'ignore' }
   return { type: 'add', point }
 }
 

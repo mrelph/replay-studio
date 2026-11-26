@@ -133,6 +133,15 @@ describe('zone tool', () => {
     expect(tool.isBusy?.()).toBe(false)
   })
 
+  it('lets Ctrl and Cmd combinations through to the menu while a zone is in progress', () => {
+    const { ctx, tool } = setup()
+    corners.slice(0, 2).forEach((p) => tool.onDown?.(ctx, p, event))
+    expect(tool.onKey?.(ctx, new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))).toBe(false)
+    expect(tool.onKey?.(ctx, new KeyboardEvent('keydown', { key: 'z', metaKey: true }))).toBe(false)
+    expect(tool.onKey?.(ctx, key('s'))).toBe(true)
+    expect(tool.isBusy?.()).toBe(true)
+  })
+
   it('cancel is safe after the canvas has been disposed', () => {
     const { canvas, ctx, tool } = setup()
     corners.forEach((p) => tool.onDown?.(ctx, p, event))

@@ -20,6 +20,19 @@ describe('zoneClick', () => {
     expect(zoneClick(sq.slice(0, 1), { x: 10, y: 10 })).toEqual({ type: 'ignore' })
   })
 
+  it('measures both distances in display pixels at the given zoom', () => {
+    const corner = { x: 100, y: 100 }
+    const tri = [corner, { x: 300, y: 100 }, { x: 300, y: 300 }]
+    expect(zoneClick(tri, { x: 120, y: 100 }, 0.4)).toEqual({ type: 'finish' })
+    expect(zoneClick(tri, { x: 125, y: 100 }, 0.4)).toEqual({ type: 'finish' })
+    expect(zoneClick(tri, { x: 126, y: 100 }, 0.4)).toEqual({ type: 'add', point: { x: 126, y: 100 } })
+    expect(zoneClick(tri, { x: 304, y: 300 }, 0.4)).toEqual({ type: 'ignore' })
+    expect(zoneClick(tri, { x: 305, y: 300 }, 0.4)).toEqual({ type: 'ignore' })
+    expect(zoneClick(tri, { x: 306, y: 300 }, 0.4)).toEqual({ type: 'add', point: { x: 306, y: 300 } })
+    expect(zoneClick(tri, { x: 111, y: 100 })).toEqual({ type: 'add', point: { x: 111, y: 100 } })
+    expect(zoneClick(tri, { x: 303, y: 300 })).toEqual({ type: 'add', point: { x: 303, y: 300 } })
+  })
+
   it('adds any other click as a corner', () => {
     expect(zoneClick(sq, { x: 90, y: 90 })).toEqual({ type: 'add', point: { x: 90, y: 90 } })
     expect(zoneClick([], { x: 10, y: 10 })).toEqual({ type: 'add', point: { x: 10, y: 10 } })
