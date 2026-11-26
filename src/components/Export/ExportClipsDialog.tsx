@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { CheckCircle2, XCircle, Loader2, AlertTriangle, FolderOpen, Ban, Circle } from 'lucide-react'
+import { CheckCircle2, XCircle, Loader2, AlertTriangle, Ban, Circle } from 'lucide-react'
 import { useClipStore } from '@/stores/clipStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useSpeedStore } from '@/stores/speedStore'
@@ -13,6 +13,8 @@ import { buildClipsCsv, type ClipCsvRow, type ClipCsvStatus } from '@/export/cli
 import { hashTagColorClass } from '@/utils/clipTags'
 import type { Clip, ClipExportQuality } from '@/types/clip'
 import { useVideoProbe } from './useVideoProbe'
+import { useExportFolder } from './useExportFolder'
+import ExportFolderRow from './ExportFolderRow'
 
 export interface ExportClipsDialogProps {
   onClose: () => void
@@ -104,7 +106,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   const [quality, setQuality] = useState<ClipExportQuality>('high')
   const [burnIn, setBurnIn] = useState(true)
   const [saveEditableCopy, setSaveEditableCopy] = useState(true)
-  const [folder, setFolder] = useState<string | null>(null)
+  const { folder, changeFolder } = useExportFolder()
 
   const [exporting, setExporting] = useState(false)
   const [statuses, setStatuses] = useState<Record<string, ClipStatus>>({})
@@ -181,17 +183,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
       return next
     })
   }, [clips])
-
-  const handleChooseFolder = useCallback(async () => {
-    if (!hasElectron) return
-    try {
-      const chosen = await window.electronAPI.chooseExportFolder()
-      if (chosen) setFolder(chosen)
-    } catch (err) {
-      console.error('chooseExportFolder failed:', err)
-      toast('error', `Couldn't open the folder picker: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }, [hasElectron])
 
   const canExport = hasElectron && !!probe && !probeError && !!folder && selectedCount > 0 && !exporting
 
@@ -570,18 +561,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
         </div>
 
         {/* Folder */}
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">Destination folder</label>
-          <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={handleChooseFolder} disabled={exporting || !hasElectron}>
-              <FolderOpen className="w-4 h-4" />
-              Choose folder…
-            </Button>
-            <span className="text-sm text-text-tertiary truncate flex-1" title={folder ?? undefined}>
-              {folder ?? 'No folder chosen'}
-            </span>
-          </div>
-        </div>
+        <ExportFolderRow folder={folder} onChange={changeFolder} disabled={exporting || !hasElectron} />
 
         {/* Overall progress */}
         {exporting && (

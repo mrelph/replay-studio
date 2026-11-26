@@ -34,6 +34,14 @@ import type {
   ReelStartResult,
 } from '../src/types/clip'
 import { UpdaterController, currentUpdateEnv, type AutoUpdaterLike } from './updater'
+import {
+  loadExportFolder,
+  saveExportFolder,
+  resetExportFolder,
+  type ExportFolderFs,
+  type ExportFolderInfo,
+  type ExportFolderPaths,
+} from './exportFolder'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -85,7 +93,7 @@ const VIDEO_EXTENSIONS = new Set(Object.keys(VIDEO_MIME_TYPES))
 const registeredVideoPaths = new Set<string>()
 const dialogApprovedWritePaths = new Set<string>()
 const dialogApprovedReadPaths = new Set<string>()
-/** Folders chosen via chooseExportFolder(); writes are authorized under these. */
+/** The export folder setting (Downloads or one the user picked) as main loaded or set it; writes are authorized under these. */
 const authorizedExportFolders = new Set<string>()
 
 /** Extensions clip export is allowed to write: burned-in/clean video, GIF, project + metadata, clips.csv manifest. */
@@ -136,8 +144,8 @@ async function canonicalizeTarget(filePath: string): Promise<string | null> {
 
 /**
  * Write authorization for the multi-clip export feature: a target path is
- * allowed if its parent directory canonicalizes to (or under) a folder the
- * user picked via chooseExportFolder(), and its extension is one export
+ * allowed if its parent directory canonicalizes to (or under) a folder in
+ * authorizedExportFolders (see currentExportFolder()), and its extension is one export
  * actually produces. Canonicalizing the parent with realpath resolves any
  * symlink so a folder can't be used to escape outside itself, and requiring
  * the target to be a direct or nested child (by canonical path prefix)
@@ -434,6 +442,18 @@ function createWindow() {
             mainWindow?.webContents.send('export-clip')
           },
         },
+        {
+          label: 'Export Folder…',
+          click: () => {
+            void runExportFolderMenuAction(chooseExportFolder)
+          },
+        },
+        {
+          label: 'Reset Export Folder to Downloads',
+          click: () => {
+            void runExportFolderMenuAction(resetExportFolderSetting)
+          },
+        },
         { type: 'separator' },
         {
           label: 'Save Project...',
@@ -552,8 +572,9 @@ ipcMain.handle('dialog:openFile', async () => {
 })
 
 ipcMain.handle('dialog:saveFile', async (_, defaultName: string) => {
+  const { path: exportFolder } = await currentExportFolder()
   const result = await dialog.showSaveDialog(mainWindow!, {
-    defaultPath: defaultName,
+    defaultPath: path.join(exportFolder, path.basename(typeof defaultName === 'string' ? defaultName : '')),
     filters: [
       { name: 'MP4 Video', extensions: ['mp4'] },
       { name: 'GIF Animation', extensions: ['gif'] },
@@ -601,7 +622,7 @@ ipcMain.handle('dialog:loadProject', async () => {
 
 // File read/write for projects. Both are capability-gated: the renderer can
 // only touch paths the user picked in a dialog during this session, or (for
-// write) a path under a folder authorized by chooseExportFolder().
+// write) a path under an authorized export folder.
 ipcMain.handle('file:write', async (_, filePath: string, content: string) => {
   const target = await canonicalizeTarget(filePath)
   if (!target) {
@@ -715,26 +736,101 @@ ipcMain.handle('video:probe', async (_, filePath: string) => {
   return probeVideo(real, getFfmpegBinaryPath())
 })
 
-ipcMain.handle('dialog:chooseExportFolder', async () => {
-  // Dev-only test seam: lets an automated run pick the folder without the
-  // native dialog. Never active in a packaged build.
-  const e2eFolder = !app.isPackaged ? process.env.REPLAY_E2E_EXPORT_DIR : undefined
-  if (e2eFolder) {
-    const real = await canonicalize(e2eFolder)
-    if (real) authorizedExportFolders.add(real)
-    return real
+// Export folder setting (electron/exportFolder.ts). The renderer can only ask
+// for the current folder or ask main to open the picker; it never supplies a
+// path, so nothing becomes writable just because the renderer named it.
+
+const exportFolderFs: ExportFolderFs = {
+  readFile: (filePath) => fsp.readFile(filePath, 'utf-8'),
+  writeFile: (filePath, data) => fsp.writeFile(filePath, data, 'utf-8'),
+  isWritableDirectory: async (dirPath) => {
+    try {
+      if (!(await fsp.stat(dirPath)).isDirectory()) return false
+      await fsp.access(dirPath, fs.constants.W_OK)
+      return true
+    } catch {
+      return false
+    }
+  },
+}
+
+function exportFolderPaths(): ExportFolderPaths {
+  return {
+    settingsFile: path.join(app.getPath('userData'), 'export-folder.json'),
+    downloads: app.getPath('downloads'),
   }
+}
+
+// Dev-only test seam: an automated run gets a fixed folder without the native
+// picker and without touching the saved setting. Never active in a packaged build.
+function e2eExportFolder(): string | undefined {
+  return !app.isPackaged ? process.env.REPLAY_E2E_EXPORT_DIR || undefined : undefined
+}
+
+/** The current export folder, canonicalized and authorized for export writes this session. */
+async function currentExportFolder(): Promise<ExportFolderInfo> {
+  const e2e = e2eExportFolder()
+  const info = e2e ? { path: e2e, isDefault: false } : await loadExportFolder(exportFolderPaths(), exportFolderFs)
+  const real = await canonicalize(info.path)
+  if (!real) return info
+  authorizedExportFolders.add(real)
+  return { ...info, path: real }
+}
+
+function notifyExportFolderChanged(info: ExportFolderInfo) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('settings:exportFolderChanged', info)
+}
+
+/** Folder picker shared by the File menu and the export dialogs' Change… button; null when cancelled. */
+async function chooseExportFolder(): Promise<ExportFolderInfo | null> {
+  if (e2eExportFolder()) return currentExportFolder()
+  const current = await currentExportFolder()
   const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Export Folder',
+    defaultPath: current.path,
     properties: ['openDirectory', 'createDirectory'],
   })
   if (result.canceled || result.filePaths.length === 0) return null
   const real = await canonicalize(result.filePaths[0])
-  if (!real) {
-    console.error('chooseExportFolder: could not resolve', result.filePaths[0])
-    throw new Error(`Folder not accessible: ${result.filePaths[0]}`)
+  if (!real) throw new Error(`Folder not accessible: ${result.filePaths[0]}`)
+  // Checked here so an unwritable pick is an error, not a silent fall back to Downloads.
+  if (!(await exportFolderFs.isWritableDirectory(real))) throw new Error(`Folder is not writable: ${real}`)
+  await saveExportFolder(exportFolderPaths(), exportFolderFs, real)
+  const info = await currentExportFolder()
+  notifyExportFolderChanged(info)
+  return info
+}
+
+async function resetExportFolderSetting(): Promise<ExportFolderInfo> {
+  if (!e2eExportFolder()) await resetExportFolder(exportFolderPaths(), exportFolderFs)
+  const info = await currentExportFolder()
+  notifyExportFolderChanged(info)
+  return info
+}
+
+async function runExportFolderMenuAction(action: () => Promise<unknown>) {
+  try {
+    await action()
+  } catch (err) {
+    dialog.showMessageBox(mainWindow!, {
+      type: 'error',
+      title: 'Export Folder',
+      message: "Couldn't change the export folder.",
+      detail: err instanceof Error ? err.message : String(err),
+    })
   }
-  authorizedExportFolders.add(real)
-  return real
+}
+
+ipcMain.handle('settings:getExportFolder', () => currentExportFolder())
+
+ipcMain.handle('settings:chooseExportFolder', (event) => {
+  if (!isFromMainWindow(event.sender)) return null
+  return chooseExportFolder()
+})
+
+ipcMain.handle('settings:resetExportFolder', (event) => {
+  if (!isFromMainWindow(event.sender)) return currentExportFolder()
+  return resetExportFolderSetting()
 })
 
 /** True only for calls made from the main window (not the audience window). */
@@ -858,7 +954,7 @@ ipcMain.handle('reel:assemble', async (event, reelId: string, payload: ReelAssem
 })
 
 // Reveals an exported file in the system file manager. Only files inside a
-// folder authorized by chooseExportFolder() this session.
+// folder authorized as an export folder this session.
 ipcMain.handle('shell:showExportedFile', async (event, filePath: string) => {
   if (!isFromMainWindow(event.sender)) return false
   const target = await canonicalize(filePath)
@@ -929,6 +1025,7 @@ app.whenReady().then(() => {
   // Serve local video files (modern replacement for registerFileProtocol),
   // allowlist-checked and with Range support so <video> can seek.
   protocol.handle('local-video', handleLocalVideoRequest)
+  currentExportFolder().catch((err) => console.error('Could not load the export folder setting:', err))
 
   createWindow()
   updaterController.start(() => mainWindow)

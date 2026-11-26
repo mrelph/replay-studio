@@ -17,6 +17,8 @@ import { buildClipsCsv, type ClipCsvRow } from '@/export/clipsCsv'
 import { hashTagColorClass } from '@/utils/clipTags'
 import type { ClipExportQuality } from '@/types/clip'
 import { useVideoProbe } from './useVideoProbe'
+import { useExportFolder } from './useExportFolder'
+import ExportFolderRow from './ExportFolderRow'
 
 export interface ReelDialogProps {
   onClose: () => void
@@ -77,7 +79,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
   const [nameTouched, setNameTouched] = useState(false)
   const [quality, setQuality] = useState<ClipExportQuality>('high')
   const [saveEditable, setSaveEditable] = useState(true)
-  const [folder, setFolder] = useState<string | null>(null)
+  const { folder, changeFolder } = useExportFolder()
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [kept, setKept] = useState<Record<string, ReelClipOutcome | 'saving-copy'>>({})
   const [lowSpace, setLowSpace] = useState<string | null>(null)
@@ -133,15 +135,6 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
   )
 
   const move = useCallback((id: string, toIndex: number) => setOrder((prev) => moveInOrder(prev, id, toIndex)), [])
-
-  const handleChooseFolder = useCallback(async () => {
-    try {
-      const chosen = await window.electronAPI.chooseExportFolder()
-      if (chosen) setFolder(chosen)
-    } catch (err) {
-      toast('error', `Couldn't open the folder picker: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }, [])
 
   const canExport = hasElectron && !!probe && !!sourcePath && !!folder && !!plan && !exporting
 
@@ -484,18 +477,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
         </div>
 
         {/* Folder */}
-        <div>
-          <span className="block text-sm font-medium text-text-secondary mb-2">Destination folder</span>
-          <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={handleChooseFolder} disabled={exporting || !hasElectron}>
-              <FolderOpen className="w-4 h-4" />
-              Choose folder…
-            </Button>
-            <span className="text-sm text-text-tertiary truncate flex-1" title={folder ?? undefined}>
-              {folder ?? 'No folder chosen'}
-            </span>
-          </div>
-        </div>
+        <ExportFolderRow folder={folder} onChange={changeFolder} disabled={exporting || !hasElectron} />
 
         {lowSpace && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-warning-subtle border border-warning/20" role="status">

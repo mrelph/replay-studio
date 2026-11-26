@@ -59,6 +59,11 @@ export interface UpdateCheckResult {
   message?: string
 }
 
+export interface ExportFolderInfo {
+  path: string
+  isDefault: boolean
+}
+
 export interface UpdateDownloadedInfo {
   version: string
   releaseNotes?: string
@@ -86,8 +91,13 @@ export interface ElectronAPI {
   // Multi-clip export (see docs/CLIPS_PLAN.md)
   /** Width/height/fps/duration/audio of a registered video path. */
   probeVideo: (filePath: string) => Promise<VideoProbe | { error: string }>
-  /** Folder picker; the returned folder is authorized for export writes. */
-  chooseExportFolder: () => Promise<string | null>
+  /** The export folder setting (Downloads by default); main authorizes it for export writes. */
+  getExportFolder: () => Promise<ExportFolderInfo>
+  /** Folder picker starting at the export folder; saves and authorizes the pick. Null when cancelled. */
+  chooseExportFolder: () => Promise<ExportFolderInfo | null>
+  resetExportFolder: () => Promise<ExportFolderInfo>
+  /** Fires whenever the export folder changes (File menu or a dialog's Change…). Returns an unsubscribe function. */
+  onExportFolderChanged: (callback: (info: ExportFolderInfo) => void) => () => void
   clipEncodeStart: (options: ClipEncodeStartOptions) => Promise<ClipEncodeStartResult>
   /** Adds one drawing-layer PNG to the job; resolves with its 0-based slot index. */
   /** One drawing-layer frame as raw RGBA (width*height*4 bytes); the main process encodes it to PNG. */
