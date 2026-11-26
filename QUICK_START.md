@@ -72,7 +72,7 @@ Select a tool from the left sidebar:
 2. **Select a tool** (try the Pen tool by pressing `P`)
 3. **Choose a color** from the color swatches in the left sidebar
 4. **Draw on the video** by clicking and dragging
-5. Your annotation appears and will stay visible for 5 seconds of video time
+5. Your annotation appears and will stay visible for 1.5 seconds of video time by default (change it with the Stays chips: Freeze only, 1s, 1.5s, 2s, 4s, To end)
 
 ### 5. Navigate Annotations
 

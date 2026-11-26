@@ -27,7 +27,8 @@ both installers plus the update-feed `latest*.yml` files. See
 
 Electron two-process app:
 
-- `electron/main.ts` — main process (ESM): window creation, all `ipcMain.handle` channels (`dialog:*`, `file:*`, `ffmpeg:*`, `audience:*`, `video:resolvePath`), custom `local-video://` protocol for serving local video files
+- `electron/main.ts` — main process (ESM): window creation, all `ipcMain.handle` channels (`dialog:*`, `file:*`, `ffmpeg:*`, `settings:*`, `audience:*`, `video:resolvePath`), custom `local-video://` protocol for serving local video files
+- `electron/exportFolder.ts` — export-folder setting (pure logic, fs injected); stored in `export-folder.json` in userData; Downloads by default, exposed through `settings:getExportFolder` / `chooseExportFolder` / `resetExportFolder` plus the `settings:exportFolderChanged` event
 - `electron/ffmpegExport.ts` — export pipeline using `child_process.spawn` + `ffmpeg-static`
 - `electron/preload.cjs` — THE live preload script (CommonJS), exposes `window.electronAPI` via contextBridge
 - `src/` — React renderer
@@ -47,6 +48,8 @@ Data flow: renderer calls `window.electronAPI.*` (preload) → `ipcRenderer.invo
 
 ## Gotchas
 
+- **Themes:** `src/theme/tokens.css` has one block per theme (`[data-theme="id"]`) plus `--chrome-*` tokens. A `.chrome` class on the header, drawing toolbar, video controls and timeline remaps the ordinary tokens for its subtree; floating panels rendered inside one need `.chrome-reset`. A new theme is a `[data-theme]` block plus an entry in `THEME_OPTIONS` (`src/stores/themeStore.ts`); a test checks every theme defines every token.
+- Tailwind colours from the theme are plain `var()` strings (`tailwind.config.js`), so alpha modifiers like `bg-surface-elevated/95` generate no CSS. Don't use them on token colours.
 - **Preload**: `electron/preload.cjs` is the file actually loaded (main.ts resolves `preload.cjs`; vite.config.ts copies it to `dist-electron/`). `electron/preload.ts` is NOT built or used — do not edit it expecting changes to apply. Preload must stay CommonJS even though the package is `"type": "module"`.
 - `dist-electron/` is gitignored EXCEPT `dist-electron/preload.cjs`, which is tracked — rebuilds overwrite it; commit intentional changes.
 - YOLO model `public/models/yolov8n.onnx` is gitignored and the `public/` dir may be absent locally; object detection needs the model downloaded separately (packaged via `asarUnpack: dist/models`).

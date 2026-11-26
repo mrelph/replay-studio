@@ -23,7 +23,7 @@ exactly. If you change a default binding in that file, update this doc too.
 | `Shift+A` | Arc arrow tool |
 | `G` | Player ring tool (Field group) |
 | `Z` | Zone tool (see Zones) |
-| `Shift+T` | Callout tool |
+| `Shift+T` | Callout tool (double-click a callout, with Select or Callout, to edit its label) |
 | `D` | Toggle line style: Solid / Dashed (line, arrow, arc arrow, pen; also selected drawings) |
 | `E` | Eraser tool |
 
@@ -201,7 +201,7 @@ stretch as a slow-motion region.
   Freezes inside a region hold for their usual length.
 - Slow motion repeats frames rather than inventing new ones, so 60 fps footage
   looks smoother than 30 fps.
-- Regions are saved in the project file. They are not part of Undo yet.
+- Regions are saved in the project file. Undo and Redo cover them, in the same history as drawings.
 
 ## Zones
 

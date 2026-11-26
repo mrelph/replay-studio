@@ -39,25 +39,32 @@ See [RELEASING.md](RELEASING.md) for how releases are cut and what auto-update l
 - Solid / Dashed switch (`D`) for lines, arrows, arc arrows and freehand strokes
 - Draw-on animation: drawings draw themselves along the stroke, with a per-annotation Draw-on time
 - "Stays" chips (Freeze only, 1s, 1.5s, 2s, 4s, To end; 1.5s is the default) set how long drawings stay on screen
-- Undo / Redo and Clear all
+- Callouts: double-click one (Select or Callout tool) to edit its label; long labels wrap at about 40% of the picture width
+- Undo / Redo and Clear all (drawings and slow-motion regions share one history; opening a new video clears it)
 
 ### Freeze Frames and Slow Motion
 - Drawing while the video plays pauses on that frame and adds a freeze automatically; drawings on a frozen frame appear one after another in the order you drew them
 - Pressing Play after drawing previews the freeze before the video resumes
 - `H` records a freeze by holding the current frame
-- Hold `W` while the video plays to record a 50% slow-motion region; adjust regions on the timeline's Speed lane (25%, 50%, 75%, 2x)
+- Hold `W` while the video plays to record a 50% slow-motion region; adjust regions on the timeline's Speed lane (25%, 50%, 75%, 2x); timeline bars that overlap in time are packed onto separate rows
 
 ### Clips and Highlight Reels
 - Mark clips from In/Out (`Shift+C`) or around the playhead (`X`)
 - Tag clips, add notes, set tags that auto-apply to new clips, and filter by tag
 - Export selected clips to individual MP4s with a `clips.csv` manifest
 - "Export reel…" joins chosen clips into one MP4, with optional title cards and chapters
+- Clips and reels save straight to the export folder (Downloads by default) with no folder prompt; the dialog shows "Save to: …" with a Change… button. Set it under File → Export Folder…, or use File → Reset Export Folder to Downloads
 
 ### Export
 - MP4 or GIF with annotations burned in (drawings, timing and fades, zoom lenses, freezes, slow motion)
 - Quality presets (High 1080p, Medium 720p, Low 480p) and frame rate (24, 30, 60 fps; GIFs are capped at 15 fps)
 - Full video or In/Out range only; turn "Include annotations" off to export the plain video
 - MP4 exports keep the source audio
+- The single-export save dialog opens in the export folder
+
+### Themes
+- The theme picker in the header offers Dark, Light, System, Broadcast Night, Floodlit Pitch, Arena Ice and Courtside
+- The drawing toolbar and video controls wrap onto extra lines in a narrow window
 
 ### Projects
 - Save and load projects as `.rsproj` files (annotations, freezes, clips and speed regions)
@@ -125,7 +132,6 @@ More detail: [ARCHITECTURE.md](ARCHITECTURE.md), [TROUBLESHOOTING.md](TROUBLESHO
 
 - Video support depends on what Chromium/Electron can decode.
 - Slow motion repeats frames rather than interpolating, so higher-frame-rate footage looks smoother.
-- Speed regions are not part of Undo yet.
 
 ## Contributing
 
