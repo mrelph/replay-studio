@@ -27,7 +27,7 @@ export default function VoiceLane({ duration, topClass }: { duration: number; to
 
   return (
     <div
-      className={`absolute inset-x-0 ${topClass} h-4 bg-surface-elevated border-b border-border-subtle`}
+      className={`absolute inset-x-0 ${topClass} h-4 overflow-hidden bg-surface-elevated border-b border-border-subtle`}
       aria-label="Voice lane"
       onClick={() => {
         useVoiceStore.getState().select(null)

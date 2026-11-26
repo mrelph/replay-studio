@@ -127,10 +127,11 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
 
   const inReel = useMemo(() => reelClips(clips, order, included), [clips, order, included])
   const speedSteps = useMemo(() => (probe ? exportSpeedSteps(speedRegions, probe) : undefined), [probe, speedRegions])
+  const frozenAnnotations = useMemo(() => (probe ? withVoiceFreezes(annotations, voiceClips, probe.fps) : annotations), [probe, annotations, voiceClips])
   const plan = useMemo(() => {
     if (!probe || inReel.length === 0) return null
-    return buildReelPlan(inReel, withVoiceFreezes(annotations, voiceClips, probe.fps), probe.fps, { titleCards, cardSeconds }, speedSteps, probe.fps)
-  }, [probe, inReel, annotations, voiceClips, titleCards, cardSeconds, speedSteps])
+    return buildReelPlan(inReel, frozenAnnotations, probe.fps, { titleCards, cardSeconds }, speedSteps, probe.fps)
+  }, [probe, inReel, frozenAnnotations, titleCards, cardSeconds, speedSteps])
 
   const clipById = useMemo(() => new Map(clips.map((c) => [c.id, c])), [clips])
 
@@ -338,7 +339,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
                 const clip = clipById.get(id)
                 if (!clip) return null
                 const on = !!included[id]
-                const seconds = probe ? buildOutputTimeline(clip, withVoiceFreezes(annotations, voiceClips, probe.fps), probe.fps, speedSteps).duration : clip.end - clip.start
+                const seconds = probe ? buildOutputTimeline(clip, frozenAnnotations, probe.fps, speedSteps).duration : clip.end - clip.start
                 const reelNumber = on ? inReel.indexOf(clip) + 1 : null
                 return (
                   <li

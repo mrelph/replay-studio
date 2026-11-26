@@ -7,6 +7,7 @@ import { segmentOutputDuration, type FreezeAnnotationLike } from './outputTimeli
 
 export const MAX_VOICE_CLIPS_PER_CLIP = 40
 const MIN_PLACED_SECONDS = 0.05
+const MERGE_GAP_SECONDS = 0.3
 
 export interface VoicePlacement {
   id: string
@@ -55,7 +56,9 @@ export function placeVoice(segments: OutputSegment[], clip: Pick<Clip, 'start' |
   const outStartOf = (voice: VoiceClip): number | null => {
     if (voice.frozen) {
       const frame = frameIndexAt(voice.startTime, fps)
-      const index = segments.findIndex((s) => s.kind === 'hold' && frameIndexAt(s.srcTime, fps) === frame)
+      const sameFrame = (s: OutputSegment) => s.kind === 'hold' && frameIndexAt(s.srcTime, fps) === frame
+      let index = segments.findIndex((s) => sameFrame(s) && s.kind === 'hold' && s.srcTime === voice.startTime)
+      if (index < 0) index = segments.findIndex(sameFrame)
       return index < 0 ? null : starts[index]
     }
     for (let i = 0; i < segments.length; i++) {
@@ -84,13 +87,13 @@ export function voiceLimitError(clip: Pick<Clip, 'start' | 'end'>, voiceClips: V
   return count > MAX_VOICE_CLIPS_PER_CLIP ? `Too many voice clips in this clip (max ${MAX_VOICE_CLIPS_PER_CLIP})` : null
 }
 
-/** Overlapping or touching windows joined, in time order. */
+/** Windows closer than twice the duck ramp are joined, in time order, so the game sound does not pump up between them. */
 function mergeWindows(windows: { start: number; end: number }[]): { start: number; end: number }[] {
   const sorted = [...windows].sort((a, b) => a.start - b.start)
   const merged: { start: number; end: number }[] = []
   for (const w of sorted) {
     const last = merged[merged.length - 1]
-    if (last && w.start <= last.end) last.end = Math.max(last.end, w.end)
+    if (last && w.start - last.end < MERGE_GAP_SECONDS) last.end = Math.max(last.end, w.end)
     else merged.push({ ...w })
   }
   return merged

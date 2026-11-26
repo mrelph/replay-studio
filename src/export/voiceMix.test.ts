@@ -59,6 +59,16 @@ describe('placeVoice', () => {
     expect(placeVoice(segments, { start: 0, end: 4 }, [voice('v', 2.02, 1, true)], 30)[0].outStart).toBe(2)
   })
 
+  it('prefers the hold whose srcTime equals the voice start when two holds share a frame', () => {
+    const segments: OutputSegment[] = [
+      { kind: 'play', srcStart: 0, srcEnd: 3.001 },
+      { kind: 'hold', srcTime: 3.001, duration: 1 },
+      { kind: 'hold', srcTime: 3.02, duration: 2 },
+      { kind: 'play', srcStart: 3.02, srcEnd: 5 },
+    ]
+    expect(placeVoice(segments, { start: 0, end: 5 }, [voice('v', 3.02, 1, true)], 30)[0].outStart).toBeCloseTo(4.001, 6)
+  })
+
   it('places a playing clip after the holds before it', () => {
     const { segments } = buildOutputTimeline({ start: 2, end: 10 }, [{ startTime: 3, freezeDuration: 2 }], 30)
     expect(placeVoice(segments, { start: 2, end: 10 }, [voice('v', 4, 1, false)], 30)).toEqual([
@@ -108,6 +118,20 @@ describe('buildVoiceMix', () => {
   it('is undefined when no placement has audio', async () => {
     expect(await buildVoiceMix([], 'low')).toBeUndefined()
     expect(await buildVoiceMix([{ id: 'x', outStart: 0, duration: 1, duck: true }], 'low', () => undefined)).toBeUndefined()
+  })
+
+  it('joins duck windows closer than 0.3 s and keeps wider gaps apart', async () => {
+    const mix = (b: number) =>
+      buildVoiceMix(
+        [
+          { id: 'a', outStart: 1, duration: 1, duck: true },
+          { id: 'b', outStart: b, duration: 3 - b, duck: true },
+        ],
+        'low',
+        () => blob,
+      )
+    expect((await mix(2.1))?.duckWindows).toEqual([{ start: 1, end: 3 }])
+    expect((await mix(2.5))?.duckWindows).toEqual([{ start: 1, end: 2 }, { start: 2.5, end: 3 }])
   })
 
   it('carries the audio bytes and ducks only under playing clips', async () => {

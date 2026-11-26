@@ -24,6 +24,11 @@ export function rowCount(rows: Map<string, number>): number {
   return max + 1
 }
 
+export function laneTopFor(hasSpeed: boolean, hasVoice: boolean): { px: number; cls: string } {
+  const px = 32 + (hasSpeed ? 16 : 0) + (hasVoice ? 16 : 0)
+  return { px, cls: px === 64 ? 'top-16' : px === 48 ? 'top-12' : 'top-8' }
+}
+
 const ROW_HEIGHT = 28
 const MAX_AUTO_ROWS = 8
 

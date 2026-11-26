@@ -157,6 +157,9 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
     if (options.format === 'gif') return 'Voice can only be mixed into MP4'
     const voiceError = validateVoiceMix(options.voice)
     if (voiceError) return voiceError
+    const outputSeconds = frameCount / fps
+    if (options.voice.tracks.some((track) => track.outStart > outputSeconds)) return 'A voice clip starts after the end of the clip'
+    if (options.voice.duckWindows.some((w) => w.start > outputSeconds)) return 'A voice duck window starts after the end of the clip'
   }
   if (!Array.isArray(segments) || segments.length === 0) {
     return 'Invalid segments: at least one required'

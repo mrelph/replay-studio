@@ -84,6 +84,10 @@ describe('deleteKeyTarget', () => {
     expect(deleteKeyTarget(key('Escape'), null, 'a1')).toBeNull()
     expect(deleteKeyTarget(key('Escape', 'INPUT'), 's1', null)).toBeNull()
   })
+  it('clears a selected voice clip on Escape', () => {
+    expect(deleteKeyTarget(key('Escape'), null, null, 'v1')).toBe('deselect-voice')
+    expect(deleteKeyTarget(key('Escape'), 's1', null, 'v1')).toBe('deselect-region')
+  })
   it('never fires while typing', () => {
     expect(deleteKeyTarget(key('Delete', 'INPUT'), 's1', null)).toBeNull()
     expect(deleteKeyTarget(key('Backspace', 'TEXTAREA'), null, 'a1')).toBeNull()

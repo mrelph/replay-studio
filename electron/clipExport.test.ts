@@ -688,6 +688,18 @@ describe('validateClipEncodeOptions', () => {
     expect(validateClipEncodeOptions({ ...validOptions(), format: 'avi' })).toMatch(/format/i)
   })
 
+  it('refuses voice that starts after the end of the output', () => {
+    const track = (outStart: number) => ({ data: new Uint8Array([1]), outStart, duration: 1 })
+    const voice = (outStart: number, windowStart: number) => ({
+      tracks: [track(outStart)],
+      duckWindows: [{ start: windowStart, end: windowStart + 1 }],
+      duckGain: 0.25,
+    })
+    expect(validateClipEncodeOptions({ ...validOptions(), voice: voice(2, 2) })).toBeNull()
+    expect(validateClipEncodeOptions({ ...validOptions(), voice: voice(3.5, 1) })).toMatch(/after the end/i)
+    expect(validateClipEncodeOptions({ ...validOptions(), voice: voice(1, 3.5) })).toMatch(/after the end/i)
+  })
+
   it('accepts well-formed options', () => {
     expect(validateClipEncodeOptions(validOptions())).toBeNull()
   })
@@ -1276,6 +1288,25 @@ describeIfFfmpeg('clip encode job (end-to-end with real ffmpeg)', () => {
 
     await expect(fsp.stat(cancelOutputPath)).rejects.toThrow()
   }, 30_000)
+})
+
+describe('voice temp files', () => {
+  it('cancelling a job removes the temp dir holding its voice audio', async () => {
+    const replayDirs = () => new Set(fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('replay-clip-')))
+    const before = replayDirs()
+    const started = await startClipEncodeJob({
+      ...validOptions(),
+      voice: { tracks: [{ data: new Uint8Array([1, 2, 3]), outStart: 0, duration: 1 }], duckWindows: [], duckGain: 0.25 },
+    }, true)
+    expect(started.ok).toBe(true)
+    if (!started.ok) return
+    const created = Array.from(replayDirs()).filter((name) => !before.has(name))
+    expect(created).toHaveLength(1)
+    const dir = path.join(os.tmpdir(), created[0])
+    expect(fs.readdirSync(dir)).toContain('voice-0.webm')
+    await cancelClipEncodeJob(started.jobId)
+    expect(fs.existsSync(dir)).toBe(false)
+  })
 })
 
 describe('encodeRgbaPng', () => {

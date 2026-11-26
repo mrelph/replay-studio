@@ -142,16 +142,11 @@ export function restoreVoiceClips(entries: unknown): { clips: VoiceClip[]; audio
   const clips: VoiceClip[] = []
   const audio = new Map<string, Blob>()
   if (!Array.isArray(entries)) return { clips, audio }
-  const sanitized = sanitizeVoiceClips(entries.map((entry) => (entry && typeof entry === 'object' ? { ...entry, data: undefined } : entry)))
-  const byId = new Map<string, unknown>()
   for (const entry of entries) {
-    if (entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string') {
-      byId.set((entry as { id: string }).id, (entry as { data?: unknown }).data)
-    }
-  }
-  for (const clip of sanitized) {
-    const data = byId.get(clip.id)
-    if (typeof data !== 'string' || data === '' || audio.has(clip.id)) continue
+    if (!entry || typeof entry !== 'object') continue
+    const { data } = entry as { data?: unknown }
+    const [clip] = sanitizeVoiceClips([{ ...entry, data: undefined }])
+    if (!clip || audio.has(clip.id) || typeof data !== 'string' || data === '') continue
     const bytes = base64ToBytes(data)
     if (!bytes) continue
     clips.push(clip)

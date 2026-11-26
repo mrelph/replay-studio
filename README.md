@@ -40,7 +40,7 @@ See [RELEASING.md](RELEASING.md) for how releases are cut and what auto-update l
 - Draw-on animation: drawings draw themselves along the stroke, with a per-annotation Draw-on time
 - "Stays" chips (Freeze only, 1s, 1.5s, 2s, 4s, To end; 1.5s is the default) set how long drawings stay on screen
 - Callouts: double-click one (Select or Callout tool) to edit its label; long labels wrap at about 40% of the picture width
-- Undo / Redo and Clear all (drawings and slow-motion regions share one history; opening a new video clears it)
+- Undo / Redo and Clear all (drawings, slow-motion regions and voice clips share one history; opening a new video clears it)
 
 ### Freeze Frames and Slow Motion
 - Drawing while the video plays pauses on that frame and adds a freeze automatically; drawings on a frozen frame appear one after another in the order you drew them

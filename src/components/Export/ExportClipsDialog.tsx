@@ -195,6 +195,13 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   // stop the render so the hidden video and ffmpeg job don't keep running.
   useEffect(() => () => abortControllerRef.current?.abort(), [])
 
+  // Recording is refused while this is set; the effect's cleanup also covers an unmount mid-export.
+  useEffect(() => {
+    if (!exporting) return
+    useAppStore.getState().setExportRunning(true)
+    return () => useAppStore.getState().setExportRunning(false)
+  }, [exporting])
+
   const handleCancel = useCallback(() => {
     abortControllerRef.current?.abort()
   }, [])
@@ -208,7 +215,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     abortControllerRef.current = controller
 
     setExporting(true)
-    useAppStore.getState().setExportRunning(true)
     setSummary(null)
     setStatuses(Object.fromEntries(selectedClips.map(({ clip }) => [clip.id, { kind: 'pending' } as ClipStatus])))
 
@@ -306,7 +312,6 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     const finalSummary: ExportSummary = { exportedCount, failedCount, cancelledCount }
     setSummary(finalSummary)
     setExporting(false)
-    useAppStore.getState().setExportRunning(false)
     abortControllerRef.current = null
 
     // Write clips.csv for this run (even a partial one) so the coach has a

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assignRows, rowCount, autoLaneHeight, hiddenRowsBelow } from './timelineRows'
+import { assignRows, rowCount, autoLaneHeight, hiddenRowsBelow, laneTopFor } from './timelineRows'
 
 const item = (id: string, startTime: number, endTime: number) => ({ id, startTime, endTime })
 
@@ -80,5 +80,14 @@ describe('hiddenRowsBelow', () => {
 
   it('is 0 when everything fits', () => {
     expect(hiddenRowsBelow(0, 232, 3)).toBe(0)
+  })
+})
+
+describe('laneTopFor', () => {
+  it('offsets the lane by 16 px per lane present', () => {
+    expect(laneTopFor(false, false)).toEqual({ px: 32, cls: 'top-8' })
+    expect(laneTopFor(true, false)).toEqual({ px: 48, cls: 'top-12' })
+    expect(laneTopFor(false, true)).toEqual({ px: 48, cls: 'top-12' })
+    expect(laneTopFor(true, true)).toEqual({ px: 64, cls: 'top-16' })
   })
 })

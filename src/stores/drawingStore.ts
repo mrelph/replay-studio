@@ -53,7 +53,7 @@ interface AnnotationSnapshot {
 interface UndoSnapshot {
   annotations: AnnotationSnapshot[]
   canvasJSON: string
-  extra?: unknown
+  extra?: Record<string, unknown>
 }
 
 interface UndoExtra {
@@ -76,11 +76,14 @@ function captureUndoExtras(): Record<string, unknown> | undefined {
   return captured
 }
 
-function restoreUndoExtras(value: unknown): void {
-  if (!value || typeof value !== 'object') return
-  const captured = value as Record<string, unknown>
+function restoreUndoExtras(captured: Record<string, unknown>): void {
   undoExtras.forEach((extra, key) => {
-    if (key in captured) extra.restore(captured[key])
+    if (!(key in captured)) return
+    try {
+      extra.restore(captured[key])
+    } catch (error) {
+      console.error('Undo extra failed to restore', key, error)
+    }
   })
 }
 

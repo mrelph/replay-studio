@@ -57,7 +57,7 @@ export interface DeleteKeyEvent {
 
 /**
  * What Delete / Backspace removes: a selected speed region first, else the
- * selected annotation. Escape clears a selected speed region instead (regions
+ * selected annotation. Escape clears a selected speed region (or voice clip) instead (regions
  * have no undo, so a stale selection should not wait for a later Delete).
  * Nothing while typing.
  */
@@ -66,10 +66,10 @@ export function deleteKeyTarget(
   selectedRegionId: string | null,
   selectedAnnotationId: string | null,
   selectedVoiceId: string | null = null,
-): 'region' | 'annotation' | 'voice' | 'deselect-region' | null {
+): 'region' | 'annotation' | 'voice' | 'deselect-region' | 'deselect-voice' | null {
   if (event.key !== 'Delete' && event.key !== 'Backspace' && event.key !== 'Escape') return null
   if (event.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.tagName)) return null
-  if (event.key === 'Escape') return selectedRegionId ? 'deselect-region' : null
+  if (event.key === 'Escape') return selectedRegionId ? 'deselect-region' : selectedVoiceId ? 'deselect-voice' : null
   if (selectedRegionId) return 'region'
   if (selectedVoiceId) return 'voice'
   return selectedAnnotationId ? 'annotation' : null

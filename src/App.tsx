@@ -26,6 +26,7 @@ import { useSpeedStore } from './stores/speedStore'
 import { useVoiceStore } from './stores/voiceStore'
 import { clearVoiceAudio, setVoiceAudio } from './voice/voiceAudio'
 import { cancelVoiceRecording } from './voice/voiceRecording'
+import { stopVoice } from './voice/voicePlayback'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject, hasProjectContent, serializeVoiceClips, restoreVoiceClips } from './utils/projectSerializer'
 import type { ProjectData } from './utils/projectSerializer'
 import type { Annotation } from './stores/drawingStore'
@@ -115,6 +116,7 @@ function App() {
       // a project load restores its own clips once it is hydrated below.
       useClipStore.getState().setClips([])
       useSpeedStore.getState().replaceAll([])
+      stopVoice()
       cancelVoiceRecording()
       useVoiceStore.getState().replaceAll([])
       clearVoiceAudio()
@@ -335,6 +337,8 @@ function App() {
       setClips(project.clips ?? [])
       useSpeedStore.getState().replaceAll(project.speedRegions ?? [])
       const voice = restoreVoiceClips(project.voiceClips)
+      stopVoice()
+      cancelVoiceRecording()
       clearVoiceAudio()
       voice.audio.forEach((blob, id) => setVoiceAudio(id, blob))
       useVoiceStore.getState().replaceAll(voice.clips)

@@ -601,6 +601,15 @@ describe('voice clips in the project file (1.5)', () => {
     expect(restoreVoiceClips(old.voiceClips).clips).toEqual([])
   })
 
+  it('pairs each entry with its own audio when ids repeat', async () => {
+    const restored = restoreVoiceClips([
+      { ...clipA, id: 'a', startTime: 1, data: '!!not base64!!' },
+      { ...clipA, id: 'a', startTime: 9, data: 'AAEC' },
+    ])
+    expect(restored.clips.map((c) => [c.id, c.startTime])).toEqual([['a', 9]])
+    expect(await readBytes(restored.audio.get('a') as Blob)).toEqual([0, 1, 2])
+  })
+
   it('skips an entry whose data is missing or not base64 and keeps the other', () => {
     const restored = restoreVoiceClips([
       { ...clipA, data: 42 },

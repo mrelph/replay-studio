@@ -17,7 +17,7 @@ import { revealKind } from '@/export/reveal'
 import { recolorKeepingAlpha } from '@/utils/surfaceShape'
 import { parseDrawIn } from '@/utils/drawInInput'
 import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, startsOnFrameStart, barStart, carrierDropCollides } from '@/utils/timelineSnap'
-import { assignRows, rowCount, autoLaneHeight, hiddenRowsBelow } from '@/utils/timelineRows'
+import { assignRows, rowCount, autoLaneHeight, hiddenRowsBelow, laneTopFor } from '@/utils/timelineRows'
 import { setFrameFreeze } from '@/utils/freezeMarkers'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
@@ -300,9 +300,8 @@ export default function AnnotationTimeline() {
   const selectedVoiceId = useVoiceStore((s) => s.selectedId)
   const selectedVoiceClip = voiceClips.find((c) => c.id === selectedVoiceId)
   const hasVoiceLane = voiceClips.length > 0
-  const laneTopPx = 32 + (hasSpeedLane ? 16 : 0) + (hasVoiceLane ? 16 : 0)
-  const laneTop = laneTopPx === 64 ? 'top-16' : laneTopPx === 48 ? 'top-12' : 'top-8'
-  const voiceLaneTop = hasSpeedLane ? 'top-12' : 'top-8'
+  const { px: laneTopPx, cls: laneTop } = laneTopFor(hasSpeedLane, hasVoiceLane)
+  const voiceLaneTop = laneTopFor(hasSpeedLane, false).cls
   const [userHeight, setUserHeight] = useState<number | null>(null)
   const [laneScroll, setLaneScroll] = useState(0)
   const laneRef = useRef<HTMLDivElement>(null)
@@ -388,6 +387,7 @@ export default function AnnotationTimeline() {
         useVoiceStore.getState().remove(selectedVoiceId)
       } else if (what === 'region' && selectedSpeedId) useSpeedStore.getState().remove(selectedSpeedId)
       else if (what === 'deselect-region') useSpeedStore.getState().select(null)
+      else if (what === 'deselect-voice') useVoiceStore.getState().select(null)
       else if (what === 'annotation') handleDeleteSelected()
     }
     window.addEventListener('keydown', handleKeyDown)
