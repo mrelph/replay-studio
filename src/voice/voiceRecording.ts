@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { toast } from '@/components/ui/Toast'
 import { useVideoStore, setVoiceRecordingProbe } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
-import { useVoiceStore } from '@/stores/voiceStore'
+import { useVoiceStore, voiceGeneration } from '@/stores/voiceStore'
 import { useAppStore } from '@/stores/appStore'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 import { MAX_VOICE_SECONDS, MIN_VOICE_SECONDS, newVoiceClipId } from '@/utils/voiceClips'
@@ -90,7 +90,9 @@ function attach(video: HTMLVideoElement, frozen: boolean, startTime: number) {
     }
     const reverseBegan = state.reverseRate > 0 && previous.reverseRate === 0
     const shuttleBegan = state.shuttleBaseRate !== null && previous.shuttleBaseRate === null
-    if (!frozen && (reverseBegan || shuttleBegan)) end()
+    // Drawing or Freeze on the held frame clears the hold with no pause event: the video now stays paused.
+    const holdTakenOver = previous.autoHold?.endedAt === null && state.autoHold === null && video.paused
+    if (!frozen && (reverseBegan || shuttleBegan || holdTakenOver)) end()
   })
   if (frozen) {
     video.addEventListener('play', end)
@@ -151,7 +153,8 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
     }
     return
   }
-  if (videoElement.paused !== frozen) {
+  // The player's own hold may have paused a playing recording during the wait: it carries on from the hold's frame.
+  if (frozen ? !videoElement.paused : videoElement.paused && !inAutoHold()) {
     recorder.cancel()
     toast('info', 'Recording cancelled: playback changed while the microphone was starting')
     return
@@ -180,7 +183,10 @@ export async function endVoiceRecording(source?: VoiceRecordingSource, lost = fa
   teardown()
   useVoiceRecording.setState({ recording: null })
 
+  const generation = voiceGeneration()
   const result = await recorder.stop()
+  // A new video or project was loaded while the audio was being collected.
+  if (generation !== voiceGeneration()) return
   if (!result) {
     toast('error', lost ? 'The microphone stopped: nothing recorded' : 'The recording was lost: nothing saved')
     return

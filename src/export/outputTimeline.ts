@@ -11,8 +11,23 @@ import { buildSpeedSteps, speedAt, type SpeedRegionLike, type SpeedStep } from '
 export interface FreezeAnnotationLike {
   startTime: number
   freezeDuration?: number
-  /** Set on frozen voice entries: inside the clip by frame at this rate, and held no earlier than clip.start. */
+  /** Set on frozen voice entries: inside the clip by frozenVoiceInside at this rate, and held no earlier than clip.start. */
   frameFps?: number
+  /** With frameFps: the voice sits on its frame's freeze carrier (startTime is the carrier's). */
+  aligned?: boolean
+}
+
+/**
+ * Whether a frozen voice clip at `startTime` is inside `clip`. On its frame's
+ * carrier (`aligned`) it goes where the carrier goes, [clip.start, clip.end),
+ * and also on the in-point's own frame, where a raw in-point can sit just past
+ * the carrier. Without a carrier, by frame: [frame of clip.start, frame of clip.end).
+ */
+export function frozenVoiceInside(clip: Pick<Clip, 'start' | 'end'>, startTime: number, fps: number, aligned: boolean): boolean {
+  const frame = frameIndexAt(startTime, fps)
+  const startFrame = frameIndexAt(clip.start, fps)
+  if (aligned) return (startTime >= clip.start && startTime < clip.end) || frame === startFrame
+  return frame >= startFrame && frame < frameIndexAt(clip.end, fps)
 }
 
 export interface OutputTimelineResult {
@@ -60,8 +75,7 @@ export function buildOutputTimeline(
     if (!freezeDuration || freezeDuration <= 0) continue
     let startTime = annotation.startTime
     if (annotation.frameFps !== undefined) {
-      const frame = frameIndexAt(startTime, annotation.frameFps)
-      if (frame < frameIndexAt(clip.start, annotation.frameFps) || frame >= frameIndexAt(clip.end, annotation.frameFps)) continue
+      if (!frozenVoiceInside(clip, startTime, annotation.frameFps, annotation.aligned === true)) continue
       startTime = Math.max(startTime, clip.start)
     } else if (annotation.startTime < clip.start || annotation.startTime >= clip.end) continue
 

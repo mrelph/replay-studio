@@ -3,7 +3,7 @@ import type { Annotation } from '@/stores/drawingStore'
 import type { VoiceClip } from '@/types/voice'
 import { timeForFrame } from '@/utils/frames'
 import { clearVoiceAudio, setVoiceAudio } from './voiceAudio'
-import { effectiveHolds, playVoice, stopVoice, voiceCrossed, voiceOnFrame, voiceToStart, setVoicePlayerFactory } from './voicePlayback'
+import { createPlayingVoiceDuck, effectiveHolds, playVoice, stopVoice, voiceCrossed, voiceOnFrame, voiceToStart, setVoicePlayerFactory } from './voicePlayback'
 
 const fps = 30000 / 1001
 const t = timeForFrame(150, fps)
@@ -211,6 +211,33 @@ describe('playVoice', () => {
     stopVoice()
     expect(FakeAudio.made.every((a) => a.paused)).toBe(true)
     ends.forEach((end) => expect(end).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the game sound ducked while any playing clip sounds', () => {
+    const video = { volume: 0.8 }
+    const duck = createPlayingVoiceDuck(video, () => 0.8, () => 0.25)
+    duck.play('v1')
+    duck.play('v2')
+    expect(video.volume).toBeCloseTo(0.2, 9)
+    FakeAudio.made[0].dispatchEvent(new Event('ended'))
+    expect(video.volume).toBeCloseTo(0.2, 9)
+    FakeAudio.made[1].dispatchEvent(new Event('ended'))
+    expect(video.volume).toBe(0.8)
+  })
+
+  it('stopVoice restores the ducked game sound', () => {
+    const video = { volume: 1 }
+    let volume = 1
+    const duck = createPlayingVoiceDuck(video, () => volume, () => 0.25)
+    duck.play('v1')
+    duck.play('v2')
+    volume = 0.5
+    duck.volumeChanged()
+    expect(video.volume).toBe(0.125)
+    stopVoice()
+    expect(video.volume).toBe(0.5)
+    duck.volumeChanged()
+    expect(video.volume).toBe(0.5)
   })
 
   it('ends at once when the clip has no audio', () => {

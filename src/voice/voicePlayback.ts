@@ -125,3 +125,26 @@ export function playVoice(id: string, onEnd?: () => void, channel: VoiceChannel 
 export function stopVoice(channel?: VoiceChannel): void {
   for (const entry of [...playing]) if (!channel || entry.channel === channel) entry.stop()
 }
+
+/** Plays 'play' clips with `target`'s volume lowered while any of them is sounding; the volume comes back when the last one ends or is stopped. */
+export function createPlayingVoiceDuck(target: { volume: number }, volume: () => number, gain: () => number) {
+  let sounding = 0
+  let duckGain: number | null = null
+  return {
+    play(id: string) {
+      duckGain = gain()
+      target.volume = volume() * duckGain
+      sounding += 1
+      playVoice(id, () => {
+        sounding -= 1
+        if (sounding > 0) return
+        duckGain = null
+        target.volume = volume()
+      }, 'play')
+    },
+    /** The store's volume changed (and was written to the element as is): lower it again while ducked. */
+    volumeChanged() {
+      if (duckGain !== null) target.volume = volume() * duckGain
+    },
+  }
+}

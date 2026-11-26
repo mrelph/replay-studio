@@ -9,7 +9,7 @@ import { previewHoldFor } from '@/utils/holdPreview'
 import { useSpeedPlayback } from '@/hooks/useSpeedPlayback'
 import { useVoiceStore } from '@/stores/voiceStore'
 import { DUCK_GAIN } from '@/utils/voiceClips'
-import { effectiveHolds, holdIdAt, playVoice, stopVoice, voiceOnFrame, voiceToStart, type EffectiveHold } from '@/voice/voicePlayback'
+import { createPlayingVoiceDuck, effectiveHolds, holdIdAt, playVoice, stopVoice, voiceOnFrame, voiceToStart, type EffectiveHold } from '@/voice/voicePlayback'
 import type { VoiceClip } from '@/types/voice'
 
 interface VideoPlayerProps {
@@ -84,21 +84,12 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     }
 
     // While any playing clip is heard the game sound is lowered; the store's volume is left alone.
-    let duckGain: number | null = null
-    let playingVoices = 0
-    const restoreVolume = () => {
-      duckGain = null
-      video.volume = useVideoStore.getState().volume
-    }
-    const startPlayingVoice = (id: string) => {
-      duckGain = DUCK_GAIN[useVoiceStore.getState().duck]
-      video.volume = useVideoStore.getState().volume * duckGain
-      playingVoices += 1
-      playVoice(id, () => {
-        playingVoices -= 1
-        if (playingVoices === 0) restoreVolume()
-      }, 'play')
-    }
+    const duck = createPlayingVoiceDuck(
+      video,
+      () => useVideoStore.getState().volume,
+      () => DUCK_GAIN[useVoiceStore.getState().duck],
+    )
+    const startPlayingVoice = (id: string) => duck.play(id)
     const startVoiceOnFrame = () => {
       const { reverseRate, shuttleBaseRate, fps } = useVideoStore.getState()
       if (reverseRate > 0 || shuttleBaseRate !== null) return
@@ -344,7 +335,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       const shuttleBegan = state.shuttleBaseRate !== null && prev.shuttleBaseRate === null
       if ((state.reverseRate > 0 && prev.reverseRate === 0) || shuttleBegan) stopVoice()
       // setVolume has just written the plain value to the element.
-      if (state.volume !== prev.volume && duckGain !== null) video.volume = state.volume * duckGain
+      if (state.volume !== prev.volume) duck.volumeChanged()
     })
 
     return () => {

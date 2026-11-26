@@ -392,6 +392,68 @@ describe('voice recording', () => {
     useVideoStore.setState({ autoHold: null })
   })
 
+  it('a playing recording runs on when the hold\'s pause comes before its seek', async () => {
+    const video = new FakeVideo(false, 1)
+    setup(video)
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(500)
+    useVideoStore.getState().beginAutoHold(1.5)
+    video.paused = true
+    video.dispatchEvent(new Event('pause'))
+    video.currentTime = 1.5
+    video.dispatchEvent(new Event('seeking'))
+    expect(useVoiceRecording.getState().recording).not.toBeNull()
+    useVideoStore.setState({ autoHold: null })
+  })
+
+  it('a hold taken over with no pause event (drawing, Freeze) ends a playing recording', async () => {
+    const video = new FakeVideo(false, 1)
+    setup(video)
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    useVideoStore.getState().beginAutoHold(1.5)
+    video.paused = true
+    vi.advanceTimersByTime(500)
+    useVideoStore.setState({ autoHold: null })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(useVoiceStore.getState().clips[0]).toMatchObject({ startTime: 1, duration: 1.5, frozen: false })
+  })
+
+  it('a hold that starts during the microphone wait keeps a playing recording, from the hold\'s time', async () => {
+    const video = new FakeVideo(false, 1)
+    setup(video)
+    slowMicrophone(300)
+    const pending = beginVoiceRecording()
+    useVideoStore.getState().beginAutoHold(1.2)
+    video.currentTime = 1.2
+    video.paused = true
+    await vi.advanceTimersByTimeAsync(300)
+    await pending
+    expect(useVoiceRecording.getState().recording).toMatchObject({ frozen: false, startTime: 1.2 })
+    expect(toast).not.toHaveBeenCalled()
+    useVideoStore.setState({ autoHold: null })
+  })
+
+  it('a project loaded while the audio is collected gets no clip from the old one', async () => {
+    setup(new FakeVideo(false, 1))
+    let release = () => {}
+    setVoiceRecorderFactory(async () => ({
+      stop: () => new Promise((resolve) => {
+        release = () => resolve({ blob: new Blob(['x']), mime: 'audio/webm' })
+      }),
+      cancel: vi.fn(),
+    }) as unknown as VoiceRecorder)
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    const ending = endVoiceRecording()
+    useVoiceStore.getState().replaceAll([])
+    release()
+    await ending
+    expect(useVoiceStore.getState().clips).toHaveLength(0)
+    expect(toast).not.toHaveBeenCalled()
+  })
+
   it('a playing recording ends on a seek that is not the hold\'s own', async () => {
     const video = new FakeVideo(false, 1)
     setup(video)

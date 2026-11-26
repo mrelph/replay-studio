@@ -30,7 +30,17 @@ describe('timeline holds from frozen voice clips', () => {
   it('with no voice clips the segments are the same as without voice', () => {
     const annotations = [carrier, { startTime: 6, freezeDuration: 0.5 }]
     const clip = { start: 1, end: 9 }
-    expect(buildOutputTimeline(clip, withVoiceFreezes(annotations, [], 30), 30)).toEqual(buildOutputTimeline(clip, annotations, 30))
+    expect(buildOutputTimeline(clip, withVoiceFreezes(annotations, [], 30), 30)).toEqual({
+      segments: [
+        { kind: 'play', srcStart: 1, srcEnd: 3 },
+        { kind: 'hold', srcTime: 3, duration: 1 },
+        { kind: 'play', srcStart: 3, srcEnd: 6 },
+        { kind: 'hold', srcTime: 6, duration: 0.5 },
+        { kind: 'play', srcStart: 6, srcEnd: 9 },
+      ],
+      duration: 9.5,
+      frameCount: 285,
+    })
   })
 
   it('aligns to a carrier whose freeze is 0, as the app does', () => {
@@ -58,6 +68,44 @@ describe('timeline holds from frozen voice clips', () => {
     const { segments } = buildOutputTimeline(clip, withVoiceFreezes([], frozen, 30), 30)
     expect(segments).toEqual([{ kind: 'play', srcStart: 0, srcEnd: 5.01 }])
     expect(placeVoice(segments, clip, frozen, 30)).toEqual([])
+  })
+
+  describe('voice on the in-point\'s and out-point\'s frames', () => {
+    const carrierAt = (startTime: number, freezeDuration: number) => ({ startTime, freezeDuration, toolType: 'freeze' })
+    const run = (clip: { start: number; end: number }, annotations: ReturnType<typeof carrierAt>[], frozen: VoiceClip[]) => {
+      const { segments } = buildOutputTimeline(clip, withVoiceFreezes(annotations, frozen, 30), 30)
+      return { segments, placed: placeVoice(segments, clip, alignVoiceToCarriers(annotations, frozen, 30), 30) }
+    }
+
+    it('in-point frame, carrier just below the in-point: one hold of the longer of the two, with the voice', () => {
+      const clip = { start: 2.01, end: 5 }
+      const { segments, placed } = run(clip, [carrierAt(timeForFrame(60, 30), 3)], [voice('v', 2, 1, true)])
+      expect(segments[0]).toEqual({ kind: 'hold', srcTime: 2.01, duration: 3 })
+      expect(segments.filter((s) => s.kind === 'hold')).toHaveLength(1)
+      expect(placed).toEqual([{ id: 'v', outStart: 0, duration: 1, duck: false }])
+    })
+
+    it('in-point frame, no carrier: the voice holds there', () => {
+      const clip = { start: 2.01, end: 5 }
+      const { segments, placed } = run(clip, [], [voice('v', 2, 1, true)])
+      expect(segments[0]).toEqual({ kind: 'hold', srcTime: 2.01, duration: 1 })
+      expect(placed.map((p) => p.outStart)).toEqual([0])
+    })
+
+    it('out-point frame, carrier inside the clip: the carrier\'s hold plays the voice', () => {
+      const clip = { start: 0, end: 5.01 }
+      const carrierTime = timeForFrame(150, 30)
+      const { segments, placed } = run(clip, [carrierAt(carrierTime, 0.5)], [voice('v', 5, 1, true)])
+      expect(segments).toContainEqual({ kind: 'hold', srcTime: carrierTime, duration: 1 })
+      expect(placed).toEqual([{ id: 'v', outStart: carrierTime, duration: 1, duck: false }])
+    })
+
+    it('out-point frame, no carrier: left out', () => {
+      const clip = { start: 0, end: 5.01 }
+      const { segments, placed } = run(clip, [], [voice('v', 5, 1, true)])
+      expect(segments).toEqual([{ kind: 'play', srcStart: 0, srcEnd: 5.01 }])
+      expect(placed).toEqual([])
+    })
   })
 
   it('moves only frozen clips onto their frame\'s carrier', () => {

@@ -16,8 +16,15 @@ function readDuck(): VoiceDuck {
   }
 }
 
-/** Runs `apply` now, or once an undo/redo restore has finished: the restore overwrites clips, and saveState skips while it runs. */
-function afterRestore(apply: () => void) {
+// Bumped by replaceAll (new video, project load): work begun before it must not land in the new clips.
+let generation = 0
+export function voiceGeneration(): number {
+  return generation
+}
+
+/** Runs `apply` now, or once an undo/redo restore has finished: the restore overwrites clips, and saveState skips while it runs. Dropped if replaceAll runs meanwhile. */
+function afterRestore(apply: () => void, since = generation) {
+  if (since !== generation) return
   if (!useDrawingStore.getState().isRestoring) {
     apply()
     return
@@ -26,7 +33,7 @@ function afterRestore(apply: () => void) {
     if (state.isRestoring) return
     unsubscribe()
     // The restore puts back its clips right after clearing isRestoring.
-    queueMicrotask(() => afterRestore(apply))
+    queueMicrotask(() => afterRestore(apply, since))
   })
 }
 
@@ -79,7 +86,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     set({ duck })
   },
 
-  replaceAll: (clips) => set({ clips: [...clips].sort((a, b) => a.startTime - b.startTime), selectedId: null }),
+  replaceAll: (clips) => {
+    generation += 1
+    set({ clips: [...clips].sort((a, b) => a.startTime - b.startTime), selectedId: null })
+  },
 }))
 
 registerUndoExtra('voice', {

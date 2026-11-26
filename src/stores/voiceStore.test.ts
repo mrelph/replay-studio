@@ -121,6 +121,16 @@ describe('voice store undo', () => {
     expect(ids()).toEqual([])
   })
 
+  it('a clip waiting for a restore is dropped when another project loads first', async () => {
+    useVoiceStore.getState().add(clip('a', 1), blob('a'))
+    useDrawingStore.setState({ isRestoring: true })
+    useVoiceStore.getState().add(clip('b', 5, false), blob('b'))
+    useVoiceStore.getState().replaceAll([clip('n', 2)])
+    useDrawingStore.setState({ isRestoring: false })
+    await Promise.resolve()
+    expect(ids()).toEqual(['n'])
+  })
+
   it('replaceAll pushes no history', () => {
     useVoiceStore.getState().replaceAll([clip('a', 1)])
     expect(useDrawingStore.getState().undoStack.length).toBe(0)
