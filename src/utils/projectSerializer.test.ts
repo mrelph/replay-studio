@@ -11,6 +11,8 @@ import {
 } from './projectSerializer'
 import { applyReveal } from '@/export/reveal'
 import { buildRing } from '@/components/Canvas/tools/ringTool'
+import { buildCallout } from '@/components/Canvas/tools/calloutTool'
+import { calloutParts } from './calloutGeometry'
 import { surfaceParts } from './surfaceShape'
 import type { Clip } from '@/types/clip'
 import { CLIP_COLORS } from '@/stores/clipStore'
@@ -616,6 +618,22 @@ describe('save/load foundations (1.4)', () => {
 
   it('returns null for an unknown type', () => {
     expect(deserializeFabricObject(fabric, { type: 'polygon', left: 0, top: 0 })).toBeNull()
+  })
+
+  it('round-trips a callout: dot, leader and plated label', () => {
+    const label = new fabric.IText('Pass', { left: 300, top: 100, fontSize: 24, fill: '#ffcc00' })
+    const callout = buildCallout({ target: { x: 100, y: 300 }, label, color: '#ffcc00', strokeWidth: 4, style: 'outline' })
+    const saved = roundTrip(callout, { toolType: 'callout' })
+    const loaded = deserializeFabricObject(fabric, saved.fabricData) as fabric.Group
+    expect(loaded.getObjects().map((o) => o.type)).toEqual(['circle', 'line', 'i-text'])
+    const parts = calloutParts(loaded)!
+    expect((parts.label as fabric.IText & { textPlate?: boolean }).textPlate).toBe(true)
+    expect((parts.label as fabric.IText).text).toBe('Pass')
+    expect(parts.leader.strokeLineCap).toBe('round')
+    expect(parts.dot.fill).toBe('#ffcc00')
+    expect(parts.label.shadow).toBeFalsy()
+    expect(loaded.getCenterPoint().x).toBeCloseTo(callout.getCenterPoint().x)
+    expect(loaded.getCenterPoint().y).toBeCloseTo(callout.getCenterPoint().y)
   })
 
   it('round-trips a ring: two centred ellipses, translucent fill, shadow on the outline only', () => {

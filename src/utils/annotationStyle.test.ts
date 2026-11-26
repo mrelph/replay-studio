@@ -4,6 +4,24 @@ import { shadowForStyle, restyleObject, arrowHeadSize } from './annotationStyle'
 import { useToolStore } from '@/stores/toolStore'
 import { buildRing } from '@/components/Canvas/tools/ringTool'
 import { surfaceParts } from './surfaceShape'
+import { buildCallout } from '@/components/Canvas/tools/calloutTool'
+import { calloutParts } from './calloutGeometry'
+
+// jsdom has no 2D canvas; IText measures text on construction, so stub a permissive context.
+const mockContext = new Proxy({} as Record<string, unknown>, {
+  get(target, prop: string) {
+    if (prop in target) return target[prop]
+    if (prop === 'measureText') return (text: string) => ({ width: (text?.length || 0) * 8 })
+    if (prop === 'canvas') return { width: 0, height: 0 }
+    if (prop === 'getContextAttributes') return () => ({})
+    return () => undefined
+  },
+  set(target, prop: string, value) {
+    target[prop] = value
+    return true
+  },
+})
+HTMLCanvasElement.prototype.getContext = (() => mockContext) as unknown as HTMLCanvasElement['getContext']
 
 describe('annotationStyle', () => {
   it('outline is a tight dark edge', () => {
@@ -37,6 +55,16 @@ describe('annotationStyle', () => {
     const arrow = new fabric.Group([new fabric.Line([0, 0, 10, 0], { stroke: '#f00' }), new fabric.Triangle({ fill: '#f00' })])
     restyleObject(arrow, 'arrow', 'outline')
     expect(arrow.getObjects().every((o) => (o.shadow as fabric.Shadow)?.blur === 3)).toBe(true)
+  })
+  it('shadows the dot and leader of a callout, never the plated label', () => {
+    const label = new fabric.IText('Pass', { left: 100, top: 0, fill: '#f00' })
+    const callout = buildCallout({ target: { x: 0, y: 100 }, label, color: '#f00', strokeWidth: 4, style: 'clean' })
+    const parts = calloutParts(callout)!
+    restyleObject(callout, 'callout', 'outline')
+    expect((parts.dot.shadow as fabric.Shadow).blur).toBe(3)
+    expect((parts.leader.shadow as fabric.Shadow).blur).toBe(3)
+    expect(parts.label.shadow).toBeFalsy()
+    expect((parts.label as fabric.IText & { textPlate?: boolean }).textPlate).toBe(true)
   })
   it('leaves spotlight alone', () => {
     const e = new fabric.Ellipse({ rx: 5, ry: 5, shadow: new fabric.Shadow({ blur: 25 }) })

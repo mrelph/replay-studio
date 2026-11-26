@@ -16,6 +16,7 @@ export type ShortcutAction =
   | 'tool.erase'
   | 'tool.ring'
   | 'tool.zone'
+  | 'tool.callout'
   | 'tool.toggleDash'
   // Video
   | 'video.playPause'
@@ -92,6 +93,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'tool.erase', label: 'Eraser tool', category: 'Tools', binding: { key: 'e' } },
   { action: 'tool.ring', label: 'Player ring tool', category: 'Tools', binding: { key: 'g' } },
   { action: 'tool.zone', label: 'Zone tool', category: 'Tools', binding: { key: 'z' } },
+  { action: 'tool.callout', label: 'Callout tool', category: 'Tools', binding: { key: 't', shift: true } },
   { action: 'tool.toggleDash', label: 'Solid / dashed lines', category: 'Tools', binding: { key: 'd' } },
   // Video
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },

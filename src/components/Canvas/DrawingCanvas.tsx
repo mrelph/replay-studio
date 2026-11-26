@@ -15,6 +15,7 @@ import { textFormatProps } from '@/utils/textFormat'
 import type { CanvasTool, ToolContext } from './tools/types'
 import { ringTool } from './tools/ringTool'
 import { zoneTool } from './tools/zoneTool'
+import { calloutTool } from './tools/calloutTool'
 import { frameIndexAt } from '@/utils/frames'
 import { applyDash, dashPattern, strokeTarget, DASH_TOOL_TYPES } from '@/utils/lineDash'
 
@@ -25,6 +26,7 @@ const DRAW_FRAME_TOOLS = new Set(['pen', 'line', 'arrow', 'arc-arrow', 'rectangl
 const NEW_TOOLS: Partial<Record<ToolType, CanvasTool>> = {
   ring: ringTool,
   zone: zoneTool,
+  callout: calloutTool,
 }
 
 /** Context for a tool module, read from the store at call time so a mid-gesture colour or width change applies. */

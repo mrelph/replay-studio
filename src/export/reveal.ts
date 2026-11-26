@@ -1,5 +1,6 @@
 import { fabric } from '@/lib/fabric'
 import { surfaceParts } from '@/utils/surfaceShape'
+import { calloutParts } from '@/utils/calloutGeometry'
 import { dashPattern, revealDashArray } from '@/utils/lineDash'
 
 export type RevealKind = 'stroke' | 'arrow' | 'ring' | 'callout' | 'none'
@@ -146,10 +147,31 @@ function revealRing(group: fabric.Object, fraction: number): void {
     return
   }
   revealStroke(outline, Math.min(1, fraction / HEAD_START))
-  if (!fillOriginals.has(fill)) fillOriginals.set(fill, fill.opacity)
-  const original = fillOriginals.get(fill) ?? 1
-  fill.opacity = fraction < HEAD_START ? 0 : original * ((fraction - HEAD_START) / (1 - HEAD_START))
-  fill.dirty = true
+  fadeInAfterHead(fill, fraction)
+  group.dirty = true
+}
+
+/** Hidden until the reveal passes HEAD_START, then up to the object's own opacity by 1. */
+function fadeInAfterHead(object: fabric.Object, fraction: number): void {
+  if (!fillOriginals.has(object)) fillOriginals.set(object, object.opacity)
+  const original = fillOriginals.get(object) ?? 1
+  object.opacity = fraction < HEAD_START ? 0 : original * ((fraction - HEAD_START) / (1 - HEAD_START))
+  object.dirty = true
+}
+
+/** The dot shows at once; the leader draws from it over the first 0.85; then the label fades in. */
+function revealCallout(group: fabric.Object, fraction: number): void {
+  const parts = calloutParts(group)
+  if (!parts) return
+  const { leader, label } = parts
+  if (fraction >= 1) {
+    restoreStroke(leader)
+    restoreFill(label)
+    group.dirty = true
+    return
+  }
+  revealStroke(leader, Math.min(1, fraction / HEAD_START))
+  fadeInAfterHead(label, fraction)
   group.dirty = true
 }
 
@@ -194,6 +216,8 @@ export function applyReveal(object: fabric.Object, toolType: string, fraction: n
     if (parts) revealArrow(object, parts, fraction, dashed)
   } else if (kind === 'ring') {
     revealRing(object, fraction)
+  } else if (kind === 'callout') {
+    revealCallout(object, fraction)
   }
 }
 

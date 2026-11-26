@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { fabric } from 'fabric'
 import { stripReveal } from '@/export/reveal'
+import { prepareRebuiltObject } from '@/utils/calloutGeometry'
 import { useVideoStore } from '@/stores/videoStore'
 import { frameIndexAt, timeForFrame } from '@/utils/frames'
 import { findFreezeCarrierAt, freezeMarkerAnnotation } from '@/utils/freezeFrame'
@@ -161,7 +162,9 @@ function annotationsFromSnapshot(
 
   return snapshot.annotations.flatMap((metadata) => {
     const object = objectsById.get(metadata.id)
-    return object ? [{ ...metadata, object }] : []
+    if (!object) return []
+    prepareRebuiltObject(object, metadata.toolType)
+    return [{ ...metadata, object }]
   })
 }
 

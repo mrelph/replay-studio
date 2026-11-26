@@ -1,5 +1,6 @@
 import { fabric } from '@/lib/fabric'
 import { SURFACE_TOOL_TYPES, surfaceParts } from './surfaceShape'
+import { calloutParts } from './calloutGeometry'
 
 export type AnnotationStyle = 'outline' | 'glow' | 'clean'
 
@@ -33,7 +34,14 @@ function styleOne(object: fabric.Object, toolType: string, style: AnnotationStyl
 export function restyleObject(object: fabric.Object, toolType: string, style: AnnotationStyle): void {
   if (!STYLED_TOOL_TYPES.has(toolType)) return
   const surface = SURFACE_TOOL_TYPES.has(toolType) ? surfaceParts(object) : null
-  if (surface) {
+  const callout = toolType === 'callout' ? calloutParts(object) : null
+  if (callout) {
+    // The label stands on its plate; a shadow would blur the text.
+    styleOne(callout.dot, toolType, style)
+    styleOne(callout.leader, toolType, style)
+    callout.label.set({ shadow: undefined })
+    callout.label.dirty = true
+  } else if (surface) {
     surface.fill.set({ shadow: undefined })
     surface.fill.dirty = true
     styleOne(surface.outline, toolType, style)

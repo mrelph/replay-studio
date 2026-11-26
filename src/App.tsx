@@ -29,6 +29,7 @@ import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
 export const toolRegistry = _ToolRegistry
 import { fabric } from './lib/fabric'
 import { applyDash } from './utils/lineDash'
+import { prepareRebuiltObject } from './utils/calloutGeometry'
 
 
 interface PendingProjectLoad {
@@ -240,6 +241,7 @@ function App() {
         }
         // The dash pattern is derived from the flag, not saved.
         if (serializedAnn.dashed) applyDash(object, serializedAnn.toolType, true)
+        prepareRebuiltObject(object, serializedAnn.toolType)
         restoredAnnotations.push({
           id: serializedAnn.id,
           object,

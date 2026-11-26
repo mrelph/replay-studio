@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { fabric } from '@/lib/fabric'
 import { applyReveal, stripReveal, strokeLength, revealKind } from './reveal'
 import { buildRing } from '@/components/Canvas/tools/ringTool'
+import { buildCallout } from '@/components/Canvas/tools/calloutTool'
+import { calloutParts } from '@/utils/calloutGeometry'
 import { surfaceParts } from '@/utils/surfaceShape'
 import { applyDash, dashPattern, revealDashArray } from '@/utils/lineDash'
 
@@ -159,6 +161,49 @@ describe('reveal', () => {
       expect(outline.strokeDashArray).toBeFalsy()
       expect(fill.opacity).toBe(1)
       expect(outline.visible).toBe(true)
+    })
+  })
+  describe('callout', () => {
+    const callout = () => {
+      const label = new fabric.IText('Pass', { left: 200, top: 50, fill: '#ffcc00', opacity: 0.8 })
+      return buildCallout({ target: { x: 50, y: 200 }, label, color: '#ffcc00', strokeWidth: 4, style: 'outline' })
+    }
+
+    it('shows the dot at once, draws the leader to 0.85, then fades the label in', () => {
+      const group = callout()
+      const { dot, leader, label } = calloutParts(group)!
+      applyReveal(group, 'callout', 0.4)
+      expect(dot.visible).toBe(true)
+      expect(dot.opacity).toBe(1)
+      expect(leader.strokeDashArray).toHaveLength(2)
+      expect(leader.strokeDashOffset).toBeGreaterThan(0)
+      expect(label.opacity).toBe(0)
+      applyReveal(group, 'callout', 0.925)
+      expect(leader.strokeDashArray).toBeFalsy()
+      expect(label.opacity).toBeCloseTo(0.4)
+      applyReveal(group, 'callout', 1)
+      expect(label.opacity).toBe(0.8)
+      expect(leader.strokeDashArray).toBeFalsy()
+    })
+
+    it('stripReveal restores a mid-reveal callout', () => {
+      const group = callout()
+      const before = JSON.stringify(group.toObject())
+      applyReveal(group, 'callout', 0.4)
+      stripReveal(group)
+      expect(JSON.stringify(group.toObject())).toBe(before)
+      applyReveal(group, 'callout', 0.9)
+      stripReveal(group)
+      expect(JSON.stringify(group.toObject())).toBe(before)
+    })
+
+    it('is never treated as an arrow', () => {
+      const group = callout()
+      const { dot, leader } = calloutParts(group)!
+      applyReveal(group, 'callout', 0.5)
+      expect(dot.strokeDashArray).toBeFalsy()
+      expect(leader.visible).toBe(true)
+      expect(leader.scaleX).toBe(1)
     })
   })
   describe('dashed', () => {

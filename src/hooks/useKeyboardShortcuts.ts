@@ -58,6 +58,7 @@ export const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
   'tool.erase': 'erase',
   'tool.ring': 'ring',
   'tool.zone': 'zone',
+  'tool.callout': 'callout',
 }
 
 export function useKeyboardShortcuts() {
