@@ -17,6 +17,9 @@ export const TOOL_DEFAULTS: Record<string, ToolDefaults> = {
   tracker: { duration: 15, fadeIn: 0, fadeOut: 0, drawIn: 0 },
   text: { duration: 2.5, fadeIn: 0.05, fadeOut: 0.1, drawIn: 0 },
   line: { duration: 2, fadeIn: 0, fadeOut: 0, drawIn: 0.35 },
+  ring: { duration: 2.5, fadeIn: 0, fadeOut: 0, drawIn: 0.4 },
+  zone: { duration: 2.5, fadeIn: 0.2, fadeOut: 0.15, drawIn: 0 },
+  callout: { duration: 2.5, fadeIn: 0, fadeOut: 0.15, drawIn: 0.3 },
   select: { duration: 2.5, fadeIn: 0, fadeOut: 0, drawIn: 0 },
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useState } from 'react'
 import {
   MousePointer2, Pen, Minus, ArrowUpRight, Redo, Square, Circle, Type,
-  Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser, Bold, Italic, Underline, Plus, RectangleHorizontal
+  Sun, ZoomIn, Undo2, Redo2, Trash2, Eraser, Bold, Italic, Underline, Plus, RectangleHorizontal, CircleDot
 } from 'lucide-react'
 import { useToolStore, PRESET_COLORS, STROKE_WIDTHS, type ToolType } from '@/stores/toolStore'
 import { useDrawingStore } from '@/stores/drawingStore'
@@ -257,6 +257,13 @@ export default function DrawingToolbar() {
           </ToolGroup>
         </>
       )}
+
+      <VerticalDivider />
+
+      {/* Field markings */}
+      <ToolGroup label="Field">
+        <ToolButton tool="ring" label="Player Ring" shortcut="G" icon={<CircleDot className="w-4 h-4" />} />
+      </ToolGroup>
 
       <VerticalDivider />
 

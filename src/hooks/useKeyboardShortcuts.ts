@@ -43,7 +43,7 @@ function nudgeEdge(edge: 'in' | 'out', frames: number) {
 }
 
 // Map shortcut actions to tool types
-const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
+export const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
   'tool.select': 'select',
   'tool.pen': 'pen',
   'tool.line': 'line',
@@ -55,6 +55,7 @@ const TOOL_ACTION_MAP: Partial<Record<ShortcutAction, ToolType>> = {
   'tool.spotlight': 'spotlight',
   'tool.magnifier': 'magnifier',
   'tool.erase': 'erase',
+  'tool.ring': 'ring',
 }
 
 export function useKeyboardShortcuts() {

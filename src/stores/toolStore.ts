@@ -17,6 +17,9 @@ export type ToolType =
   | 'tracker'
   | 'laser'
   | 'erase'
+  | 'ring'
+  | 'zone'
+  | 'callout'
 
 interface ToolState {
   currentTool: ToolType

@@ -1,6 +1,7 @@
 import { fabric } from '@/lib/fabric'
+import { surfaceParts } from '@/utils/surfaceShape'
 
-export type RevealKind = 'stroke' | 'arrow' | 'none'
+export type RevealKind = 'stroke' | 'arrow' | 'ring' | 'callout' | 'none'
 
 const HEAD_START = 0.85
 
@@ -17,6 +18,7 @@ interface HeadOriginals {
 
 const strokeOriginals = new WeakMap<fabric.Object, StrokeOriginals>()
 const headOriginals = new WeakMap<fabric.Object, HeadOriginals>()
+const fillOriginals = new WeakMap<fabric.Object, number | undefined>()
 
 type PathSegmentsInfo = (path: unknown) => Array<{ length: number }>
 
@@ -31,6 +33,10 @@ export function revealKind(toolType: string): RevealKind {
     case 'arrow':
     case 'arc-arrow':
       return 'arrow'
+    case 'ring':
+      return 'ring'
+    case 'callout':
+      return 'callout'
     default:
       return 'none'
   }
@@ -97,6 +103,32 @@ function restoreHead(head: fabric.Object): void {
   head.dirty = true
 }
 
+function restoreFill(fill: fabric.Object): void {
+  if (!fillOriginals.has(fill)) return
+  fill.opacity = fillOriginals.get(fill)
+  fillOriginals.delete(fill)
+  fill.dirty = true
+}
+
+/** Outline draws around its edge over the first 0.85; the fill fades up from 0 to its own opacity over the rest. */
+function revealRing(group: fabric.Object, fraction: number): void {
+  const parts = surfaceParts(group)
+  if (!parts) return
+  const { fill, outline } = parts
+  if (fraction >= 1) {
+    restoreStroke(outline)
+    restoreFill(fill)
+    group.dirty = true
+    return
+  }
+  revealStroke(outline, Math.min(1, fraction / HEAD_START))
+  if (!fillOriginals.has(fill)) fillOriginals.set(fill, fill.opacity)
+  const original = fillOriginals.get(fill) ?? 1
+  fill.opacity = fraction < HEAD_START ? 0 : original * ((fraction - HEAD_START) / (1 - HEAD_START))
+  fill.dirty = true
+  group.dirty = true
+}
+
 function arrowParts(object: fabric.Object): [fabric.Object, fabric.Object] | null {
   if (!(object instanceof fabric.Group)) return null
   const items = object.getObjects()
@@ -135,15 +167,20 @@ export function applyReveal(object: fabric.Object, toolType: string, fraction: n
   } else if (kind === 'arrow') {
     const parts = arrowParts(object)
     if (parts) revealArrow(object, parts, fraction)
+  } else if (kind === 'ring') {
+    revealRing(object, fraction)
   }
 }
 
+/** Restores whatever a reveal saved on the object and its children; anything it did not touch is left alone. */
 export function stripReveal(object: fabric.Object): void {
   restoreStroke(object)
-  const parts = arrowParts(object)
-  if (parts) {
-    restoreStroke(parts[0])
-    restoreHead(parts[1])
+  if (object instanceof fabric.Group) {
+    object.getObjects().forEach((child) => {
+      restoreStroke(child)
+      restoreHead(child)
+      restoreFill(child)
+    })
     object.dirty = true
   }
 }

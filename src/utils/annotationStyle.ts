@@ -1,9 +1,10 @@
 import { fabric } from '@/lib/fabric'
+import { SURFACE_TOOL_TYPES, surfaceParts } from './surfaceShape'
 
 export type AnnotationStyle = 'outline' | 'glow' | 'clean'
 
 export const STYLED_TOOL_TYPES: ReadonlySet<string> = new Set([
-  'pen', 'path', 'line', 'arrow', 'arc-arrow', 'rectangle', 'circle', 'text',
+  'pen', 'path', 'line', 'arrow', 'arc-arrow', 'rectangle', 'circle', 'text', 'ring', 'zone', 'callout',
 ])
 
 export function arrowHeadSize(strokeWidth: number): { length: number; width: number } {
@@ -20,7 +21,7 @@ export function shadowForStyle(style: AnnotationStyle, color: string, glowBlur?:
   return undefined
 }
 
-const GLOW_BLUR: Record<string, number> = { arrow: 15, 'arc-arrow': 15, rectangle: 12, circle: 12 }
+const GLOW_BLUR: Record<string, number> = { arrow: 15, 'arc-arrow': 15, rectangle: 12, circle: 12, ring: 12, zone: 12 }
 
 function styleOne(object: fabric.Object, toolType: string, style: AnnotationStyle): void {
   const own = toolType === 'text' ? object.fill : object.stroke
@@ -31,7 +32,12 @@ function styleOne(object: fabric.Object, toolType: string, style: AnnotationStyl
 
 export function restyleObject(object: fabric.Object, toolType: string, style: AnnotationStyle): void {
   if (!STYLED_TOOL_TYPES.has(toolType)) return
-  if (object instanceof fabric.Group) {
+  const surface = SURFACE_TOOL_TYPES.has(toolType) ? surfaceParts(object) : null
+  if (surface) {
+    surface.fill.set({ shadow: undefined })
+    surface.fill.dirty = true
+    styleOne(surface.outline, toolType, style)
+  } else if (object instanceof fabric.Group) {
     object.getObjects().forEach((child) => styleOne(child, toolType, style))
   } else {
     styleOne(object, toolType, style)

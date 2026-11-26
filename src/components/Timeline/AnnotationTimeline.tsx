@@ -11,6 +11,7 @@ import { Button, Select } from '@/components/ui'
 import type { Clip } from '@/types/clip'
 import WaveformDisplay from './WaveformDisplay'
 import { revealKind } from '@/export/reveal'
+import { recolorKeepingAlpha } from '@/utils/surfaceShape'
 import { parseDrawIn } from '@/utils/drawInInput'
 import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, startsOnFrameStart, barStart, carrierDropCollides } from '@/utils/timelineSnap'
 import { setFrameFreeze } from '@/utils/freezeMarkers'
@@ -530,12 +531,12 @@ function AnnotationDetails({ annotation, onUpdate, onUpdateAnnotation, onDelete 
     if (fabricObj.type === 'group') {
       ;(fabricObj as fabric.Group).getObjects().forEach((obj) => {
         if (obj.stroke) obj.set('stroke', color)
-        if (obj.fill && obj.fill !== 'transparent') obj.set('fill', color)
+        if (obj.fill && obj.fill !== 'transparent') obj.set('fill', typeof obj.fill === 'string' ? recolorKeepingAlpha(obj.fill, color) : color)
         recolorShadow(obj, color)
       })
     } else {
       if (fabricObj.stroke) fabricObj.set('stroke', color)
-      if (fabricObj.fill && fabricObj.fill !== 'transparent' && fabricObj.type !== 'circle') fabricObj.set('fill', color)
+      if (fabricObj.fill && fabricObj.fill !== 'transparent' && fabricObj.type !== 'circle') fabricObj.set('fill', typeof fabricObj.fill === 'string' ? recolorKeepingAlpha(fabricObj.fill, color) : color)
       recolorShadow(fabricObj, color)
     }
     fabricObj.canvas?.renderAll()

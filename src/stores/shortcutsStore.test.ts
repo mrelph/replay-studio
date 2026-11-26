@@ -75,13 +75,13 @@ describe('shortcutsStore', () => {
   it('restores default bindings via resetToDefaults', () => {
     const { updateShortcut, resetToDefaults, getActionForKey } = useShortcutsStore.getState()
 
-    updateShortcut('tool.pen', { key: 'g' })
-    expect(getActionForKey('g', false, false, false)).toBe('tool.pen')
+    updateShortcut('tool.pen', { key: 'q' })
+    expect(getActionForKey('q', false, false, false)).toBe('tool.pen')
 
     resetToDefaults()
 
     expect(getActionForKey('p', false, false, false)).toBe('tool.pen')
-    expect(getActionForKey('g', false, false, false)).toBeUndefined()
+    expect(getActionForKey('q', false, false, false)).toBeUndefined()
   })
 })
 
@@ -96,6 +96,7 @@ describe('mergeShortcuts', () => {
     expect(merged.find((s) => s.action === 'tool.pen')?.binding).toEqual({ key: 'b' })
     expect(merged.some((s) => (s.action as string) === 'tool.tracker')).toBe(false)
     expect(merged.find((s) => s.action === 'clip.add')?.binding).toEqual({ key: 'c', shift: true })
+    expect(merged.find((s) => s.action === 'tool.ring')?.binding).toEqual({ key: 'g' })
     expect(merged).toHaveLength(DEFAULT_SHORTCUTS.length)
   })
 

@@ -10,6 +10,8 @@ import {
   type SerializedAnnotation,
 } from './projectSerializer'
 import { applyReveal } from '@/export/reveal'
+import { buildRing } from '@/components/Canvas/tools/ringTool'
+import { surfaceParts } from './surfaceShape'
 import type { Clip } from '@/types/clip'
 import { CLIP_COLORS } from '@/stores/clipStore'
 
@@ -607,5 +609,25 @@ describe('save/load foundations (1.4)', () => {
 
   it('returns null for an unknown type', () => {
     expect(deserializeFabricObject(fabric, { type: 'polygon', left: 0, top: 0 })).toBeNull()
+  })
+
+  it('round-trips a ring: two centred ellipses, translucent fill, shadow on the outline only', () => {
+    const ring = buildRing({ center: { x: 200, y: 150 }, rx: 50, ry: 20, color: '#ffcc00', strokeWidth: 4, style: 'outline' })
+    const saved = roundTrip(ring, { toolType: 'ring' })
+    expect(saved.toolType).toBe('ring')
+    const loaded = deserializeFabricObject(fabric, saved.fabricData) as fabric.Group
+    const parts = surfaceParts(loaded)!
+    expect(loaded.getObjects()).toHaveLength(2)
+    expect(parts.fill.fill).toBe('rgba(255,204,0,0.18)')
+    expect(parts.outline.stroke).toBe('#ffcc00')
+    for (const child of [parts.fill, parts.outline]) {
+      expect(child.type).toBe('ellipse')
+      expect(child.originX).toBe('center')
+      expect(child.originY).toBe('center')
+    }
+    expect(parts.fill.shadow).toBeFalsy()
+    expect(parts.outline.shadow).toBeTruthy()
+    expect(loaded.getCenterPoint().x).toBeCloseTo(200)
+    expect(loaded.getCenterPoint().y).toBeCloseTo(150)
   })
 })

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { fabric } from '@/lib/fabric'
 import { shadowForStyle, restyleObject, arrowHeadSize } from './annotationStyle'
 import { useToolStore } from '@/stores/toolStore'
+import { buildRing } from '@/components/Canvas/tools/ringTool'
+import { surfaceParts } from './surfaceShape'
 
 describe('annotationStyle', () => {
   it('outline is a tight dark edge', () => {
@@ -22,6 +24,19 @@ describe('annotationStyle', () => {
     const arrow = new fabric.Group([new fabric.Line([0, 0, 10, 0], { stroke: '#f00' }), new fabric.Triangle({ fill: '#f00' })])
     restyleObject(arrow, 'arrow', 'clean')
     expect(arrow.getObjects().every((o) => !o.shadow)).toBe(true)
+  })
+  it('shadows only the outline of a ring, and both parts of an arrow', () => {
+    const ring = buildRing({ center: { x: 0, y: 0 }, rx: 40, ry: 16, color: '#f00', strokeWidth: 4, style: 'clean' })
+    const { fill, outline } = surfaceParts(ring)!
+    fill.set({ shadow: new fabric.Shadow({ blur: 3 }) })
+    restyleObject(ring, 'ring', 'outline')
+    expect(fill.shadow).toBeFalsy()
+    expect((outline.shadow as fabric.Shadow).blur).toBe(3)
+    restyleObject(ring, 'ring', 'glow')
+    expect(outline.shadow).toMatchObject({ color: '#f00', blur: 12 })
+    const arrow = new fabric.Group([new fabric.Line([0, 0, 10, 0], { stroke: '#f00' }), new fabric.Triangle({ fill: '#f00' })])
+    restyleObject(arrow, 'arrow', 'outline')
+    expect(arrow.getObjects().every((o) => (o.shadow as fabric.Shadow)?.blur === 3)).toBe(true)
   })
   it('leaves spotlight alone', () => {
     const e = new fabric.Ellipse({ rx: 5, ry: 5, shadow: new fabric.Shadow({ blur: 25 }) })

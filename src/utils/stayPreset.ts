@@ -12,6 +12,7 @@ export const STAY_PRESETS: { value: StayPreset; label: string }[] = [
 
 export const STAY_TOOL_TYPES: ReadonlySet<string> = new Set([
   'pen', 'path', 'line', 'arrow', 'arc-arrow', 'rectangle', 'circle', 'text', 'spotlight', 'magnifier',
+  'ring', 'zone', 'callout',
 ])
 
 export interface StayTiming {
