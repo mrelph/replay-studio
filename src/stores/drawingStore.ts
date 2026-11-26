@@ -644,7 +644,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
           isRestoring: false,
           pendingReplacement: null,
         })
-        if (previousSnapshot.extra !== undefined) undoExtra?.restore(previousSnapshot.extra)
+        if (previousSnapshot.extra !== undefined && !pendingReplacement) undoExtra?.restore(previousSnapshot.extra)
         canvas.requestRenderAll()
         if (pendingReplacement) get().replaceAnnotations(pendingReplacement)
       })
@@ -692,7 +692,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
           isRestoring: false,
           pendingReplacement: null,
         })
-        if (nextSnapshot.extra !== undefined) undoExtra?.restore(nextSnapshot.extra)
+        if (nextSnapshot.extra !== undefined && !pendingReplacement) undoExtra?.restore(nextSnapshot.extra)
         canvas.requestRenderAll()
         if (pendingReplacement) get().replaceAnnotations(pendingReplacement)
       })

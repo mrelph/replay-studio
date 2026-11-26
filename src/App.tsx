@@ -18,6 +18,7 @@ import { useAudienceStream } from './hooks/useAudienceStream'
 import { useAppStore } from './stores/appStore'
 import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
+import { finishCalloutEdit } from './components/Canvas/tools/calloutEdit'
 import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore, THEME_OPTIONS, type ThemeMode } from './stores/themeStore'
 import { useClipStore } from './stores/clipStore'
@@ -51,7 +52,10 @@ function ThemePicker() {
   return (
     <Select
       value={theme}
-      onChange={(e) => setTheme(e.target.value as ThemeMode)}
+      onChange={(e) => {
+        setTheme(e.target.value as ThemeMode)
+        e.currentTarget.blur()
+      }}
       aria-label="Colour theme"
       title="Colour theme"
       className="!text-xs !py-1 !px-2"
@@ -183,6 +187,7 @@ function App() {
   // Save project
   const handleSaveProject = useCallback(async () => {
     if (!window.electronAPI) return
+    finishCalloutEdit()
 
     try {
       const defaultName = currentProjectPath || 'project.rsproj'
@@ -195,7 +200,7 @@ function App() {
         actualVideoPath = await window.electronAPI.resolveVideoPath(videoSrc)
       }
 
-      const project = serializeProject(annotations, actualVideoPath, inPoint, outPoint, undefined, clips, useSpeedStore.getState().regions)
+      const project = serializeProject(useDrawingStore.getState().annotations, actualVideoPath, inPoint, outPoint, undefined, clips, useSpeedStore.getState().regions)
       const json = exportProjectToJSON(project)
 
       const result = await window.electronAPI.writeFile(filePath, json)
@@ -208,7 +213,7 @@ function App() {
     } catch {
       toast('error', 'Error saving project')
     }
-  }, [annotations, videoSrc, inPoint, outPoint, currentProjectPath, clips])
+  }, [videoSrc, inPoint, outPoint, currentProjectPath, clips])
 
   // Load project
   const handleLoadProject = useCallback(async () => {
@@ -402,6 +407,7 @@ function App() {
       })
 
       window.electronAPI.onExportClip(() => {
+        finishCalloutEdit()
         setShowExport(true)
       })
 
@@ -440,7 +446,9 @@ function App() {
   // Toggle shortcuts help with ? key
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+      const target = e.target as HTMLElement | null
+      const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || Boolean(target?.isContentEditable)
+      if (!typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
         setShowShortcuts((prev) => !prev)
       }
       if (e.key === 'Escape') {
@@ -516,7 +524,7 @@ function App() {
               </IconButton>
               {/* Audience view hidden: not a core use case for now (code kept in AudienceView/). */}
               <Button
-                onClick={() => setShowExport(true)}
+                onClick={() => { finishCalloutEdit(); setShowExport(true) }}
                 size="sm"
                 className="bg-success hover:brightness-90 text-white"
               >
@@ -554,8 +562,8 @@ function App() {
                 <ClipPanel
                   isOpen={showClipPanel}
                   onToggle={() => setShowClipPanel(!showClipPanel)}
-                  onExportClips={() => setShowExportClips(true)}
-                  onExportReel={(tags) => setReelDialogTags(tags)}
+                  onExportClips={() => { finishCalloutEdit(); setShowExportClips(true) }}
+                  onExportReel={(tags) => { finishCalloutEdit(); setReelDialogTags(tags) }}
                 />
               </div>
               <div className="relative flex-shrink-0">

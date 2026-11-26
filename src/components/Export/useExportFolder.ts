@@ -43,6 +43,7 @@ export function useExportFolder() {
       (err) => {
         console.error('getExportFolder failed:', err)
         toast('error', `Couldn't read the export folder: ${err instanceof Error ? err.message : String(err)}`)
+        if (!stale) apply({ path: '', isDefault: false, usable: false })
       }
     )
     return () => {

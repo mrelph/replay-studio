@@ -393,12 +393,18 @@
    per-theme code. In Dark and Light the --chrome-* values equal the tokens
    they replace, so this is a no-op there. */
 .chrome {
+  color: var(--color-text-primary);
   --color-bg-elevated: var(--chrome-bg);
   --color-bg-sunken: var(--chrome-bg-raised);
   --color-border-subtle: var(--chrome-border);
   --color-text-primary: var(--chrome-text);
   --color-text-secondary: var(--chrome-text-secondary);
   --color-text-tertiary: var(--chrome-text-tertiary);
+}
+
+/* A reset panel inside a chrome region would otherwise inherit the chrome text colour. */
+.chrome-reset {
+  color: var(--color-text-primary);
 }
 
 /* Only the new themes paint the chrome background (the drawing toolbar is

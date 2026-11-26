@@ -134,4 +134,22 @@ describe('undo and redo cover speed regions', () => {
     const [a] = regions()
     expect(Math.abs(a.start * 59.94 - Math.round(a.start * 59.94))).toBeLessThan(1e-6)
   })
+
+  it.each(['undo', 'redo'] as const)('%s keeps the speed regions a project load installed mid-restore', (which) => {
+    useSpeedStore.getState().place(r('a', 2, 4))
+    if (which === 'redo') undo()
+    const { canvas } = useDrawingStore.getState()
+    const real = canvas!.loadFromJSON.bind(canvas)
+    let finish: () => void = () => undefined
+    canvas!.loadFromJSON = ((json: unknown, callback: () => void) => {
+      finish = () => real(json as never, callback)
+      return canvas
+    }) as never
+    ;(which === 'undo' ? undo : redo)()
+    useDrawingStore.getState().replaceAnnotations([])
+    useSpeedStore.getState().replaceAll([r('loaded', 6, 8)])
+    finish()
+    expect(regions().map((x) => x.id)).toEqual(['loaded'])
+    expect(useDrawingStore.getState().pendingReplacement).toBeNull()
+  })
 })

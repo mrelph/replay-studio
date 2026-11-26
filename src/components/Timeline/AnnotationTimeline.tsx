@@ -373,7 +373,7 @@ export default function AnnotationTimeline() {
     e.preventDefault()
     isResizingRef.current = true
     const startY = e.clientY
-    const startHeight = trackHeight
+    const startHeight = containerHeight
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizingRef.current) return
@@ -389,7 +389,7 @@ export default function AnnotationTimeline() {
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
-  }, [trackHeight])
+  }, [containerHeight])
 
   if (duration === 0) return null
 

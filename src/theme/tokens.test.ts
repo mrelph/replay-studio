@@ -27,4 +27,12 @@ describe('tokens.css', () => {
     const tokens = themeTokens(id)
     expect([...darkTokens].filter((token) => !tokens.has(token))).toEqual([])
   })
+
+  it('chrome and chrome-reset regions set their own text colour', () => {
+    for (const selector of ['.chrome', '.chrome-reset']) {
+      const rule = css.split('}').find((chunk) => chunk.split('{')[0].trim() === selector)
+      expect(rule, selector).toBeDefined()
+      expect(rule).toMatch(/(^|[;{\s])color:\s*var\(--color-text-primary\)/)
+    }
+  })
 })
