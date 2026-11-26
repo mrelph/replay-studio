@@ -1,346 +1,136 @@
 # Replay Studio
 
-A professional desktop video markup application with telestrator-style drawing tools for creating annotations, highlights, and analysis overlays on video content.
+A desktop video markup app with telestrator-style drawing tools for annotating, highlighting and analysing video, built with sports coaching in mind.
 
 ## Overview
 
-Replay Studio is an Electron-based application that allows users to load video files, draw annotations frame-by-frame, and export the results with drawings burned into the video. Perfect for sports analysis, video tutorials, coaching feedback, and content creation.
+Replay Studio is an Electron app. Load a video, draw on it, cut clips, and export MP4 or GIF with the drawings burned in. It suits sports analysis, coaching feedback, tutorials and content creation. The default ice-hockey-friendly tools (player rings, zones, callouts) are aimed at game footage, but nothing limits it to that.
+
+## Installation
+
+Download an installer from [GitHub Releases](https://github.com/mrelph/replay-studio/releases):
+
+- **Linux**: AppImage. Updates itself.
+- **Windows**: NSIS installer. Updates itself. The installer is unsigned, so SmartScreen may warn on first run.
+- **macOS**: dmg for Apple silicon only (Intel Macs are not covered). It is unsigned: on first launch, open System Settings → Privacy & Security and choose **Open Anyway**. It does not auto-update; download the new dmg from the release page.
+
+See [RELEASING.md](RELEASING.md) for how releases are cut and what auto-update looks like.
 
 ## Features
 
 ### Video Playback
-- Load local video files (MP4, AVI, MOV, MKV, WebM)
-- Frame-by-frame navigation with keyboard shortcuts
-- Playback controls with variable speed
-- Set In/Out points for clip selection
-- Timeline scrubbing with visual feedback
-- Drag-and-drop video loading
-- Recent files history
+- Load local video files (MP4, AVI, MOV, MKV, WebM) by drag and drop, the Open button or the recent files list
+- Frame-by-frame stepping, J/K/L shuttle and variable playback speed
+- In/Out points, and a timeline with snapping to the playhead, freezes and whole frames
+- Waveform display
 
 ### Drawing Tools
-- **Select Tool (V)** - Select, move, and modify existing annotations
-- **Pen (P)** - Freehand drawing with adjustable stroke width
-- **Line (L)** - Draw straight lines
-- **Arrow (A)** - Draw arrows with automatic arrowheads
-- **Rectangle (R)** - Draw rectangular shapes
-- **Circle (C)** - Draw circles and ellipses
-- **Text (T)** - Add text annotations with custom styling
-- **Spotlight (S)** - Highlight specific areas with a spotlight effect
-- **Magnifier (M)** - Create magnification zones for detailed analysis
+- **Select (V)** - select, move and restyle annotations
+- **Freehand (P)**, **Line (Shift+L)**, **Arrow (A)**, **Arc Arrow (Shift+A)**
+- **Rectangle (R)**, **Ellipse (C)**
+- **Text (T)** - size, bold/italic/underline, font (Arial, Inter, Oswald, Roboto Slab, Marker) and an optional background plate
+- **Spotlight (S)** and **Zoom Lens (Shift+M)**
+- **Eraser (E)**
+- **Player Ring (G)**, **Zone (Z)** and **Callout (Shift+T)**, in the toolbar's Field group
 
-### Clips
-- Mark clips two ways: set In (`I`) / Out (`O`) and press `Shift+C`, or press `X`
-  to mark a moment around the playhead (defaults to 8s before / 4s after,
-  adjustable in the Clips panel) — works while playing, without pausing or seeking
-- Tag clips and add free-form notes; tag chips are colored subtly and stably by tag
-- **Sticky tags**: choose tags in the Clips panel that auto-apply to every new clip
-  (both `Shift+C` and `X`)
-- Filter the clip list by tag, and drag clip bars' edges on the timeline to adjust range
-- Export selected clips (optionally filtered "by tag") to `NN - Name.mp4` (adding
-  `[tag1, tag2]` when a clip has tags), each with an optional editable copy
-  (clean video + `.rsproj`), plus a `clips.csv` manifest of the run (name, times,
-  tags, notes, output file, and exported/failed/cancelled status per clip)
-- **Highlight reels**: "Export reel…" in the Clips panel joins chosen clips into one
-  `Reel - Name.mp4`. Start from the panel's tag filter, uncheck or reorder clips
-  (drag or ↑/↓), and optionally add a title card before each clip ("n / N", name,
-  tags). Drawings, zoom lenses and freezes are always included, each clip is an MP4
-  chapter, and the same run can also save the individual clips (with editable
-  copies and `clips.csv`)
+### Annotations
+- Ten preset colors and stroke widths from the Size group
+- Outline, Glow and Clean styles
+- Solid / Dashed switch (`D`) for lines, arrows, arc arrows and freehand strokes
+- Draw-on animation: drawings draw themselves along the stroke, with a per-annotation Draw-on time
+- "Stays" chips (Freeze only, 1s, 2s, 4s, To end) set how long drawings stay on screen
+- Undo / Redo and Clear all
 
-### Annotation Features
-- Color picker with 10 preset colors
-- Adjustable stroke width (2px to 16px)
-- Time-based annotations (appear/disappear at specific times)
-- Undo/Redo support
-- Clear all annotations
-- Layer management
+### Freeze Frames and Slow Motion
+- Drawing while the video plays pauses on that frame and adds a freeze automatically; drawings on a frozen frame appear one after another in the order you drew them
+- Pressing Play after drawing previews the freeze before the video resumes
+- `H` records a freeze by holding the current frame
+- Hold `W` while the video plays to record a 50% slow-motion region; adjust regions on the timeline's Speed lane (25%, 50%, 75%, 2x)
 
-### Export Capabilities
-- Export to MP4 or GIF format
-- Quality presets (High 1080p, Medium 720p, Low 480p)
-- Frame rate selection (24, 30, 60 fps)
-- Export full video or In/Out range only
-- Toggle annotations on/off in export
-- File size estimation
+### Clips and Highlight Reels
+- Mark clips from In/Out (`Shift+C`) or around the playhead (`X`)
+- Tag clips, add notes, set tags that auto-apply to new clips, and filter by tag
+- Export selected clips to individual MP4s with a `clips.csv` manifest
+- "Export reel…" joins chosen clips into one MP4, with optional title cards and chapters
 
-## Tech Stack
+### Export
+- MP4 or GIF with annotations burned in (drawings, timing and fades, zoom lenses, freezes, slow motion)
+- Quality presets (High 1080p, Medium 720p, Low 480p) and frame rate (24, 30, 60 fps; GIFs are capped at 15 fps)
+- Full video or In/Out range only; turn "Include annotations" off to export the plain video
+- MP4 exports keep the source audio
 
-- **Electron** - Desktop application framework
-- **React** - UI component library
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Fast build tool and dev server
-- **Fabric.js** - HTML5 canvas library for drawing tools
-- **Zustand** - Lightweight state management
-- **Tailwind CSS** - Utility-first CSS framework
-- **PostCSS** - CSS processing
-
-## Installation
-
-### Prerequisites
-- Node.js 16+ and npm
-- Git (for cloning the repository)
-
-### Setup
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd replay-studio
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-## Development
-
-### Running in Development Mode
-
-Start the development server with hot reload:
-
-```bash
-npm run dev
-```
-
-This will:
-- Start the Vite dev server for the React frontend
-- Launch Electron with the development build
-- Enable hot module replacement (HMR)
-
-### Project Structure
-
-```
-replay-studio/
-├── src/
-│   ├── components/
-│   │   ├── Canvas/
-│   │   │   ├── DrawingCanvas.tsx        # Main canvas component
-│   │   │   └── tools/                   # Drawing tool implementations
-│   │   ├── Export/
-│   │   │   └── ExportDialog.tsx         # Export settings dialog
-│   │   ├── Timeline/
-│   │   │   └── AnnotationTimeline.tsx   # Video timeline
-│   │   ├── Toolbar/
-│   │   │   └── DrawingToolbar.tsx       # Tool selection sidebar
-│   │   ├── VideoPlayer/
-│   │   │   ├── VideoPlayer.tsx          # Video player component
-│   │   │   └── VideoControls.tsx        # Playback controls
-│   │   └── ShortcutsHelp.tsx           # Keyboard shortcuts modal
-│   ├── hooks/
-│   │   └── useKeyboardShortcuts.ts     # Global keyboard shortcuts
-│   ├── stores/
-│   │   ├── appStore.ts                 # Application state
-│   │   ├── drawingStore.ts             # Annotations state
-│   │   ├── toolStore.ts                # Drawing tools state
-│   │   └── videoStore.ts               # Video playback state
-│   ├── types/
-│   │   └── electron.d.ts               # Electron type definitions
-│   ├── App.tsx                         # Main application component
-│   ├── main.tsx                        # React entry point
-│   └── index.css                       # Global styles
-├── electron/
-│   ├── main.ts                         # Electron main process
-│   └── preload.js                      # Electron preload script
-├── dist-electron/                      # Electron build output
-├── release/                            # Built application packages
-├── package.json                        # Project dependencies
-├── vite.config.ts                      # Vite configuration
-├── tsconfig.json                       # TypeScript configuration
-├── tailwind.config.js                  # Tailwind CSS configuration
-└── postcss.config.js                   # PostCSS configuration
-```
-
-## Building
-
-### Build for Production
-
-Create production builds for distribution:
-
-```bash
-npm run build
-```
-
-This will:
-1. Compile TypeScript to JavaScript
-2. Build the React application with Vite
-3. Package the Electron application with electron-builder
-4. Output platform-specific installers to the `release/` directory
-
-### Build Configuration
-
-The build settings are configured in `package.json`:
-- **App ID**: `com.replaystudio.app`
-- **Product Name**: Replay Studio
-- **Output Directory**: `release/`
-- **Windows Target**: NSIS installer
-
-## Updates
-
-Packaged Linux (AppImage) and Windows builds check for updates automatically
-and install them quietly in the background, prompting only to restart when
-one's ready. See [RELEASING.md](RELEASING.md) for how releases are cut and
-what auto-update looks like from the user's side.
+### Projects
+- Save and load projects as `.rsproj` files (annotations, freezes, clips and speed regions)
 
 ## Keyboard Shortcuts
 
-### Tools
-- `V` - Select tool
-- `P` - Pen (freehand draw)
-- `L` - Line tool
-- `A` - Arrow tool
-- `R` - Rectangle tool
-- `C` - Circle/Ellipse tool
-- `T` - Text tool
-- `S` - Spotlight tool
-- `M` - Magnifier tool
+Press `?` in the app for the full list; most shortcuts can be rebound there. See [KEYBOARD_SHORTCUTS.md](KEYBOARD_SHORTCUTS.md) for the complete reference. The most used:
 
-### Video Playback
-- `Space` - Play / Pause
-- `←` - Previous frame
-- `→` - Next frame
-- `J` - Step backward
-- `K` - Pause
-- `L` - Step forward
-- `Home` - Go to start
-- `End` - Go to end
+| Key | Action |
+|-----|--------|
+| `Space` | Play / Pause |
+| `←` / `→` | Previous / next frame |
+| `J` / `K` / `L` | Shuttle reverse / stop / shuttle forward |
+| `I` / `O` | Set In / Out point |
+| `Shift+C` / `X` | Add clip from In/Out / mark a moment around the playhead |
+| `H` | Freeze the current frame |
+| `W` (hold) | Slow motion while held |
+| `V` `P` `A` `R` `C` `T` `S` | Select, Freehand, Arrow, Rectangle, Ellipse, Text, Spotlight |
+| `D` | Solid / Dashed |
+| `1`-`9` | Color presets |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo (`Cmd` on macOS) |
 
-### In/Out Points
-- `I` - Set In point
-- `O` - Set Out point
-- `[` - Jump to In point
-- `]` - Jump to Out point
+## Usage
 
-### Clips
-- `Shift+C` - Add clip from In/Out points
-- `X` - Mark moment (clip around the playhead)
+1. **Open a video**: drag it into the window, or use Open.
+2. **Draw**: pick a tool (or press its key), choose a color, size, style and "Stays" length, then drag on the video. Drawing during playback freezes the frame for you.
+3. **Mark clips** (optional): set In/Out and press `Shift+C`, or press `X` while watching.
+4. **Export**: click Export, pick MP4 or GIF, quality and frame rate, then choose where to save. Use the Clips panel for clips and reels, and File → Save Project to keep an editable project.
 
-### Editing
-- `Ctrl+Z` - Undo
-- `Ctrl+Y` - Redo
-- `Ctrl+A` - Select all annotations
-- `Delete` - Delete selected
-- `Escape` - Deselect / Switch to Select tool
+## Development
 
-### Colors
-- `1-9` - Quick color presets
+Requires Node.js and npm.
 
-### General
-- `?` or `Shift+/` - Show keyboard shortcuts help
-- `Escape` - Close modals/dialogs
+```bash
+git clone https://github.com/mrelph/replay-studio.git
+cd replay-studio
+npm install
+npm run dev
+```
 
-## Usage Guide
+| Script | What it does |
+|--------|--------------|
+| `npm run dev` | Vite dev server; builds and launches Electron with hot reload |
+| `npm run typecheck` | `tsc --noEmit` for `src/` and for `electron/` |
+| `npm run lint` | ESLint |
+| `npm run test` | Vitest (jsdom) |
+| `npm run build` | `vite build` then electron-builder; installers go to `release/` |
+| `npm run electron:dev` | Build the renderer and run the production bundle locally |
+| `npm run preview` | Vite preview of the renderer only |
 
-### Loading Videos
+### Stack
 
-1. **Drag and Drop**: Drag a video file directly into the application window
-2. **Open Button**: Click "Open Video" in the header or use the file menu
-3. **Recent Files**: Select from recently opened files on the welcome screen
+Electron, React, TypeScript, Vite, Fabric.js (drawing), Zustand (state), Tailwind CSS, and FFmpeg via `ffmpeg-static` for export.
 
-### Drawing Annotations
+### Architecture notes
 
-1. Select a drawing tool from the left sidebar (or use keyboard shortcut)
-2. Choose a color and stroke width
-3. Click and drag on the video canvas to create the annotation
-4. Annotations automatically have a time range (visible for 5 seconds by default)
-5. Use the Select tool (V) to move or modify existing annotations
+- `electron/main.ts` is the main process (windows, dialogs, IPC, the `local-video://` protocol for local files); `electron/ffmpegExport.ts` runs exports; `src/` is the React renderer.
+- **`electron/preload.cjs` is the preload script that actually loads.** `electron/preload.ts`, if present, is not built or used. The preload must stay CommonJS.
+- Adding an IPC channel touches `electron/main.ts`, `electron/preload.cjs` and `src/types/electron.d.ts`.
+- The player tracker / object detection, audience view and laser pointer exist in the code but are hidden from the interface.
 
-### Setting In/Out Points
-
-1. Navigate to your desired start point
-2. Press `I` to set the In point
-3. Navigate to your desired end point
-4. Press `O` to set the Out point
-5. The timeline will show the selected range
-
-### Exporting
-
-1. Click the "Export" button in the header
-2. Choose your format (MP4 or GIF)
-3. Select quality and frame rate
-4. Toggle In/Out range if desired
-5. Choose whether to include annotations
-6. Click "Export" and select save location
-
-"Include annotations" is enabled by default. Drawings, their timing and fades,
-zoom lenses, and freeze frames are burned into both MP4 and GIF exports. GIFs
-are capped at 15 fps; MP4 exports retain the source audio. Turn annotations off
-to export the video without drawings or annotation freeze frames.
+More detail: [ARCHITECTURE.md](ARCHITECTURE.md), [TROUBLESHOOTING.md](TROUBLESHOOTING.md), [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), [QUICK_START.md](QUICK_START.md).
 
 ## Known Limitations
 
-- Magnifier tool has a basic implementation
-- No support for audio-only annotations
-- Limited video codec support (depends on Chromium/Electron support)
-
-## Future Enhancements
-
-- Full FFmpeg integration for production-quality exports
-- Audio waveform visualization
-- Multi-layer annotation support
-- Import/export annotation data (JSON/XML)
-- Customizable keyboard shortcuts
-- Plugin system for custom tools
-- Cloud storage integration
-- Collaborative annotation features
-
-## Development Notes
-
-### State Management
-
-The application uses Zustand for state management with four main stores:
-- **appStore**: Application-level state (recent files, settings)
-- **videoStore**: Video playback state (time, duration, in/out points)
-- **toolStore**: Drawing tool state (current tool, colors, stroke width)
-- **drawingStore**: Annotation state (canvas, annotations, undo/redo)
-
-### Electron Architecture
-
-- **Main Process** (`electron/main.ts`): Handles window creation, file dialogs, and system integration
-- **Renderer Process** (`src/`): React application running in the browser window
-- **Preload Script** (`electron/preload.js`): Secure bridge between main and renderer processes
-
-### Custom Protocol
-
-The application uses a custom `local-video://` protocol to serve local video files securely in the Electron environment.
-
-## Troubleshooting
-
-### Video Won't Load
-- Ensure the video format is supported (MP4, WebM, MKV, AVI, MOV)
-- Check that the file path doesn't contain special characters
-- Try dragging and dropping the file instead of using the file picker
-
-### Annotations Not Appearing
-- Verify you're at the correct timestamp (annotations are time-based)
-- Check that the annotation isn't selected (appears differently)
-- Ensure you've completed the drawing gesture (click and drag, then release)
-
-### Performance Issues
-- Close other applications to free up system resources
-- Reduce video quality/resolution if possible
-- Clear all annotations and restart the application
+- Video support depends on what Chromium/Electron can decode.
+- Slow motion repeats frames rather than interpolating, so higher-frame-rate footage looks smoother.
+- Speed regions are not part of Undo yet.
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions are welcome. Fork the repository, create a feature branch, and open a pull request; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[Add your license information here]
-
-## Acknowledgments
-
-- Built with [Electron](https://www.electronjs.org/)
-- Canvas drawing powered by [Fabric.js](http://fabricjs.com/)
-- UI components with [React](https://react.dev/)
-- Styled with [Tailwind CSS](https://tailwindcss.com/)
-
----
-
-**Replay Studio** - Professional video markup and annotation tool
+No license file is included in the repository yet.
