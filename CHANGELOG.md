@@ -148,7 +148,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Source cut points stay aligned to source frames when the selected export frame
   rate differs from the video's frame rate.
 
-## [1.0.0] - 2024-XX-XX
+## [1.5.0] - 2026-10-08
+
+### Added
+- Highlight reel. Choose Export reel in the Clips panel to join clips into one
+  MP4. It starts from the panel's tag filter; you can rename the reel, untick
+  clips, reorder them (drag, or use the up and down buttons), and add a title
+  card before each clip showing its name and tags. Each clip becomes a chapter
+  in the file, and freezes and drawings come through as in a single-clip export.
+  A progress view with Cancel and Show in folder follows. You can also save the
+  individual clips (with editable copies and clips.csv) in the same run.
+
+## [1.4.0] - 2026-10-07
+
+### Changed
+- Freeze and hold are now one Freeze control beside Play. It stops on the
+  current frame and times it; pressing Freeze again or Play records a freeze
+  of that length. Plain Pause never records a freeze, seeking away cancels it,
+  and frame steps are allowed. H keeps its key, and a custom binding carries
+  over. The separate hold length setting and toolbar popover are gone. Project
+  files are unchanged.
+
+### Fixed
+- Drawings stay aligned with the video when it moves without resizing, such as
+  when a panel opens or the window is retiled. Before, they looked right on
+  screen but were saved offset, so burned-in exports showed them misplaced.
+
+## [1.3.0] - 2026-10-05
+
+### Added
+- Frame-accurate editing. The app reads the video's real frame rate when you
+  open it, and frame stepping, nudges and the mm:ss:ff timecode use it instead
+  of a fixed 30 fps.
+- J / K / L shuttle. L plays and doubles speed up to 8x, J plays in reverse and
+  doubles, K stops, and holding K with J or L steps single frames. The reverse
+  speed shows next to the timecode.
+- Alt+Left / Alt+Right nudge the In point by one frame and Alt+Shift+Left /
+  Alt+Shift+Right nudge the Out point, for the selected clip or else the loose
+  In / Out points.
+- Holds. H on a paused frame freezes it for a set time (H again removes it).
+  Shift+H records your pauses as holds, each lasting as long as you paused.
+
+### Changed
+- Skip 10 seconds moved from J / L to Shift+Left / Shift+Right.
+
+### Fixed
+- Playback now resumes after a live hold, and seeking while playing no longer
+  snaps back to an earlier hold.
+- Exports no longer start or freeze one frame late: a clip begins on the In
+  frame, holds freeze the paused frame, and the clip ends on the last frame
+  before Out.
+
+## [1.2.0] - 2026-09-29
+
+### Added
+- Quick clip marking. Press X to clip a stretch around the playhead without
+  pausing or seeking (8 seconds before and 4 seconds after by default; both are
+  adjustable in the Clips panel).
+- Tags and notes on clips. Tags show as chips on each clip, a tag filter bar
+  narrows the list, and sticky tags are applied to every new clip.
+- Hovering a clip bar in the timeline shows its name, times and tags.
+- Exported clip files are named with the clip's tags, and each export run also
+  writes a clips.csv listing the clips.
+- Export Clips can select clips by tag.
+
+## [1.1.1] - 2026-09-29
+
+### Fixed
+- Cancelling an export on Windows now removes the partly written video instead
+  of leaving it behind.
+
+## [1.1.0] - 2026-09-29
+
+### Added
+- Clips. Press Shift+C to turn the current In / Out range into a named clip.
+  A Clips panel lists them with rename, jump, loop, reorder and delete, and
+  clips show as coloured bars on the timeline that you can click to jump to or
+  drag the ends of to adjust. Clips are saved in the project file.
+- Export Clips. Export any number of clips in one run, each as its own MP4 with
+  drawings burned in, plus an optional clean copy and a project file you can
+  reopen and keep editing. Drawing fades, magnifiers and frame freezes carry
+  through to the export. Exports refuse to overwrite the source video.
+- Automatic updates for the Linux (AppImage) and Windows builds. The app checks
+  on launch and every four hours, downloads in the background and offers a
+  Restart now / Later banner; Help > Check for Updates also works. It never
+  interrupts an export.
+- An app icon.
+- Project save and load, a layers panel with visibility and lock controls, an
+  Erase tool, freeze-frame drawings that pause playback for a set time, a theme
+  system with a refreshed interface, and a loop toggle with playback speed
+  controls.
+
+### Changed
+- The player tracker, audience view and laser pointer were added during
+  development (the audience view and laser pointer first, the tracker later
+  reworked) and are hidden from the interface (code kept).
+- Electron was upgraded from 28 to 44.
+- The app is more locked down: the interface can only read and write video and
+  project files you picked in the app.
+
+### Fixed
+- Projects load only once the video and canvas are ready, so drawings no longer
+  land in the wrong place or go missing on load.
+- The drawing toolbar scrolls in small windows instead of overflowing.
+- Drawing positions are kept correct when the window is resized.
+- Several tracker, laser pointer, freeze-resume and text placeholder bugs.
+
+## [1.0.0] - 2025-12-12
 
 ### Added
 - Initial release of Replay Studio
