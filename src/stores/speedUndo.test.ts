@@ -114,4 +114,24 @@ describe('undo and redo cover speed regions', () => {
     undo()
     expect(useSpeedStore.getState().selectedId).toBeNull()
   })
+
+  it('clearHistory leaves nothing to undo and keeps regions', () => {
+    addDrawing('d')
+    useSpeedStore.getState().place(r('a', 2, 4))
+    useDrawingStore.getState().clearHistory()
+    undo()
+    redo()
+    expect(regions().map((x) => x.id)).toEqual(['a'])
+    expect(useDrawingStore.getState().annotations).toHaveLength(1)
+  })
+
+  it('undoing a drawing leaves loaded regions eligible for the late fps re-snap', () => {
+    useVideoStore.setState({ duration: 0 })
+    useSpeedStore.getState().replaceAll([r('a', 2.01, 4.02)])
+    addDrawing('d')
+    undo()
+    useVideoStore.setState({ duration: 20, fps: 59.94 })
+    const [a] = regions()
+    expect(Math.abs(a.start * 59.94 - Math.round(a.start * 59.94))).toBeLessThan(1e-6)
+  })
 })

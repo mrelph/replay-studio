@@ -107,6 +107,7 @@ function App() {
       // a project load restores its own clips once it is hydrated below.
       useClipStore.getState().setClips([])
       useSpeedStore.getState().replaceAll([])
+      useDrawingStore.getState().clearHistory()
     } else if (activeProjectRequestIdRef.current !== projectRequestId) {
       return null
     }

@@ -74,8 +74,9 @@ export const useSpeedStore = create<SpeedState>((set, get) => ({
 registerUndoExtra({
   capture: () => useSpeedStore.getState().regions,
   restore: (value) => {
-    loaded = null
     const regions = value as SpeedRegion[]
+    if (sameRegions(regions, useSpeedStore.getState().regions)) return
+    loaded = null
     useSpeedStore.setState((state) => ({
       regions,
       selectedId: regions.some((r) => r.id === state.selectedId) ? state.selectedId : null,

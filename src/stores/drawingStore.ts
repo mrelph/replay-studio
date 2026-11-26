@@ -232,6 +232,7 @@ interface DrawingState {
   saveState: () => void
   undo: () => void
   redo: () => void
+  clearHistory: () => void
 }
 
 export const useDrawingStore = create<DrawingState>((set, get) => ({
@@ -611,6 +612,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
       redoStack: [],
     }))
   },
+
+  clearHistory: () => set({ undoStack: [], redoStack: [] }),
 
   undo: () => {
     const { undoStack, redoStack, annotations, canvas, isRestoring, restoreToken } = get()
