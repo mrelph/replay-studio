@@ -33,11 +33,13 @@ export async function startVoiceRecorder(deps: VoiceRecorderDeps = {}): Promise<
     notified = true
     deps.onEnded?.()
   }
+  let errorTimer: ReturnType<typeof setTimeout> | null = null
   const stopRecorder = () => {
     try {
       if (recorder.state !== 'inactive') recorder.stop()
     } catch {
-      /* already stopped */
+      release()
+      resolveDone(null)
     }
   }
 
@@ -50,15 +52,21 @@ export async function startVoiceRecorder(deps: VoiceRecorderDeps = {}): Promise<
     if (event.data && event.data.size > 0) chunks.push(event.data)
   }
   recorder.onstop = () => {
+    if (errorTimer !== null) clearTimeout(errorTimer)
     release()
     const mime = recorder.mimeType || chunks[0]?.type || 'audio/webm'
     resolveDone(chunks.length > 0 ? { blob: new Blob(chunks, { type: mime }), mime } : null)
     notifyEnded()
   }
   recorder.onerror = () => {
-    release()
-    resolveDone(null)
     notifyEnded()
+    stopRecorder()
+    if (errorTimer === null) {
+      errorTimer = setTimeout(() => {
+        release()
+        resolveDone(null)
+      }, 1000)
+    }
   }
   tracks.forEach((track) =>
     track.addEventListener?.('ended', () => {
@@ -86,6 +94,7 @@ export async function startVoiceRecorder(deps: VoiceRecorderDeps = {}): Promise<
       recorder.ondataavailable = null
       recorder.onstop = null
       recorder.onerror = null
+      if (errorTimer !== null) clearTimeout(errorTimer)
       stopRecorder()
       release()
     },

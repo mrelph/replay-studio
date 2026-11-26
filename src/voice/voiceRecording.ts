@@ -7,6 +7,7 @@ import { useAppStore } from '@/stores/appStore'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 import { MAX_VOICE_SECONDS, MIN_VOICE_SECONDS, newVoiceClipId } from '@/utils/voiceClips'
 import { frameIndexAt } from '@/utils/frames'
+import { useShortcutsStore, bindingToString } from '@/stores/shortcutsStore'
 import { startVoiceRecorder, type VoiceRecorder } from './recorder'
 
 interface RecordingState {
@@ -31,6 +32,7 @@ export function setVoiceRecorderFactory(factory: RecorderFactory | null): void {
 
 let active: VoiceRecorder | null = null
 let starting = false
+let releasedWhileStarting = false
 let activeSource: VoiceRecordingSource = 'key'
 let startingSource: VoiceRecordingSource = 'key'
 let endRequested = false
@@ -89,6 +91,7 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
   starting = true
   startingSource = source
   endRequested = false
+  releasedWhileStarting = false
   let recorder: VoiceRecorder
   let waitedForPermission = false
   try {
@@ -108,7 +111,10 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
 
   if (endRequested || useVideoStore.getState().videoElement !== videoElement) {
     recorder.cancel()
-    if (endRequested && waitedForPermission) toast('info', 'Microphone ready. Hold N to record.')
+    if (releasedWhileStarting && waitedForPermission) {
+      const binding = useShortcutsStore.getState().getShortcut('video.voice')?.binding
+      toast('info', binding ? `Microphone ready. Hold ${bindingToString(binding)} to record.` : 'Microphone ready.')
+    }
     return
   }
   active = recorder
@@ -122,7 +128,10 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
 export async function endVoiceRecording(source?: VoiceRecordingSource, lost = false): Promise<void> {
   const recording = useVoiceRecording.getState().recording
   const recorder = active
-  if (starting && (!source || source === startingSource)) endRequested = true
+  if (starting && (!source || source === startingSource)) {
+    endRequested = true
+    releasedWhileStarting = true
+  }
   if (!recording || !recorder) return
   if (source && source !== activeSource) return
   const elapsed = (Date.now() - recording.startedAt) / 1000

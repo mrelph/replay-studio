@@ -111,6 +111,30 @@ describe('voice recording', () => {
     expect(useVoiceRecording.getState().recording).toBeNull()
     expect(recorders[0].cancel).toHaveBeenCalled()
     expect(useVoiceStore.getState().clips).toHaveLength(0)
+    expect(toast).not.toHaveBeenCalled()
+  })
+
+  it('a long permission wait with the key still held starts recording without a toast', async () => {
+    setup(new FakeVideo(false, 1))
+    window.electronAPI = { requestMicrophone: () => new Promise((r) => setTimeout(() => r(true), 1500)) } as never
+    const pending = beginVoiceRecording('key')
+    await vi.advanceTimersByTimeAsync(1500)
+    await pending
+    delete (window as { electronAPI?: unknown }).electronAPI
+    expect(useVoiceRecording.getState().recording).not.toBeNull()
+    expect(toast).not.toHaveBeenCalled()
+  })
+
+  it('cancelling during a long permission wait shows no toast', async () => {
+    setup(new FakeVideo(false, 1))
+    window.electronAPI = { requestMicrophone: () => new Promise((r) => setTimeout(() => r(true), 1500)) } as never
+    const pending = beginVoiceRecording('key')
+    cancelVoiceRecording()
+    await vi.advanceTimersByTimeAsync(1500)
+    await pending
+    delete (window as { electronAPI?: unknown }).electronAPI
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(toast).not.toHaveBeenCalled()
   })
 
   it('says the microphone is ready when a permission wait outlasted the key hold', async () => {
@@ -121,7 +145,7 @@ describe('voice recording', () => {
     await vi.advanceTimersByTimeAsync(1500)
     await pending
     delete (window as { electronAPI?: unknown }).electronAPI
-    expect(toast).toHaveBeenCalledWith('info', 'Microphone ready. Hold N to record.')
+    expect(toast).toHaveBeenCalledWith('info', expect.stringMatching(/^Microphone ready\. Hold n? ?N? to record\.$/i))
     expect(useVoiceStore.getState().clips).toHaveLength(0)
   })
 
