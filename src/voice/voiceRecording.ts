@@ -17,6 +17,9 @@ interface RecordingState {
 }
 
 const PERMISSION_WAIT_MS = 500
+const PERMISSION_TIMEOUT_MS = 15_000
+const RECORDER_TIMEOUT_MS = 10_000
+const NO_RESPONSE = 'Microphone did not respond. Try again.'
 const MAC_MICROPHONE_OFF = 'Microphone access is off. Allow Replay Studio in System Settings > Privacy & Security > Microphone.'
 
 export const useVoiceRecording = create<{ recording: RecordingState | null }>(() => ({ recording: null }))
@@ -41,6 +44,33 @@ let detach: (() => void) | null = null
 let limitTimer: ReturnType<typeof setTimeout> | null = null
 
 setVoiceRecordingProbe(() => starting || active !== null)
+
+class NoResponse extends Error {}
+
+/** Rejects with NoResponse after `ms`; a value that arrives later goes to `onLate`. */
+function withTimeout<T>(promise: Promise<T>, ms: number, onLate?: (value: T) => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      reject(new NoResponse())
+    }, ms)
+    promise.then(
+      (value) => {
+        if (timedOut) onLate?.(value)
+        else {
+          clearTimeout(timer)
+          resolve(value)
+        }
+      },
+      (error) => {
+        if (timedOut) return
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
 
 function isMac(): boolean {
   return typeof navigator !== 'undefined' && /mac/i.test(navigator.platform ?? '')
@@ -129,18 +159,24 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
   let denied = false
   try {
     const askedAt = Date.now()
-    const granted = await window.electronAPI?.requestMicrophone?.()
+    const asking = window.electronAPI?.requestMicrophone?.()
+    const granted = asking ? await withTimeout(asking, PERMISSION_TIMEOUT_MS) : undefined
     waitedForPermission = Date.now() - askedAt > PERMISSION_WAIT_MS
     if (granted === false) {
       denied = true
       throw new Error('Microphone access denied')
     }
-    recorder = await recorderFactory(() => {
-      if (active === recorder) void endVoiceRecording(undefined, true)
-    })
-  } catch {
+    recorder = await withTimeout(
+      recorderFactory(() => {
+        if (active === recorder) void endVoiceRecording(undefined, true)
+      }),
+      RECORDER_TIMEOUT_MS,
+      (late) => late.cancel(),
+    )
+  } catch (error) {
     starting = false
-    toast('error', denied && isMac() ? MAC_MICROPHONE_OFF : 'Microphone not available')
+    if (error instanceof NoResponse) toast('error', NO_RESPONSE)
+    else toast('error', denied && isMac() ? MAC_MICROPHONE_OFF : 'Microphone not available')
     return
   }
   starting = false

@@ -2,6 +2,8 @@ import { useEffect, useCallback, useRef } from 'react'
 import { useToolStore, PRESET_COLORS, type ToolType } from '@/stores/toolStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useSpeedStore } from '@/stores/speedStore'
+import { useVoiceStore } from '@/stores/voiceStore'
 import { useClipStore } from '@/stores/clipStore'
 import { useClipPrefsStore } from '@/stores/clipPrefsStore'
 import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
@@ -309,6 +311,8 @@ export function useKeyboardShortcuts() {
         return
       case 'edit.delete':
         e.preventDefault()
+        // A selected speed region or voice clip is the timeline's to delete (deleteKeyTarget): one key press, one deletion.
+        if (useSpeedStore.getState().selectedId !== null || useVoiceStore.getState().selectedId !== null) return
         if (canvas) {
           const active = canvas.getActiveObjects()
           const drawingState = useDrawingStore.getState()

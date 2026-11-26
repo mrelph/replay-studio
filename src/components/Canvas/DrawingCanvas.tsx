@@ -20,6 +20,7 @@ import { liveToolContext as toolContext } from './tools/toolContext'
 import { abandonGesture, abandonKeepsWork, type AbandonReason } from './tools/abandon'
 import { beginCalloutEdit, cancelCalloutEdit, editingCalloutObject, finishCalloutEdit, isCalloutEditing } from './tools/calloutEdit'
 import { frameIndexAt } from '@/utils/frames'
+import { clearLaneSelectionOnCanvasSelect } from './canvasSelection'
 import { applyDash, dashPattern, strokeTarget, DASH_TOOL_TYPES } from '@/utils/lineDash'
 
 /** Tools whose pointer-down starts a new drawing, which stops the video on that frame. */
@@ -128,6 +129,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     canvas.setZoom(zoom)
 
     fabricRef.current = canvas
+    const stopClearingLanes = clearLaneSelectionOnCanvasSelect(canvas)
     setCanvas(canvas)
     setDimensions(dims)
     appliedRef.current = { ...dims, refWidth: nativeW, refHeight: nativeH }
@@ -136,6 +138,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     playerTrackerRef.current = new PlayerTracker(canvas)
 
     return () => {
+      stopClearingLanes()
       cancelCalloutEdit()
       cancelBusyTools(canvas)
       canvas.dispose()

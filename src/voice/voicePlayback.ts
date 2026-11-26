@@ -69,6 +69,85 @@ export function voiceToStart(
   return clips.find((clip) => !clip.frozen && clip.id !== skipId && clip.startTime > prevTime && clip.startTime <= end)
 }
 
+/** Every playing clip voiceToStart's rule admits (start in (prevTime, holdTime ?? curTime], not skipId), earliest first. */
+export function voicesToStart(
+  clips: VoiceClip[],
+  prevTime: number,
+  curTime: number,
+  holdTime: number | null,
+  skipId: string | null,
+): VoiceClip[] {
+  const end = holdTime ?? curTime
+  return clips
+    .filter((clip) => !clip.frozen && clip.id !== skipId && clip.startTime > prevTime && clip.startTime <= end)
+    .sort((a, b) => a.startTime - b.startTime)
+}
+
+export interface VoiceAdvance {
+  start: VoiceClip[]
+  cursor: number
+  clearSkip: boolean
+}
+
+/** Moves the voice cursor (playing clips at or before it are dealt with) on to `end`: the clips to start, the new cursor, and whether the clip started on playback's first frame (skip) is now behind. Never moves back, so each clip starts once whichever check (timeupdate or a frame) gets there first. */
+export function advanceVoice(clips: VoiceClip[], cursor: number, end: number, skip: VoiceClip | null): VoiceAdvance {
+  const clearSkip = skip !== null && end >= skip.startTime
+  if (end <= cursor) return { start: [], cursor, clearSkip }
+  return { start: voicesToStart(clips, cursor, end, null, skip?.id ?? null), cursor: end, clearSkip }
+}
+
+/** True when a playing clip starts after `time`: only then does the player watch every frame for its start. */
+export function hasVoiceAhead(clips: VoiceClip[], time: number): boolean {
+  return clips.some((clip) => !clip.frozen && clip.startTime > time)
+}
+
+/** How far a frame check may start voices, from `from` to `curTime`: no further than the first hold not yet fired, which timeupdate fires (clips past it start after the hold, as voiceToStart has it). */
+export function voiceFrameEnd(holds: EffectiveHold[], triggered: ReadonlySet<string>, from: number, curTime: number): number {
+  let end = curTime
+  for (const hold of holds) {
+    if (!triggered.has(hold.id) && hold.time >= from && hold.time < end) end = hold.time
+  }
+  return end
+}
+
+interface FrameSource {
+  requestVideoFrameCallback?: (callback: () => void) => number
+  cancelVideoFrameCallback?: (handle: number) => void
+}
+
+/** Runs `onFrame` on every video frame (requestVideoFrameCallback, else requestAnimationFrame) from start() until it returns false or stop() is called. */
+export function createFrameLoop(video: FrameSource, onFrame: () => boolean) {
+  let handle: number | null = null
+  let byVideo = false
+  const tick = () => {
+    handle = null
+    if (onFrame()) schedule()
+  }
+  const schedule = () => {
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      byVideo = true
+      handle = video.requestVideoFrameCallback(tick)
+    } else if (typeof requestAnimationFrame === 'function') {
+      byVideo = false
+      handle = requestAnimationFrame(tick)
+    }
+  }
+  return {
+    start() {
+      if (handle === null) schedule()
+    },
+    stop() {
+      if (handle === null) return
+      if (byVideo) video.cancelVideoFrameCallback?.(handle)
+      else cancelAnimationFrame(handle)
+      handle = null
+    },
+    get running() {
+      return handle !== null
+    },
+  }
+}
+
 /** The playing clip whose start is on `time`'s frame: playback that begins there starts it. */
 export function voiceOnFrame(clips: VoiceClip[], time: number, fps: number): VoiceClip | undefined {
   const frame = frameIndexAt(time, fps)

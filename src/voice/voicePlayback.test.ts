@@ -3,7 +3,21 @@ import type { Annotation } from '@/stores/drawingStore'
 import type { VoiceClip } from '@/types/voice'
 import { timeForFrame } from '@/utils/frames'
 import { clearVoiceAudio, setVoiceAudio } from './voiceAudio'
-import { createPlayingVoiceDuck, effectiveHolds, playVoice, stopVoice, voiceCrossed, voiceOnFrame, voiceToStart, setVoicePlayerFactory } from './voicePlayback'
+import {
+  advanceVoice,
+  createFrameLoop,
+  createPlayingVoiceDuck,
+  effectiveHolds,
+  hasVoiceAhead,
+  playVoice,
+  stopVoice,
+  voiceCrossed,
+  voiceFrameEnd,
+  voiceOnFrame,
+  voiceToStart,
+  voicesToStart,
+  setVoicePlayerFactory,
+} from './voicePlayback'
 
 const fps = 30000 / 1001
 const t = timeForFrame(150, fps)
@@ -98,6 +112,120 @@ describe('voiceToStart', () => {
 
   it('skips the clip already started when playback began on its frame', () => {
     expect(voiceToStart([after], 5.09, 5.3, null, 'after')).toBeUndefined()
+  })
+})
+
+describe('voicesToStart', () => {
+  it('returns every crossed playing clip, earliest first, with voiceToStart\'s rule', () => {
+    const clips = [clip('b', 5.2, 1, false), clip('f', 5.05, 1, true), clip('a', 5.1, 1, false), clip('c', 5.4, 1, false)]
+    expect(voicesToStart(clips, 5, 5.3, null, null).map((c) => c.id)).toEqual(['a', 'b'])
+    expect(voicesToStart(clips, 5, 5.3, 5.15, null).map((c) => c.id)).toEqual(['a'])
+    expect(voicesToStart(clips, 5, 5.3, null, 'a').map((c) => c.id)).toEqual(['b'])
+  })
+})
+
+describe('hasVoiceAhead', () => {
+  it('is true only for a playing clip that starts after the time', () => {
+    expect(hasVoiceAhead([], 0)).toBe(false)
+    expect(hasVoiceAhead([clip('f', 5, 1, true)], 0)).toBe(false)
+    expect(hasVoiceAhead([clip('a', 5, 1, false)], 5)).toBe(false)
+    expect(hasVoiceAhead([clip('a', 5, 1, false)], 4.99)).toBe(true)
+  })
+})
+
+describe('voiceFrameEnd', () => {
+  const hold = { id: 'hold-1', time: 5, seconds: 2 }
+
+  it('reaches the current time when no hold is pending in between', () => {
+    expect(voiceFrameEnd([], new Set(), 4, 5.2)).toBe(5.2)
+    expect(voiceFrameEnd([hold], new Set(['hold-1']), 4, 5.2)).toBe(5.2)
+    expect(voiceFrameEnd([hold], new Set(), 5.1, 5.2)).toBe(5.2)
+  })
+
+  it('stops at a hold timeupdate has not fired yet, the earliest of several', () => {
+    const later = { id: 'hold-2', time: 5.1, seconds: 1 }
+    expect(voiceFrameEnd([later, hold], new Set(), 4, 5.2)).toBe(5)
+    // Parked on the hold: no further until the hold fires.
+    expect(voiceFrameEnd([hold], new Set(), 5, 5.2)).toBe(5)
+  })
+})
+
+describe('advanceVoice', () => {
+  const a = clip('a', 5.1, 1, false)
+
+  it('a clip a frame check started is not started again by the next timeupdate', () => {
+    // timeupdate at 5.0, frames at 5.05 and 5.117, timeupdate at 5.25.
+    let cursor = 5
+    const started: string[] = []
+    for (const end of [5.05, 5.117, 5.25]) {
+      const step = advanceVoice([a], cursor, end, null)
+      started.push(...step.start.map((c) => c.id))
+      cursor = step.cursor
+    }
+    expect(started).toEqual(['a'])
+    expect(cursor).toBe(5.25)
+  })
+
+  it('starts the clip on the frame that crosses it', () => {
+    expect(advanceVoice([a], 5.083, 5.117, null).start.map((c) => c.id)).toEqual(['a'])
+    expect(advanceVoice([a], 5.05, 5.083, null).start).toEqual([])
+  })
+
+  it('never moves back', () => {
+    expect(advanceVoice([a], 5.2, 5, null)).toEqual({ start: [], cursor: 5.2, clearSkip: false })
+  })
+
+  it('skips the clip started when playback began on its frame, and reports when it is behind', () => {
+    expect(advanceVoice([a], 5.09, 5.1, a)).toEqual({ start: [], cursor: 5.1, clearSkip: true })
+    expect(advanceVoice([a], 5.08, 5.09, a)).toEqual({ start: [], cursor: 5.09, clearSkip: false })
+  })
+
+  it('a hold on the same tick: only clips at or before the hold start, those after start once after it', () => {
+    const before = clip('before', 4.98, 1, false)
+    const after = clip('after', 5.1, 1, false)
+    const tick = advanceVoice([before, after], 4.95, 5, null)
+    expect(tick.start.map((c) => c.id)).toEqual(['before'])
+    const resumed = advanceVoice([before, after], tick.cursor, 5.25, null)
+    expect(resumed.start.map((c) => c.id)).toEqual(['after'])
+  })
+})
+
+describe('createFrameLoop', () => {
+  it('uses requestVideoFrameCallback when the video has it, until onFrame returns false', () => {
+    const callbacks: (() => void)[] = []
+    const video = {
+      requestVideoFrameCallback: vi.fn((cb: () => void) => callbacks.push(cb)),
+      cancelVideoFrameCallback: vi.fn(),
+    }
+    let frames = 0
+    const loop = createFrameLoop(video, () => ++frames < 3)
+    loop.start()
+    loop.start()
+    expect(video.requestVideoFrameCallback).toHaveBeenCalledTimes(1)
+    while (callbacks.length) callbacks.shift()!()
+    expect(frames).toBe(3)
+    expect(loop.running).toBe(false)
+  })
+
+  it('stop cancels the pending video frame callback', () => {
+    const video = { requestVideoFrameCallback: vi.fn(() => 7), cancelVideoFrameCallback: vi.fn() }
+    const loop = createFrameLoop(video, () => true)
+    loop.start()
+    loop.stop()
+    expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(7)
+    expect(loop.running).toBe(false)
+  })
+
+  it('falls back to requestAnimationFrame', () => {
+    const raf = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 3)
+    const caf = vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {})
+    const loop = createFrameLoop({}, () => true)
+    loop.start()
+    expect(raf).toHaveBeenCalledTimes(1)
+    loop.stop()
+    expect(caf).toHaveBeenCalledWith(3)
+    raf.mockRestore()
+    caf.mockRestore()
   })
 })
 

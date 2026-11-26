@@ -287,6 +287,52 @@ describe('voice recording', () => {
     expect(useVoiceRecording.getState().recording).toBeNull()
   })
 
+  it('a permission request that never answers times out after 15 s and a later attempt starts afresh', async () => {
+    setup(new FakeVideo(false, 1))
+    window.electronAPI = { requestMicrophone: () => new Promise(() => {}) } as never
+    const pending = beginVoiceRecording('key')
+    await vi.advanceTimersByTimeAsync(14_999)
+    expect(toast).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    await pending
+    expect(toast).toHaveBeenCalledWith('error', 'Microphone did not respond. Try again.')
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    window.electronAPI = { requestMicrophone: async () => true } as never
+    await beginVoiceRecording('key')
+    delete (window as { electronAPI?: unknown }).electronAPI
+    expect(started).toBe(1)
+    expect(useVoiceRecording.getState().recording).not.toBeNull()
+  })
+
+  it('a recorder that never starts times out after 10 s and a later attempt starts afresh', async () => {
+    setup(new FakeVideo(false, 1))
+    setVoiceRecorderFactory(() => new Promise(() => {}))
+    const pending = beginVoiceRecording('key')
+    await vi.advanceTimersByTimeAsync(10_000)
+    await pending
+    expect(toast).toHaveBeenCalledWith('error', 'Microphone did not respond. Try again.')
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    const recorder = { stop: vi.fn(async () => stopResult), cancel: vi.fn() }
+    setVoiceRecorderFactory(async () => recorder as unknown as VoiceRecorder)
+    await beginVoiceRecording('key')
+    expect(useVoiceRecording.getState().recording).not.toBeNull()
+  })
+
+  it('a recorder that arrives after the timeout is cancelled at once and adds no clip', async () => {
+    setup(new FakeVideo(false, 1))
+    const late = { stop: vi.fn(async () => stopResult), cancel: vi.fn() }
+    setVoiceRecorderFactory(() => new Promise((r) => setTimeout(() => r(late as unknown as VoiceRecorder), 12_000)))
+    const pending = beginVoiceRecording('key')
+    await vi.advanceTimersByTimeAsync(10_000)
+    await pending
+    expect(late.cancel).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(late.cancel).toHaveBeenCalledTimes(1)
+    expect(late.stop).not.toHaveBeenCalled()
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(useVoiceStore.getState().clips).toHaveLength(0)
+  })
+
   it('begin twice starts one recorder', async () => {
     setup(new FakeVideo(false, 1))
     await Promise.all([beginVoiceRecording(), beginVoiceRecording()])
