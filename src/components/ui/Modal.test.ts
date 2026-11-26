@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { createElement, act } from 'react'
+import { createElement, act, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { Modal } from './Modal'
 
@@ -45,6 +46,48 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
     act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('closes on Escape even when an earlier Escape listener re-renders the parent with a new onClose', () => {
+    const onClosed = vi.fn()
+    let bumpParent: () => void = () => {}
+    function Parent() {
+      const [renders, setRenders] = useState(0)
+      bumpParent = () => setRenders((n) => n + 1)
+      return createElement(Modal, { open: true, title: `Render ${renders}`, onClose: () => onClosed(), children: 'Body' })
+    }
+    // Stands in for the deselect shortcut: registered before the modal, and
+    // its store update re-renders the parent before the next listener runs.
+    const earlier = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') flushSync(() => bumpParent())
+    }
+    window.addEventListener('keydown', earlier)
+    try {
+      host = document.createElement('div')
+      document.body.appendChild(host)
+      root = createRoot(host)
+      act(() => root!.render(createElement(Parent)))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      expect(onClosed).toHaveBeenCalledTimes(1)
+    } finally {
+      window.removeEventListener('keydown', earlier)
+    }
+  })
+
+  it('an Escape that closes the dialog does not also reach the app shortcuts', () => {
+    const shortcut = vi.fn()
+    window.addEventListener('keydown', shortcut)
+    try {
+      const onClose = vi.fn()
+      render(onClose)
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(shortcut).not.toHaveBeenCalled()
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' })) })
+      expect(shortcut).toHaveBeenCalledTimes(1)
+    } finally {
+      window.removeEventListener('keydown', shortcut)
+    }
   })
 
   it('ignores Escape and backdrop clicks when disableClose is set', () => {

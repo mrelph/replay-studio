@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { IconButton } from './IconButton'
@@ -16,21 +16,33 @@ interface ModalProps {
 export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-w-lg', disableClose }: ModalProps) {
   const [visible, setVisible] = useState(false)
 
-  const handleEscape = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape' && !disableClose) {
-      onClose()
-    }
-  }, [onClose, disableClose])
+  const onCloseRef = useRef(onClose)
+  const disableCloseRef = useRef(disableClose)
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose
+    disableCloseRef.current = disableClose
+  })
 
+  // Registered once per open modal: a real keystroke runs microtasks between
+  // listeners, so an earlier Escape listener (the deselect shortcut) can
+  // re-render the parent mid-dispatch, and a listener re-added then would
+  // miss this event. Capture phase plus stopImmediatePropagation keeps that
+  // Escape from also running the app's shortcuts under the dialog.
   useEffect(() => {
-    if (open) {
-      requestAnimationFrame(() => setVisible(true))
-      window.addEventListener('keydown', handleEscape)
-      return () => window.removeEventListener('keydown', handleEscape)
-    } else {
+    if (!open) {
       setVisible(false)
+      return
     }
-  }, [open, handleEscape])
+    requestAnimationFrame(() => setVisible(true))
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || disableCloseRef.current) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      onCloseRef.current()
+    }
+    window.addEventListener('keydown', handleEscape, true)
+    return () => window.removeEventListener('keydown', handleEscape, true)
+  }, [open])
 
   if (!open) return null
 
