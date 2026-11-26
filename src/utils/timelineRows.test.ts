@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assignRows, rowCount } from './timelineRows'
+import { assignRows, rowCount, autoLaneHeight, hiddenRowsBelow } from './timelineRows'
 
 const item = (id: string, startTime: number, endTime: number) => ({ id, startTime, endTime })
 
@@ -52,5 +52,33 @@ describe('rowCount', () => {
 
   it('is the highest row plus one', () => {
     expect(rowCount(new Map([['a', 0], ['b', 2]]))).toBe(3)
+  })
+})
+
+describe('autoLaneHeight', () => {
+  it('fits the rows plus padding', () => {
+    expect(autoLaneHeight(3, 32)).toBe(124)
+  })
+
+  it('never goes below the default height', () => {
+    expect(autoLaneHeight(0, 32)).toBe(96)
+  })
+
+  it('caps at 8 visible rows', () => {
+    expect(autoLaneHeight(10, 48)).toBe(280)
+  })
+})
+
+describe('hiddenRowsBelow', () => {
+  it('counts rows cut off at the bottom', () => {
+    expect(hiddenRowsBelow(0, 232, 10)).toBe(2)
+  })
+
+  it('is 0 when scrolled to the bottom', () => {
+    expect(hiddenRowsBelow(56, 232, 10)).toBe(0)
+  })
+
+  it('is 0 when everything fits', () => {
+    expect(hiddenRowsBelow(0, 232, 3)).toBe(0)
   })
 })

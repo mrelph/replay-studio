@@ -14,7 +14,7 @@ import { revealKind } from '@/export/reveal'
 import { recolorKeepingAlpha } from '@/utils/surfaceShape'
 import { parseDrawIn } from '@/utils/drawInInput'
 import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, startsOnFrameStart, barStart, carrierDropCollides } from '@/utils/timelineSnap'
-import { assignRows, rowCount } from '@/utils/timelineRows'
+import { assignRows, rowCount, autoLaneHeight, hiddenRowsBelow } from '@/utils/timelineRows'
 import { setFrameFreeze } from '@/utils/freezeMarkers'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
@@ -295,7 +295,9 @@ export default function AnnotationTimeline() {
   const hasSpeedLane = speedRegions.length > 0
   const laneTop = hasSpeedLane ? 'top-12' : 'top-8'
   const laneTopPx = hasSpeedLane ? 48 : 32
-  const [trackHeight, setTrackHeight] = useState(96)
+  const [userHeight, setUserHeight] = useState<number | null>(null)
+  const [laneScroll, setLaneScroll] = useState(0)
+  const laneRef = useRef<HTMLDivElement>(null)
   const [trackWidth, setTrackWidth] = useState(0)
   const isResizingRef = useRef(false)
   const [markerDragging, setMarkerDragging] = useState(false)
@@ -307,9 +309,17 @@ export default function AnnotationTimeline() {
   const rowsRef = useRef(computedRows)
   if (!markerDragging) rowsRef.current = computedRows
   const rows = rowsRef.current
-  const containerHeight = Math.max(trackHeight, laneTopPx + Math.min(rowCount(rows), 8) * 28 + 8)
+  const totalRows = rowCount(rows)
+  const containerHeight = userHeight ?? autoLaneHeight(totalRows, laneTopPx)
+  const laneViewport = Math.max(0, containerHeight - laneTopPx)
+  const hiddenBelow = hiddenRowsBelow(laneScroll, laneViewport, totalRows)
+  const scrolledDown = laneScroll > 0
   const handleMarkerDragStart = useCallback(() => setMarkerDragging(true), [])
   const handleMarkerDragEnd = useCallback(() => setMarkerDragging(false), [])
+
+  useEffect(() => {
+    setLaneScroll(laneRef.current?.scrollTop ?? 0)
+  }, [totalRows, containerHeight])
 
   // Track the timeline div width for waveform rendering
   useEffect(() => {
@@ -378,7 +388,7 @@ export default function AnnotationTimeline() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizingRef.current) return
       const delta = startY - e.clientY
-      setTrackHeight(Math.max(48, Math.min(240, startHeight + delta)))
+      setUserHeight(Math.max(80, Math.min(480, startHeight + delta)))
     }
 
     const handleMouseUp = () => {
@@ -399,6 +409,8 @@ export default function AnnotationTimeline() {
       <div
         className="h-1.5 -mt-3 mb-1 cursor-ns-resize group flex items-center justify-center"
         onMouseDown={handleResizeStart}
+        onDoubleClick={() => setUserHeight(null)}
+        title="Drag to resize. Double-click to fit."
       >
         <div className="w-10 h-1 rounded-full bg-border-subtle group-hover:bg-text-disabled transition-colors" />
       </div>
@@ -486,8 +498,12 @@ export default function AnnotationTimeline() {
         )}
 
         {/* Annotation markers */}
-        <div className={`absolute inset-x-0 ${laneTop} bottom-0 overflow-y-auto [scrollbar-width:none]`}>
-          <div className="absolute top-0 left-0 w-px pointer-events-none" style={{ height: rowCount(rows) * 28 + 8 }} />
+        <div
+          ref={laneRef}
+          onScroll={(e) => setLaneScroll(e.currentTarget.scrollTop)}
+          className={`absolute inset-x-0 ${laneTop} bottom-0 overflow-y-auto [scrollbar-width:none]`}
+        >
+          <div className="absolute top-0 left-0 w-px pointer-events-none" style={{ height: totalRows * 28 + 8 }} />
           {annotations.map((annotation) => (
             <TimelineMarker
               key={annotation.id}
@@ -502,6 +518,17 @@ export default function AnnotationTimeline() {
             />
           ))}
         </div>
+
+        {scrolledDown && (
+          <div
+            className={`absolute inset-x-0 ${laneTop} h-4 z-20 pointer-events-none bg-gradient-to-b from-surface-sunken to-transparent`}
+          />
+        )}
+        {hiddenBelow > 0 && (
+          <div className="absolute inset-x-0 bottom-0 h-6 z-20 pointer-events-none flex items-end justify-center bg-gradient-to-t from-surface-sunken to-transparent">
+            <span className="text-[10px] leading-none pb-0.5 text-text-tertiary">+{hiddenBelow}</span>
+          </div>
+        )}
 
         {/* Playhead */}
         <div

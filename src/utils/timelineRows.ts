@@ -23,3 +23,14 @@ export function rowCount(rows: Map<string, number>): number {
   for (const row of rows.values()) if (row > max) max = row
   return max + 1
 }
+
+const ROW_HEIGHT = 28
+const MAX_AUTO_ROWS = 8
+
+export function autoLaneHeight(rows: number, laneTopPx: number): number {
+  return Math.max(96, laneTopPx + Math.min(rows, MAX_AUTO_ROWS) * ROW_HEIGHT + 8)
+}
+
+export function hiddenRowsBelow(scrollTop: number, viewportHeight: number, rows: number): number {
+  return Math.max(0, rows - Math.floor((scrollTop + viewportHeight) / ROW_HEIGHT))
+}
