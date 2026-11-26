@@ -245,9 +245,9 @@ export default function VideoControls() {
         />
       </div>
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         {/* Left controls - Transport */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <IconButton onClick={jumpToStart} title={`Jump to Start (${goToStartKeyLabel})`} size="sm">
             <SkipBack className="w-4 h-4" />
           </IconButton>
@@ -315,7 +315,7 @@ export default function VideoControls() {
         </div>
 
         {/* Right controls - In/Out, Volume, Fullscreen */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           {/* Go to In Point */}
           <IconButton
             onClick={goToInPoint}
