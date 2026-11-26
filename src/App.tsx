@@ -66,7 +66,10 @@ function ThemeToggle() {
 function App() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
-  const [isVideoMetadataReady, setIsVideoMetadataReady] = useState(false)
+  /** Counts video loads, so reloading the open file remounts the player and canvas like a new file. */
+  const [videoLoadId, setVideoLoadId] = useState(0)
+  /** The `videoKey` whose element has metadata, or null. */
+  const [readyVideoKey, setReadyVideoKey] = useState<string | null>(null)
   const [pendingProjectLoad, setPendingProjectLoad] = useState<PendingProjectLoad | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showShortcutsEditor, setShowShortcutsEditor] = useState(false)
@@ -124,6 +127,7 @@ function App() {
     const videoUrl = videoUrlForPath(filePath)
     videoSrcRef.current = videoUrl
     setVideoSrc(videoUrl)
+    setVideoLoadId((id) => id + 1)
     addRecentFile(filePath)
     resetVideo()
     // Frame stepping, nudges and timecode use the source's real frame rate.
@@ -157,13 +161,15 @@ function App() {
   // A Fabric canvas must not be created until the current media element has
   // metadata. Otherwise it can inherit the previous video's dimensions (or a
   // zero-sized pre-metadata element) and project objects are scaled incorrectly.
+  const videoKey = videoSrc ? `${videoSrc}#${videoLoadId}` : null
+  const isVideoMetadataReady = videoKey !== null && readyVideoKey === videoKey
   useEffect(() => {
-    setIsVideoMetadataReady(false)
+    setReadyVideoKey(null)
     if (!videoElement || !videoSrc) return
 
     const markReady = () => {
       if (videoElement.getAttribute('src') === videoSrc && videoElement.readyState >= 1) {
-        setIsVideoMetadataReady(true)
+        setReadyVideoKey(videoKey)
       }
     }
 
@@ -171,7 +177,7 @@ function App() {
     markReady()
 
     return () => videoElement.removeEventListener('loadedmetadata', markReady)
-  }, [videoElement, videoSrc])
+  }, [videoElement, videoSrc, videoKey])
 
   // Save project
   const handleSaveProject = useCallback(async () => {
@@ -372,6 +378,7 @@ function App() {
           setPendingProjectLoad(null)
           videoSrcRef.current = url
           setVideoSrc(url)
+          setVideoLoadId((id) => id + 1)
           resetVideo()
         }
       }
@@ -536,9 +543,9 @@ function App() {
             <div className="flex-1 flex min-h-0 relative">
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="video-container flex-1 flex flex-col min-h-0 relative">
-                  <VideoPlayer key={`player:${videoSrc}`} src={videoSrc} onVideoRef={handleVideoRef} />
+                  <VideoPlayer key={`player:${videoKey}`} src={videoSrc} onVideoRef={handleVideoRef} />
                   {videoElement && isCurrentVideoReady && (
-                    <DrawingCanvas key={`canvas:${videoSrc}`} videoElement={videoElement} />
+                    <DrawingCanvas key={`canvas:${videoKey}`} videoElement={videoElement} />
                   )}
                 </div>
               </div>
