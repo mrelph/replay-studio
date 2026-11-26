@@ -15,6 +15,7 @@ export type ShortcutAction =
   | 'tool.arcArrow'
   | 'tool.erase'
   | 'tool.ring'
+  | 'tool.zone'
   // Video
   | 'video.playPause'
   | 'video.stepForward'
@@ -89,6 +90,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'tool.arcArrow', label: 'Arc arrow tool', category: 'Tools', binding: { key: 'a', shift: true } },
   { action: 'tool.erase', label: 'Eraser tool', category: 'Tools', binding: { key: 'e' } },
   { action: 'tool.ring', label: 'Player ring tool', category: 'Tools', binding: { key: 'g' } },
+  { action: 'tool.zone', label: 'Zone tool', category: 'Tools', binding: { key: 'z' } },
   // Video
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },
   { action: 'video.freeze', label: 'Freeze: stop on this frame and time it; resume to record the freeze', category: 'Video Playback', binding: { key: 'h' } },

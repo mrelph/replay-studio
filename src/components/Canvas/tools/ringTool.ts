@@ -7,6 +7,9 @@ import type { CanvasTool, ToolContext, ToolPoint } from './types'
 /** Pointer travel below this is a click, which places a ring of RING_CLICK_RX. */
 const CLICK_SLOP = 4
 
+/** A disposed Fabric canvas has no drawing context; touching its objects would schedule a render that throws. */
+const isLive = (canvas: fabric.Canvas) => Boolean(canvas.getContext())
+
 export interface RingOptions {
   center: ToolPoint
   rx: number
@@ -47,6 +50,7 @@ export function buildRing({ center, rx, ry, color, strokeWidth, style }: RingOpt
 export function createRingTool(): CanvasTool {
   let center: ToolPoint | null = null
   let preview: fabric.Group | null = null
+  let previewCanvas: fabric.Canvas | null = null
   let dragged = false
 
   const ringAt = (ctx: ToolContext, rx: number, ry: number, interactive: boolean) => {
@@ -55,24 +59,33 @@ export function createRingTool(): CanvasTool {
     return ring
   }
 
+  const removePreview = () => {
+    if (preview && previewCanvas && isLive(previewCanvas)) {
+      previewCanvas.remove(preview)
+      previewCanvas.requestRenderAll()
+    }
+    preview = null
+    previewCanvas = null
+  }
+
   const showPreview = (ctx: ToolContext, pointer: ToolPoint) => {
-    if (preview) ctx.canvas.remove(preview)
+    removePreview()
     const { rx, ry } = ringRadii(center as ToolPoint, pointer)
     preview = ringAt(ctx, rx, ry, false)
+    previewCanvas = ctx.canvas
     ctx.canvas.add(preview)
     ctx.canvas.requestRenderAll()
   }
 
-  const clear = (ctx: ToolContext) => {
-    if (preview) ctx.canvas.remove(preview)
-    preview = null
+  const clear = () => {
+    removePreview()
     center = null
     dragged = false
   }
 
   return {
     onDown(ctx, p) {
-      clear(ctx)
+      clear()
       center = { x: p.x, y: p.y }
       showPreview(ctx, p)
     },
@@ -86,12 +99,11 @@ export function createRingTool(): CanvasTool {
       if (Math.hypot(p.x - center.x, p.y - center.y) >= CLICK_SLOP) dragged = true
       const { rx, ry } = dragged ? ringRadii(center, p) : { rx: RING_CLICK_RX, ry: RING_CLICK_RX / RING_FLATTEN }
       const ring = ringAt(ctx, rx, ry, true)
-      clear(ctx)
+      clear()
       ctx.commit(ring, 'ring')
     },
-    cancel(ctx) {
-      clear(ctx)
-      ctx.canvas.requestRenderAll()
+    cancel() {
+      clear()
     },
     isBusy() {
       return center !== null

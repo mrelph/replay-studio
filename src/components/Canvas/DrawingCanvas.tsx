@@ -14,6 +14,8 @@ import { shadowForStyle, arrowHeadSize } from '@/utils/annotationStyle'
 import { textFormatProps } from '@/utils/textFormat'
 import type { CanvasTool, ToolContext } from './tools/types'
 import { ringTool } from './tools/ringTool'
+import { zoneTool } from './tools/zoneTool'
+import { frameIndexAt } from '@/utils/frames'
 
 /** Tools whose pointer-down starts a new drawing, which stops the video on that frame. */
 const DRAW_FRAME_TOOLS = new Set(['pen', 'line', 'arrow', 'arc-arrow', 'rectangle', 'circle', 'text', 'spotlight', 'magnifier', 'ring', 'zone', 'callout'])
@@ -21,12 +23,20 @@ const DRAW_FRAME_TOOLS = new Set(['pen', 'line', 'arrow', 'arc-arrow', 'rectangl
 /** Tools built as modules (see tools/types.ts); the mouse handlers delegate to them before the built-in switch. */
 const NEW_TOOLS: Partial<Record<ToolType, CanvasTool>> = {
   ring: ringTool,
+  zone: zoneTool,
 }
 
 /** Context for a tool module, read from the store at call time so a mid-gesture colour or width change applies. */
 function toolContext(canvas: fabric.Canvas, commit: ToolContext['commit']): ToolContext {
   const { strokeColor, strokeWidth, annotationStyle, textFormat } = useToolStore.getState()
   return { canvas, color: strokeColor, strokeWidth, style: annotationStyle, textFormat, commit }
+}
+
+/** Abandons any module tool's gesture in progress (its preview objects go with it). */
+function cancelBusyTools(canvas: fabric.Canvas) {
+  Object.values(NEW_TOOLS).forEach((tool) => {
+    if (tool?.isBusy?.()) tool.cancel?.(toolContext(canvas, () => {}))
+  })
 }
 
 /** Fabric object carrying the magnifier id this component stamps on it. */
@@ -126,6 +136,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     playerTrackerRef.current = new PlayerTracker(canvas)
 
     return () => {
+      cancelBusyTools(canvas)
       canvas.dispose()
       fabricRef.current = null
       setCanvas(null)
@@ -463,6 +474,65 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     return annotationId
   }, [addAnnotation, currentTime, duration])
 
+  // Module tools commit through this: createAnnotation changes with every
+  // currentTime change, and a key or playback handler must not hold a stale one.
+  const createAnnotationRef = useRef(createAnnotation)
+  useEffect(() => {
+    createAnnotationRef.current = createAnnotation
+  }, [createAnnotation])
+  const moduleCommit = useCallback<ToolContext['commit']>((object, toolType) => {
+    createAnnotationRef.current(object, toolType)
+  }, [])
+
+  // Keys, playback and seeks while a module tool's gesture (a zone) is in
+  // progress. The key listener is on window in the capture phase, so it runs
+  // before every bubble-phase shortcut listener, and stops the keys it handles.
+  useEffect(() => {
+    const active = () => {
+      const canvas = fabricRef.current
+      const tool = NEW_TOOLS[useToolStore.getState().currentTool]
+      return canvas && tool ? { canvas, tool } : null
+    }
+    const abandon = () => {
+      const current = active()
+      if (current?.tool.isBusy?.()) current.tool.cancel?.(toolContext(current.canvas, moduleCommit))
+    }
+
+    const handleKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      const current = active()
+      if (!current?.tool.onKey) return
+      if (current.tool.onKey(toolContext(current.canvas, moduleCommit), e)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+      }
+    }
+    // The first corner's frame capture seeks onto its own frame; only a move to another frame abandons.
+    const handleSeeking = () => {
+      const anchor = drawTimeRef.current
+      const { fps } = useVideoStore.getState()
+      if (anchor !== null && frameIndexAt(videoElement.currentTime, fps) === frameIndexAt(anchor, fps)) return
+      abandon()
+    }
+    const stopVideo = useVideoStore.subscribe((state, prev) => {
+      if (state.isPlaying && !prev.isPlaying) abandon()
+    })
+    // Undo/redo, a project load or a canvas swap clears the canvas under the preview.
+    const stopDrawing = useDrawingStore.subscribe((state, prev) => {
+      if ((state.isRestoring && !prev.isRestoring) || state.restoreToken !== prev.restoreToken) abandon()
+    })
+
+    window.addEventListener('keydown', handleKey, true)
+    videoElement.addEventListener('seeking', handleSeeking)
+    return () => {
+      window.removeEventListener('keydown', handleKey, true)
+      videoElement.removeEventListener('seeking', handleSeeking)
+      stopVideo()
+      stopDrawing()
+    }
+  }, [videoElement, moduleCommit])
+
   // Handle mouse events for drawing shapes
   useEffect(() => {
     const canvas = fabricRef.current
@@ -517,9 +587,12 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const handleMouseDown = (e: fabric.IEvent) => {
       // Every pointer-down with a drawing tool starts a new drawing (the pen's
       // stroke has already begun: Fabric fires this right after the brush's
-      // own mouse-down), so stop the video on the exact frame now.
-      drawTimeRef.current = DRAW_FRAME_TOOLS.has(currentTool) ? useVideoStore.getState().captureDrawFrame() : null
+      // own mouse-down), so stop the video on the exact frame now. A gesture
+      // already in progress (a zone's later corners) keeps its first frame.
       const tool = NEW_TOOLS[currentTool]
+      if (!tool?.isBusy?.()) {
+        drawTimeRef.current = DRAW_FRAME_TOOLS.has(currentTool) ? useVideoStore.getState().captureDrawFrame() : null
+      }
       if (tool) {
         tool.onDown?.(toolContext(canvas, commit), canvas.getPointer(e.e), e)
         return
@@ -1047,14 +1120,20 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       setIsDrawing(false)
     }
 
+    const handleDoubleClick = (e: fabric.IEvent) => {
+      NEW_TOOLS[currentTool]?.onDoubleClick?.(toolContext(canvas, commit), canvas.getPointer(e.e), e)
+    }
+
     canvas.on('mouse:down', handleMouseDown)
     canvas.on('mouse:move', handleMouseMove)
     canvas.on('mouse:up', handleMouseUp)
+    canvas.on('mouse:dblclick', handleDoubleClick)
 
     return () => {
       canvas.off('mouse:down', handleMouseDown)
       canvas.off('mouse:move', handleMouseMove)
       canvas.off('mouse:up', handleMouseUp)
+      canvas.off('mouse:dblclick', handleDoubleClick)
     }
   }, [currentTool, strokeColor, strokeWidth, annotationStyle, textFormat, setIsDrawing, createAnnotation])
 
