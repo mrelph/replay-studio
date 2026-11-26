@@ -57,6 +57,24 @@ export function voiceCrossed(clips: VoiceClip[], prevTime: number, curTime: numb
   return clips.find((clip) => !clip.frozen && clip.startTime > prevTime && clip.startTime <= curTime)
 }
 
+/** The playing clip to start on a timeupdate going prevTime → curTime. A hold firing at holdTime on the same tick cuts the window there: the video goes back to it. skipId is a clip already started when playback began on its frame. */
+export function voiceToStart(
+  clips: VoiceClip[],
+  prevTime: number,
+  curTime: number,
+  holdTime: number | null,
+  skipId: string | null,
+): VoiceClip | undefined {
+  const end = holdTime ?? curTime
+  return clips.find((clip) => !clip.frozen && clip.id !== skipId && clip.startTime > prevTime && clip.startTime <= end)
+}
+
+/** The playing clip whose start is on `time`'s frame: playback that begins there starts it. */
+export function voiceOnFrame(clips: VoiceClip[], time: number, fps: number): VoiceClip | undefined {
+  const frame = frameIndexAt(time, fps)
+  return clips.find((clip) => !clip.frozen && frameIndexAt(clip.startTime, fps) === frame)
+}
+
 type PlayerFactory = (url: string) => HTMLAudioElement
 const defaultFactory: PlayerFactory = (url) => new Audio(url)
 let playerFactory: PlayerFactory = defaultFactory

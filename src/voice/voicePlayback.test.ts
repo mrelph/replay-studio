@@ -3,7 +3,7 @@ import type { Annotation } from '@/stores/drawingStore'
 import type { VoiceClip } from '@/types/voice'
 import { timeForFrame } from '@/utils/frames'
 import { clearVoiceAudio, setVoiceAudio } from './voiceAudio'
-import { effectiveHolds, playVoice, stopVoice, voiceCrossed, setVoicePlayerFactory } from './voicePlayback'
+import { effectiveHolds, playVoice, stopVoice, voiceCrossed, voiceOnFrame, voiceToStart, setVoicePlayerFactory } from './voicePlayback'
 
 const fps = 30000 / 1001
 const t = timeForFrame(150, fps)
@@ -76,6 +76,41 @@ describe('voiceCrossed', () => {
 
   it('never returns frozen clips', () => {
     expect(voiceCrossed([clip('frozen', 2, 1, true)], 1, 3)).toBeUndefined()
+  })
+})
+
+describe('voiceToStart', () => {
+  const after = clip('after', 5.1, 1, false)
+
+  it('starts a crossed clip when no hold fires', () => {
+    expect(voiceToStart([after], 4.95, 5.2, null, null)?.id).toBe('after')
+  })
+
+  it('waits for the freeze to end when a hold fires before the clip on the same tick', () => {
+    expect(voiceToStart([after], 4.95, 5.2, 5, null)).toBeUndefined()
+    // After the hold the player resumes from 5.000 and the next tick crosses 5.10 once.
+    expect(voiceToStart([after], 5, 5.25, null, null)?.id).toBe('after')
+  })
+
+  it('starts a clip before the hold on the same tick', () => {
+    expect(voiceToStart([clip('before', 4.98, 1, false)], 4.95, 5.2, 5, null)?.id).toBe('before')
+  })
+
+  it('skips the clip already started when playback began on its frame', () => {
+    expect(voiceToStart([after], 5.09, 5.3, null, 'after')).toBeUndefined()
+  })
+})
+
+describe('voiceOnFrame', () => {
+  const start = timeForFrame(90, fps) + 0.01
+
+  it('finds a playing clip whose start is on the frame', () => {
+    expect(voiceOnFrame([clip('a', start, 1, false)], timeForFrame(90, fps), fps)?.id).toBe('a')
+  })
+
+  it('ignores frozen clips and other frames', () => {
+    expect(voiceOnFrame([clip('f', start, 1, true)], timeForFrame(90, fps), fps)).toBeUndefined()
+    expect(voiceOnFrame([clip('a', start, 1, false)], timeForFrame(91, fps), fps)).toBeUndefined()
   })
 })
 
