@@ -205,6 +205,12 @@ function TimelineMarker({ annotation, duration, isSelected, row, onSelect, onUpd
     }
   }, [isDragging, annotation, duration, onUpdateTime, onDragEnd])
 
+  // A marker removed mid-drag never sees mouseup; release the frozen rows.
+  useEffect(() => {
+    if (!isDragging) return
+    return onDragEnd
+  }, [isDragging, onDragEnd])
+
   // Get color based on annotation type
   const getColor = () => {
     const id = annotation.id
@@ -288,6 +294,7 @@ export default function AnnotationTimeline() {
   const selectedSpeedRegion = speedRegions.find((r) => r.id === selectedSpeedId)
   const hasSpeedLane = speedRegions.length > 0
   const laneTop = hasSpeedLane ? 'top-12' : 'top-8'
+  const laneTopPx = hasSpeedLane ? 48 : 32
   const [trackHeight, setTrackHeight] = useState(96)
   const [trackWidth, setTrackWidth] = useState(0)
   const isResizingRef = useRef(false)
@@ -300,7 +307,7 @@ export default function AnnotationTimeline() {
   const rowsRef = useRef(computedRows)
   if (!markerDragging) rowsRef.current = computedRows
   const rows = rowsRef.current
-  const extraRowsHeight = Math.max(0, rowCount(rows) - 3) * 28
+  const containerHeight = Math.max(trackHeight, laneTopPx + rowCount(rows) * 28 + 8)
   const handleMarkerDragStart = useCallback(() => setMarkerDragging(true), [])
   const handleMarkerDragEnd = useCallback(() => setMarkerDragging(false), [])
 
@@ -418,11 +425,11 @@ export default function AnnotationTimeline() {
         role="region"
         aria-label="Annotation timeline"
         className="relative bg-surface-sunken rounded-lg cursor-pointer overflow-hidden"
-        style={{ height: trackHeight + extraRowsHeight }}
+        style={{ height: containerHeight }}
         onClick={handleTimelineClick}
       >
         {/* Audio waveform background */}
-        <WaveformDisplay width={trackWidth} height={trackHeight + extraRowsHeight} />
+        <WaveformDisplay width={trackWidth} height={containerHeight} />
 
         {/* Time markers */}
         <div className="absolute inset-x-0 top-0 h-4 flex border-b border-border-subtle">
