@@ -32,6 +32,7 @@ import type {
   MagnifierOp,
   OutputSegment,
   OverlaySpan,
+  SpeedGrid,
   VideoProbe,
 } from '../src/types/clip'
 
@@ -170,6 +171,9 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
       ) {
         return `Invalid speed for segment ${i}: must be between ${MIN_SPEED} and ${MAX_SPEED}`
       }
+      if (segment.grid !== undefined && !isSpeedGrid(segment.grid)) {
+        return `Invalid grid for segment ${i}`
+      }
     } else if (segment.kind === 'hold') {
       if (!Number.isFinite(segment.srcTime) || segment.srcTime < 0) {
         return 'Invalid hold segment time'
@@ -183,6 +187,13 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
   }
 
   return null
+}
+
+function isSpeedGrid(grid: unknown): grid is SpeedGrid {
+  if (!grid || typeof grid !== 'object') return false
+  const { sourceFrames, frames, phase } = grid as Record<string, unknown>
+  const whole = (value: unknown, min: number) => Number.isSafeInteger(value) && (value as number) >= min
+  return whole(sourceFrames, 1) && whole(frames, 1) && whole(phase, 0)
 }
 
 /**
@@ -305,6 +316,7 @@ export function alignSegmentsToFrames(segments: OutputSegment[], fps: number): O
           srcStart: frameWindowStart(segment.srcStart, fps),
           srcEnd: frameWindowStart(segment.srcEnd, fps),
           ...(segment.speed !== undefined ? { speed: segment.speed } : {}),
+          ...(segment.grid !== undefined ? { grid: segment.grid } : {}),
         }
       : { kind: 'hold', srcTime: frameWindowStart(segment.srcTime, fps), duration: segment.duration }
   )
@@ -382,7 +394,7 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
       } else {
         const source = input.segments[i] as Extract<OutputSegment, { kind: 'play' }>
         const sourceFrames = Math.max(1, Math.round((source.srcEnd - source.srcStart) * sourceFps))
-        filterParts.push(`[0:v]${speedSegmentChain(start, end, sourceFrames, fps, segFrameCounts[i])}[v${i}]`)
+        filterParts.push(`[0:v]${speedSegmentChain(start, end, sourceFrames, fps, segFrameCounts[i], source.grid)}[v${i}]`)
       }
     } else {
       const t = segment.srcTime - seekOffset
@@ -538,11 +550,20 @@ function exactFrames(frames: number, fps: number): string {
  * with the previous frame and keeps the latest of several in one slot. The
  * clone before `trim` keeps a segment past the end of the source from arriving
  * empty; the one after it lets `fps` emit the last real frame.
+ *
+ * With a `grid` (a piece of a step split by freezes) output frame f shows
+ * `floor((f * grid.sourceFrames + grid.phase) / grid.frames + 1e-6)` instead,
+ * so source frame N gets slot `ceil(((N - 1e-6) * grid.frames - grid.phase) /
+ * grid.sourceFrames)`. Frames before the first one shown land below slot 0;
+ * `max` piles them into slot 0, where `fps` keeps the latest.
  */
-function speedSegmentChain(start: number, end: number, sourceFrames: number, fps: number, frames: number): string {
+function speedSegmentChain(start: number, end: number, sourceFrames: number, fps: number, frames: number, grid?: SpeedGrid): string {
+  const slot = grid
+    ? `max(0\\,ceil(((N-0.000001)*${grid.frames}-${grid.phase})/${grid.sourceFrames}))`
+    : `ceil((N-0.000001)*${frames}/${sourceFrames})`
   return (
     `tpad=stop_mode=clone:stop=-1,trim=start=${fmt(start)}:end=${fmt(end)},tpad=stop_mode=clone:stop=1,` +
-    `setpts=ceil((N-0.000001)*${frames}/${sourceFrames})/(${fmt(fps)}*TB),${exactFrames(frames, fps)}`
+    `setpts=${slot}/(${fmt(fps)}*TB),${exactFrames(frames, fps)}`
   )
 }
 

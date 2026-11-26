@@ -350,3 +350,113 @@ describe('the source frame each output frame of a speed ramp shows', () => {
     for (let i = slow + 1; i < slow + 40; i++) expect(times[i]).toBeGreaterThan(times[i - 1])
   })
 })
+
+describe('a freeze inside a speed step', () => {
+  const sourceFps = 30
+  // Region over source frames 30-60 of a 3 s video; the constant part is [38, 52).
+  const steps2 = buildSpeedSteps([{ start: 1, end: 2, speed: 2 }], 3, sourceFps)
+  const steps05 = buildSpeedSteps([{ start: 1, end: 2, speed: 0.5 }], 3, sourceFps)
+  const freeze = (frame: number, freezeDuration = 1) => ({ startTime: frame / sourceFps, freezeDuration })
+  /** Source frames of the play frames (hold frames left out) inside [from, to). */
+  const playFrames = (segments: OutputSegment[], fps: number, from: number, to: number) =>
+    framePresentations(segments, fps, sourceFps)
+      .filter((p) => segments[p.segmentIndex].kind === 'play')
+      .map((p) => frameIndexAt(p.srcTime, sourceFps))
+      .filter((k) => k >= from && k < to)
+  const diffs = (xs: number[]) => xs.slice(1).map((x, i) => x - xs[i])
+  type Row = [number, number, number] | ['hold', number, number]
+  const fromRows = (rows: Row[]): OutputSegment[] =>
+    rows.map((r) =>
+      r[0] === 'hold'
+        ? { kind: 'hold', srcTime: r[1], duration: r[2] }
+        : r[2] === 1
+          ? { kind: 'play', srcStart: r[0] / sourceFps, srcEnd: r[1] / sourceFps }
+          : { kind: 'play', srcStart: r[0] / sourceFps, srcEnd: r[1] / sourceFps, speed: r[2] }
+    )
+  const RAMP_UP_2: Row[] = [[30, 32, 1.2], [32, 34, 1.4], [34, 36, 1.6], [36, 38, 1.8]]
+  const RAMP_DOWN_2: Row[] = [[52, 54, 1.8], [54, 56, 1.6], [56, 58, 1.4], [58, 60, 1.2]]
+
+  it('keeps a 2x step on one cadence across a freeze that leaves an odd number of frames before it', () => {
+    const { segments } = buildOutputTimeline({ start: 0, end: 3 }, [freeze(41)], 30, steps2, sourceFps)
+    // Before the fix: 38 39 | 41 43 45 47 49.
+    expect(playFrames(segments, 30, 38, 52)).toEqual([38, 40, 42, 44, 46, 48, 50])
+  })
+
+  it('keeps every step of 2 with two freezes in one region', () => {
+    const { segments } = buildOutputTimeline({ start: 0, end: 3 }, [freeze(41), freeze(47, 0.5)], 30, steps2, sourceFps)
+    const frames = playFrames(segments, 30, 38, 52)
+    expect(frames).toHaveLength(7)
+    expect(diffs(frames)).toEqual(new Array(6).fill(2))
+  })
+
+  it('shows every source frame of a 0.5x step exactly twice on both sides of a freeze', () => {
+    const { segments } = buildOutputTimeline({ start: 0, end: 3 }, [freeze(41)], 30, steps05, sourceFps)
+    const frames = playFrames(segments, 30, 38, 52)
+    const range = Array.from({ length: 14 }, (_, k) => 38 + k)
+    expect(frames).toEqual(range.flatMap((k) => [k, k]))
+  })
+
+  it('gives both pieces of the split step the whole step\'s grid, and nothing else a grid', () => {
+    const { segments } = buildOutputTimeline({ start: 0, end: 3 }, [freeze(41)], 30, steps2, sourceFps)
+    const h = segments.findIndex((s) => s.kind === 'hold')
+    expect(segments[h - 1]).toEqual({ kind: 'play', srcStart: 38 / 30, srcEnd: 41 / 30, speed: 2, grid: { sourceFrames: 14, frames: 7, phase: 0 } })
+    expect(segments[h + 1]).toEqual({ kind: 'play', srcStart: 41 / 30, srcEnd: 52 / 30, speed: 2, grid: { sourceFrames: 14, frames: 7, phase: 7 } })
+    segments.forEach((s, i) => {
+      if (i !== h - 1 && i !== h + 1) expect(s).not.toHaveProperty('grid')
+    })
+  })
+
+  it('picks a grid segment\'s frames by the grid', () => {
+    const grid = { sourceFrames: 14, frames: 7, phase: 7 }
+    expect([0, 1, 2, 3, 4].map((f) => speedSegmentFrame(f, 5, 41, 52, grid))).toEqual([42, 44, 46, 48, 50])
+    expect([0, 1].map((f) => speedSegmentFrame(f, 2, 38, 41, { sourceFrames: 14, frames: 7, phase: 0 }))).toEqual([38, 40])
+  })
+
+  it('keeps the frame counts summing to round(duration * fps)', () => {
+    for (const [steps, freezes, fps] of [
+      [steps2, [freeze(41)], 30], [steps2, [freeze(41), freeze(47, 0.5)], 30], [steps05, [freeze(41)], 30], [steps2, [freeze(43, 0.3)], 15],
+    ] as const) {
+      const { segments, duration, frameCount } = buildOutputTimeline({ start: 0, end: 3 }, [...freezes], fps, steps, sourceFps)
+      expect(frameCount).toBe(Math.round(duration * fps))
+      expect(segmentFrameCounts(segments, fps).reduce((a, b) => a + b, 0)).toBe(frameCount)
+      expect(frameSourceTimes(segments, fps, sourceFps)).toHaveLength(frameCount)
+    }
+  })
+
+  // Snapshots of the output before grids existed: no freeze inside a speed step means no change.
+  it('leaves a timeline with speed steps and no freeze exactly as before', () => {
+    const result = buildOutputTimeline({ start: 0, end: 3 }, [], 30, steps2, sourceFps)
+    expect(result).toEqual({ segments: fromRows([[0, 30, 1], ...RAMP_UP_2, [38, 52, 2], ...RAMP_DOWN_2, [60, 90, 1]]), duration: 2.5970899470899473, frameCount: 78 })
+    expect(JSON.stringify(result)).not.toContain('grid')
+    expect(frameSourceTimes(result.segments, 30, sourceFps).map((t) => frameIndexAt(t, sourceFps)).join(' ')).toBe(
+      '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 34 36 38 40 42 44 46 48 50 52 53 54 56 58 59 ' +
+        '60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89'
+    )
+  })
+
+  it('leaves a freeze exactly on a step edge exactly as before', () => {
+    const result = buildOutputTimeline({ start: 0, end: 3 }, [freeze(38)], 30, steps05, sourceFps)
+    expect(result).toEqual({
+      segments: fromRows([
+        [0, 30, 1], [30, 32, 0.9], [32, 34, 0.8], [34, 36, 0.7], [36, 38, 0.6], ['hold', 38 / 30, 1],
+        [38, 52, 0.5], [52, 54, 0.6], [54, 56, 0.7], [56, 58, 0.8], [58, 60, 0.9], [60, 90, 1],
+      ]),
+      duration: 4.6608465608465615,
+      frameCount: 140,
+    })
+    expect(JSON.stringify(result)).not.toContain('grid')
+  })
+
+  it('leaves freezes outside the speed steps exactly as before', () => {
+    const result = buildOutputTimeline({ start: 0.5, end: 2.5 }, [{ startTime: 0.7, freezeDuration: 0.5 }, { startTime: 2.2, freezeDuration: 0.25 }], 15, steps2, sourceFps)
+    expect(result).toEqual({
+      segments: fromRows([[15, 21, 1], ['hold', 0.7, 0.5], [21, 30, 1], ...RAMP_UP_2, [38, 52, 2], ...RAMP_DOWN_2, [60, 66, 1], ['hold', 2.2, 0.25], [66, 75, 1]]),
+      duration: 2.3470899470899473,
+      frameCount: 35,
+    })
+    expect(JSON.stringify(result)).not.toContain('grid')
+    expect(frameSourceTimes(result.segments, 15, sourceFps).map((t) => frameIndexAt(t, sourceFps)).join(' ')).toBe(
+      '15 17 19 21 21 21 21 21 21 21 21 21 23 25 27 30 32 36 38 42 47 52 56 58 60 62 64 66 66 66 66 66 68 70 72'
+    )
+  })
+})

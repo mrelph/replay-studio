@@ -24,8 +24,21 @@ export interface Clip {
  * srcTime for `duration` seconds (a freeze-frame annotation), with silence.
  */
 export type OutputSegment =
-  | { kind: 'play'; srcStart: number; srcEnd: number; speed?: number }
+  | { kind: 'play'; srcStart: number; srcEnd: number; speed?: number; grid?: SpeedGrid }
   | { kind: 'hold'; srcTime: number; duration: number }
+
+/**
+ * Set on the pieces of a constant-speed step that freezes split apart. Output
+ * frame f of the piece shows the source frame
+ * `floor((f * sourceFrames + phase) / frames)` past its srcStart, so every
+ * piece keeps the cadence of the whole step instead of restarting its own.
+ * Without it, sourceFrames and frames are the piece's own and phase is 0.
+ */
+export interface SpeedGrid {
+  sourceFrames: number
+  frames: number
+  phase: number
+}
 
 /** Result of probing the source video in the main process. */
 export interface VideoProbe {

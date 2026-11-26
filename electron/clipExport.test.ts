@@ -551,6 +551,73 @@ describe('slowed segments', () => {
   })
 })
 
+describe('a freeze inside a speed step', () => {
+  // Source frames 30-60 at 2x as the renderer plans them, with a 1 s freeze at
+  // frame 41 splitting the constant step [38, 52) into 2 + 5 output frames.
+  const split = (grids: boolean): OutputSegment[] => [
+    ...toSegments([[0, 30, 1], [30, 32, 1.2], [32, 34, 1.4], [34, 36, 1.6], [36, 38, 1.8]], 30),
+    { kind: 'play', srcStart: 38 / 30, srcEnd: 41 / 30, speed: 2, ...(grids ? { grid: { sourceFrames: 14, frames: 7, phase: 0 } } : {}) },
+    { kind: 'hold', srcTime: 41 / 30, duration: 1 },
+    { kind: 'play', srcStart: 41 / 30, srcEnd: 52 / 30, speed: 2, ...(grids ? { grid: { sourceFrames: 14, frames: 7, phase: 7 } } : {}) },
+    ...toSegments([[52, 54, 1.8], [54, 56, 1.6], [56, 58, 1.4], [58, 60, 1.2], [60, 90, 1]], 30),
+  ]
+  const graphOf = (segments: OutputSegment[]) => {
+    const args = buildClipEncodeFilterGraph({ ...BASE_INPUT, frameCount: 108, quality: 'high', segments, hasAudio: false, magnifiers: [] })
+    return args[args.indexOf('-filter_complex') + 1]
+  }
+  // The graph before grids existed.
+  const TODAYS = [
+    '[0:v]trim=start=0.000000:end=0.983333,setpts=PTS-STARTPTS[v0]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=0.983333:end=1.050000,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*2/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=2,trim=end_frame=2,setpts=N/(30.000000*TB)[v1]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.050000:end=1.116667,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*1/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=1,trim=end_frame=1,setpts=N/(30.000000*TB),tpad=stop_mode=clone:stop=1,settb=AVTB,setpts=N/(60.000000*TB)[v2]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.116667:end=1.183333,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*1/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=1,trim=end_frame=1,setpts=N/(30.000000*TB),tpad=stop_mode=clone:stop=1,settb=AVTB,setpts=N/(60.000000*TB)[v3]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.183333:end=1.250000,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*1/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=1,trim=end_frame=1,setpts=N/(30.000000*TB),tpad=stop_mode=clone:stop=1,settb=AVTB,setpts=N/(60.000000*TB)[v4]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.250000:end=1.350000,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*2/3)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=2,trim=end_frame=2,setpts=N/(30.000000*TB)[v5]',
+    '[0:v]trim=start=1.350000:end=1.383333,setpts=PTS-STARTPTS,loop=loop=29:size=1:start=0,setpts=N/(30.000000*TB)[v6]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.350000:end=1.716667,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*5/11)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=5,trim=end_frame=5,setpts=N/(30.000000*TB)[v7]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.716667:end=1.783333,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*2/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=2,trim=end_frame=2,setpts=N/(30.000000*TB)[v8]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.783333:end=1.850000,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*1/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=1,trim=end_frame=1,setpts=N/(30.000000*TB),tpad=stop_mode=clone:stop=1,settb=AVTB,setpts=N/(60.000000*TB)[v9]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.850000:end=1.916667,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*1/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=1,trim=end_frame=1,setpts=N/(30.000000*TB),tpad=stop_mode=clone:stop=1,settb=AVTB,setpts=N/(60.000000*TB)[v10]',
+    '[0:v]tpad=stop_mode=clone:stop=-1,trim=start=1.916667:end=1.983333,tpad=stop_mode=clone:stop=1,setpts=ceil((N-0.000001)*2/2)/(30.000000*TB),fps=30.000000,tpad=stop_mode=clone:stop=2,trim=end_frame=2,setpts=N/(30.000000*TB)[v11]',
+    '[0:v]trim=start=1.983333:end=2.983333,setpts=PTS-STARTPTS[v12]',
+    '[v0]tpad=stop_mode=clone:stop=1,fps=30.000000,tpad=stop_mode=clone:stop=30,trim=end_frame=30,setpts=N/(30.000000*TB)[g0]',
+    '[v6]tpad=stop_mode=clone:stop=1,fps=30.000000,tpad=stop_mode=clone:stop=30,trim=end_frame=30,setpts=N/(30.000000*TB)[g6]',
+    '[v12]tpad=stop_mode=clone:stop=1,fps=30.000000,tpad=stop_mode=clone:stop=30,trim=end_frame=30,setpts=N/(30.000000*TB)[g12]',
+    '[g0][v1][v2][v3][v4][v5][g6][v7][v8][v9][v10][v11][g12]concat=n=13:v=1:a=0[vbase0]',
+    '[vbase0]fps=30.000000,tpad=stop_mode=clone:stop_duration=0.5[vbase]',
+    '[vbase]scale=trunc(iw/2)*2:trunc(ih/2)*2[vout]',
+  ].join(';')
+
+  it('builds today\'s graph, string for string, for segments without a grid', () => {
+    expect(graphOf(split(false))).toBe(TODAYS)
+  })
+
+  it('shifts the frame-slot expression of the grid segments only', () => {
+    const expected = TODAYS
+      .replace('setpts=ceil((N-0.000001)*2/3)/(30.000000*TB)', 'setpts=max(0\\,ceil(((N-0.000001)*7-0)/14))/(30.000000*TB)')
+      .replace('setpts=ceil((N-0.000001)*5/11)/(30.000000*TB)', 'setpts=max(0\\,ceil(((N-0.000001)*7-7)/14))/(30.000000*TB)')
+    expect(expected).not.toBe(TODAYS)
+    expect(graphOf(split(true))).toBe(expected)
+  })
+
+  it('keeps the grid through frame alignment', () => {
+    expect(alignSegmentsToFrames(split(true), 30)[7]).toEqual({ kind: 'play', srcStart: 40.5 / 30, srcEnd: 51.5 / 30, speed: 2, grid: { sourceFrames: 14, frames: 7, phase: 7 } })
+  })
+
+  it('accepts a grid of whole numbers and rejects others, naming the segment', () => {
+    const withGrid = (grid: unknown) =>
+      validateClipEncodeOptions({
+        ...validOptions(),
+        segments: [{ kind: 'play', srcStart: 0, srcEnd: 1 }, { kind: 'play', srcStart: 1, srcEnd: 3, speed: 2, grid: grid as { sourceFrames: number; frames: number; phase: number } }],
+      })
+    expect(withGrid({ sourceFrames: 14, frames: 7, phase: 7 })).toBeNull()
+    expect(withGrid({ sourceFrames: 14, frames: 7, phase: 0 })).toBeNull()
+    for (const bad of [null, 'grid', { sourceFrames: 14, frames: 7, phase: -1 }, { sourceFrames: 0, frames: 7, phase: 0 }, { sourceFrames: 14, frames: 0, phase: 0 }, { sourceFrames: 14.5, frames: 7, phase: 0 }, { sourceFrames: 14, frames: 7, phase: Number.NaN }, { sourceFrames: 14, frames: 7 }]) {
+      expect(withGrid(bad)).toMatch(/grid.*segment 1/i)
+    }
+  })
+})
+
 describe('withFilterScript', () => {
   const argsWith = (graph: string) => ['-y', '-i', 'in.mp4', '-filter_complex', graph, '-map', '[vout]', 'out.mp4']
 

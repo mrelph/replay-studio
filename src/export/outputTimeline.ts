@@ -1,4 +1,4 @@
-import type { Clip, OutputSegment, VideoProbe } from '@/types/clip'
+import type { Clip, OutputSegment, SpeedGrid, VideoProbe } from '@/types/clip'
 import { frameIndexAt, frameStart } from '@/utils/frames'
 import { buildSpeedSteps, speedAt, type SpeedRegionLike, type SpeedStep } from './speedMap'
 
@@ -82,6 +82,7 @@ export function buildOutputTimeline(
   if (clip.end > cursor) {
     pushPlay(cursor, clip.end)
   }
+  addSpeedGrids(segments, fps, sourceFps)
 
   const duration = segments.reduce((sum, seg) => sum + segmentOutputDuration(seg), 0)
   const frameCount = Math.round(duration * fps)
@@ -109,6 +110,70 @@ function playSegments(rawStart: number, rawEnd: number, speedSteps: SpeedStep[] 
     segments.push(speed === 1 ? { kind: 'play', srcStart: cuts[i], srcEnd: cuts[i + 1] } : { kind: 'play', srcStart: cuts[i], srcEnd: cuts[i + 1], speed })
   }
   return segments
+}
+
+type PlaySegment = Extract<OutputSegment, { kind: 'play' }>
+
+/**
+ * Freezes inside a constant-speed step split it into pieces whose frame
+ * counts round separately, and the per-piece frame rule restarts in each
+ * piece, so the cadence could stutter across a freeze. Each such run of
+ * pieces gets the grid of the whole step instead: together the pieces show
+ * the frames the unsplit step's rule would, moved by the smallest phase that
+ * keeps every piece inside its own source frames. A run no phase fits keeps
+ * the per-piece rule.
+ */
+function addSpeedGrids(segments: OutputSegment[], fps: number, sourceFps: number): void {
+  const counts = segmentFrameCounts(segments, fps)
+  for (let i = 0; i < segments.length; ) {
+    const first = segments[i]
+    if (first.kind !== 'play' || first.speed === undefined) {
+      i++
+      continue
+    }
+    const run = [i]
+    for (;;) {
+      const after = run[run.length - 1] + 1
+      let k = after
+      while (k < segments.length && segments[k].kind === 'hold') k++
+      const next = segments[k]
+      const last = segments[run[run.length - 1]] as PlaySegment
+      if (k === after || next?.kind !== 'play' || next.speed !== first.speed || next.srcStart !== last.srcEnd) break
+      run.push(k)
+    }
+    if (run.length > 1) applySpeedGrid(segments, run, counts, sourceFps)
+    i = run[run.length - 1] + 1
+  }
+}
+
+function applySpeedGrid(segments: OutputSegment[], run: number[], counts: number[], sourceFps: number): void {
+  const pieces = run.map((i) => segments[i] as PlaySegment)
+  const origin = frameIndexAt(pieces[0].srcStart, sourceFps)
+  const sourceFrames = frameIndexAt(pieces[pieces.length - 1].srcEnd, sourceFps) - origin
+  const frames = run.reduce((sum, i) => sum + counts[i], 0)
+  if (sourceFrames <= 0 || frames <= 0) return
+  // Piece frame f shows step frame floor(((offset + f) * sourceFrames + shift) / frames); find the shifts that stay in range.
+  let lowest = 0
+  let highest = Infinity
+  let offset = 0
+  const starts = pieces.map((piece, t) => {
+    const a = frameIndexAt(piece.srcStart, sourceFps) - origin
+    const b = Math.max(a + 1, frameIndexAt(piece.srcEnd, sourceFps) - origin)
+    const n = counts[run[t]]
+    if (n > 0) {
+      lowest = Math.max(lowest, a * frames - offset * sourceFrames)
+      highest = Math.min(highest, b * frames - 1 - (offset + n - 1) * sourceFrames)
+    }
+    const start = { a, offset }
+    offset += n
+    return start
+  })
+  if (lowest > highest) return
+  run.forEach((i, t) => {
+    if (counts[i] === 0) return
+    const phase = starts[t].offset * sourceFrames + lowest - starts[t].a * frames
+    segments[i] = { ...pieces[t], grid: { sourceFrames, frames, phase } }
+  })
 }
 
 /** Seconds a segment lasts in the output: a play segment's source length divided by its speed. */
@@ -169,9 +234,12 @@ const FRAME_TIME_MARGIN = 1e-3
  * covering source frames [a, b) in `frames` output frames: output frame f shows
  * source frame `a + floor(f * (b - a) / frames + 1e-6)`, spreading the source
  * frames evenly over the planned frames so a slowed segment never skips one.
- * electron/clipExport.ts builds its ffmpeg graph from the same rule.
+ * electron/clipExport.ts builds its ffmpeg graph from the same rule. With a
+ * `grid`, its sourceFrames, frames and phase stand in for (b - a), `frames`
+ * and 0, kept inside [a, b).
  */
-export function speedSegmentFrame(f: number, frames: number, a: number, b: number): number {
+export function speedSegmentFrame(f: number, frames: number, a: number, b: number, grid?: SpeedGrid): number {
+  if (grid) return Math.min(b - 1, a + Math.floor((f * grid.sourceFrames + grid.phase) / grid.frames + SPEED_FRAME_EPSILON))
   return a + Math.floor((f * (b - a)) / frames + SPEED_FRAME_EPSILON)
 }
 
@@ -201,7 +269,7 @@ export function frameSourceTimes(segments: OutputSegment[], fps: number, sourceF
       const a = frameIndexAt(seg.srcStart, sourceFps)
       const b = Math.max(a + 1, frameIndexAt(seg.srcEnd, sourceFps))
       for (let f = 0; f < segFrameCount; f++) {
-        const lo = frameStart(speedSegmentFrame(f, segFrameCount, a, b), sourceFps)
+        const lo = frameStart(speedSegmentFrame(f, segFrameCount, a, b, seg.grid), sourceFps)
         times.push(Math.min(Math.max(seg.srcStart + segDuration * (f / segFrameCount), lo), lo + (1 - 2 * FRAME_TIME_MARGIN) / sourceFps))
       }
       return
