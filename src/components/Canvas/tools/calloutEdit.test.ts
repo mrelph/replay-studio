@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { fabric } from '@/lib/fabric'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
-import { calloutParts as calloutPieces } from '@/utils/calloutGeometry'
+import { annotationStateAt } from '@/export/annotationTiming'
+import type { AnnotationStyle } from '@/utils/annotationStyle'
+import { calloutDotRadius, calloutParts as calloutPieces } from '@/utils/calloutGeometry'
 import { buildCallout } from './calloutTool'
-import { beginCalloutEdit, calloutParts, finishCalloutEdit } from './calloutEdit'
+import { beginCalloutEdit, calloutParts, editingCalloutObject, finishCalloutEdit } from './calloutEdit'
 
 const canvases: Array<InstanceType<typeof fabric.Canvas>> = []
 function testCanvas() {
@@ -42,17 +44,19 @@ const tick = () => Promise.resolve()
 const store = () => useDrawingStore.getState()
 const TARGET = { x: 100, y: 300 }
 
-function callout(text = 'Pass') {
-  const label = new fabric.IText(text, { left: 300, top: 100, originX: 'left', originY: 'bottom', fontSize: 24, fill: '#ff0000' })
-  return buildCallout({ target: TARGET, label, color: '#ff0000', strokeWidth: 4, style: 'outline' })
+interface Look { color?: string; strokeWidth?: number; style?: AnnotationStyle }
+
+function callout(text = 'Pass', { color = '#ff0000', strokeWidth = 4, style = 'outline' }: Look = {}) {
+  const label = new fabric.IText(text, { left: 300, top: 100, originX: 'left', originY: 'bottom', fontSize: 24, fill: color })
+  return buildCallout({ target: TARGET, label, color, strokeWidth, style })
 }
 
-function setup(text = 'Pass') {
+function setup(text = 'Pass', look?: Look) {
   const canvas = testCanvas()
   useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false, selectedAnnotationId: null })
   const before = new fabric.Rect({ left: 0, top: 0, width: 10, height: 10 })
   const after = new fabric.Rect({ left: 20, top: 0, width: 10, height: 10 })
-  const group = callout(text)
+  const group = callout(text, look)
   store().addAnnotation({ id: 'r1', object: before, startTime: 0, endTime: 5, layer: 1, toolType: 'rectangle' } as Annotation, { history: false })
   store().addAnnotation({ id: 'c1', object: group, startTime: 1.25, endTime: 2.75, layer: 2, toolType: 'callout' } as Annotation, { history: false })
   store().addAnnotation({ id: 'r2', object: after, startTime: 0, endTime: 5, layer: 1, toolType: 'rectangle' } as Annotation, { history: false })
@@ -63,6 +67,17 @@ const annotation = (id = 'c1') => store().annotations.find((a) => a.id === id)
 const editing = (canvas: fabric.Canvas) => canvas.getActiveObject() as fabric.IText
 const dotCentre = (group: fabric.Group) =>
   fabric.util.transformPoint(calloutPieces(group)!.dot.getCenterPoint(), group.calcTransformMatrix())
+const labelCentre = (group: fabric.Group) =>
+  fabric.util.transformPoint(calloutPieces(group)!.label.getCenterPoint(), group.calcTransformMatrix())
+const screenDotRadius = (group: fabric.Group) => {
+  const { scaleX, scaleY } = fabric.util.qrDecompose(calloutPieces(group)!.dot.calcTransformMatrix())
+  return ((calloutPieces(group)!.dot as fabric.Circle).radius ?? 0) * Math.sqrt(Math.abs(scaleX * scaleY))
+}
+const rebuiltParts = () => calloutPieces(annotation()!.object)!
+const changeTo = (canvas: fabric.Canvas, text: string) => {
+  editing(canvas).set({ text })
+  finishCalloutEdit()
+}
 
 describe('calloutParts', () => {
   it('returns the dot centre and the label text in canvas coordinates, following the group', () => {
@@ -200,6 +215,100 @@ describe('beginCalloutEdit', () => {
     expect(rebuilt.angle ?? 0).toBe(0)
     expect(dotCentre(rebuilt).x).toBeCloseTo(dot.x)
     expect(dotCentre(rebuilt).y).toBeCloseTo(dot.y)
+  })
+
+  it.each([
+    ['clean', undefined],
+    ['glow', '#00ff00'],
+  ] as const)('a changed %s callout keeps its style, colour and width', (style, shadowColor) => {
+    const { canvas } = setup('Pass', { color: '#00ff00', strokeWidth: 6, style })
+    beginCalloutEdit(canvas, 'c1')
+    changeTo(canvas, 'Press')
+    const { dot, leader, label } = rebuiltParts()
+    expect(dot.fill).toBe('#00ff00')
+    expect((dot as fabric.Circle).radius).toBe(calloutDotRadius(6))
+    expect(leader.stroke).toBe('#00ff00')
+    expect(leader.strokeWidth).toBe(6)
+    expect(label.fill).toBe('#00ff00')
+    expect(label.shadow).toBeFalsy()
+    if (shadowColor === undefined) {
+      expect(leader.shadow).toBeFalsy()
+      expect(dot.shadow).toBeFalsy()
+    } else {
+      expect((leader.shadow as fabric.Shadow).color).toBe(shadowColor)
+      expect((dot.shadow as fabric.Shadow).color).toBe(shadowColor)
+    }
+  })
+
+  it('a scaled callout keeps its dot centre, its on-screen dot size and its label centre', () => {
+    const { canvas, group } = setup('Pass', { strokeWidth: 1 })
+    group.set({ scaleX: 2, scaleY: 2 })
+    const dot = dotCentre(group)
+    const label = labelCentre(group)
+    expect(screenDotRadius(group)).toBeCloseTo(2 * calloutDotRadius(1))
+    beginCalloutEdit(canvas, 'c1')
+    // Same length, so the same width: the label's centre must not move.
+    changeTo(canvas, 'Pask')
+    const rebuilt = annotation()!.object as fabric.Group
+    expect(screenDotRadius(rebuilt)).toBeCloseTo(2 * calloutDotRadius(1))
+    expect(dotCentre(rebuilt).x).toBeCloseTo(dot.x)
+    expect(dotCentre(rebuilt).y).toBeCloseTo(dot.y)
+    expect(labelCentre(rebuilt).x).toBeCloseTo(label.x)
+    expect(labelCentre(rebuilt).y).toBeCloseTo(label.y)
+    expect(rebuiltParts().leader.strokeWidth).toBeCloseTo(2)
+  })
+
+  it('leaves the hidden callout to the edit, then applies the visibility rule as it stands at the end', async () => {
+    const { canvas, group } = setup('Pass')
+    const now = 1.5
+    const stateAt = (a: Annotation) => annotationStateAt(a, now, undefined)
+    expect(beginCalloutEdit(canvas, 'c1', { stateAt })).toBe(true)
+    expect(editingCalloutObject()).toBe(group)
+    // The callout is moved off the current frame on the timeline while its text is open.
+    store().updateAnnotation('c1', { startTime: 3, endTime: 4 })
+    editing(canvas).exitEditing()
+    await tick()
+    expect(editingCalloutObject()).toBeNull()
+    expect(annotation()!.object).toBe(group)
+    expect(group.visible).toBe(false)
+  })
+
+  it('a changed callout comes back selected when it was selected', () => {
+    const { canvas, group } = setup('Pass')
+    canvas.setActiveObject(group)
+    beginCalloutEdit(canvas, 'c1')
+    changeTo(canvas, 'Press')
+    expect(canvas.getActiveObject()).toBe(annotation()!.object)
+  })
+
+  it('a changed callout is not re-selected when playback or a tool switch ended the edit', () => {
+    const { canvas, group } = setup('Pass')
+    canvas.setActiveObject(group)
+    beginCalloutEdit(canvas, 'c1')
+    editing(canvas).set({ text: 'Press' })
+    finishCalloutEdit({ select: false })
+    expect(annotation()!.object).not.toBe(group)
+    expect(canvas.getActiveObject()).toBeFalsy()
+  })
+
+  it('an unselected callout is not selected by its edit', () => {
+    const { canvas } = setup('Pass')
+    beginCalloutEdit(canvas, 'c1')
+    changeTo(canvas, 'Press')
+    expect(canvas.getActiveObject()).toBeFalsy()
+  })
+
+  it('a failure while opening the text puts the callout back and starts no edit', () => {
+    const { canvas, group } = setup('Pass')
+    const add = canvas.add.bind(canvas)
+    canvas.add = () => { throw new Error('boom') }
+    expect(beginCalloutEdit(canvas, 'c1')).toBe(false)
+    canvas.add = add
+    expect(group.visible).toBe(true)
+    expect(editingCalloutObject()).toBeNull()
+    expect(canvas.getObjects()).toHaveLength(3)
+    expect(store().undoStack).toHaveLength(0)
+    expect(beginCalloutEdit(canvas, 'c1')).toBe(true)
   })
 
   it('wraps a long edited label', async () => {

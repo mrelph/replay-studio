@@ -12,22 +12,24 @@ export interface CalloutOptions {
   color: string
   strokeWidth: number
   style: AnnotationStyle
+  /** The dot's radius when it must not follow the stroke width (a rebuilt scaled callout keeps its on-screen dot). */
+  dotRadius?: number
 }
 
-function dotAt(target: ToolPoint, color: string, strokeWidth: number): fabric.Circle {
+function dotAt(target: ToolPoint, color: string, strokeWidth: number, radius = calloutDotRadius(strokeWidth)): fabric.Circle {
   return new fabric.Circle({
     left: target.x,
     top: target.y,
     originX: 'center',
     originY: 'center',
-    radius: calloutDotRadius(strokeWidth),
+    radius,
     fill: color,
     strokeWidth: 0,
   })
 }
 
 /** A callout: a dot on the target, a leader to the nearest edge of the label's plate, and the plated label. */
-export function buildCallout({ target, label, color, strokeWidth, style }: CalloutOptions): fabric.Group {
+export function buildCallout({ target, label, color, strokeWidth, style, dotRadius }: CalloutOptions): fabric.Group {
   const center = label.getCenterPoint()
   const width = (label.width ?? 0) * (label.scaleX ?? 1)
   const height = (label.height ?? 0) * (label.scaleY ?? 1)
@@ -39,7 +41,7 @@ export function buildCallout({ target, label, color, strokeWidth, style }: Callo
     strokeLineCap: 'round',
   })
   label.set({ textPlate: true } as Partial<fabric.IText>)
-  const callout = new fabric.Group([dotAt(target, color, strokeWidth), leader, label], { objectCaching: false })
+  const callout = new fabric.Group([dotAt(target, color, strokeWidth, dotRadius), leader, label], { objectCaching: false })
   restyleObject(callout, 'callout', style)
   return callout
 }

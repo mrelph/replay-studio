@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { fabric } from '@/lib/fabric'
 import { useToolStore, type ToolType } from '@/stores/toolStore'
-import { useDrawingStore } from '@/stores/drawingStore'
+import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useAudienceStore } from '@/stores/audienceStore'
 import { PlayerTracker } from './tools/PlayerTracker'
@@ -18,7 +18,7 @@ import { zoneTool } from './tools/zoneTool'
 import { calloutTool } from './tools/calloutTool'
 import { liveToolContext as toolContext } from './tools/toolContext'
 import { abandonGesture, abandonKeepsWork, type AbandonReason } from './tools/abandon'
-import { beginCalloutEdit, cancelCalloutEdit, finishCalloutEdit, isCalloutEditing } from './tools/calloutEdit'
+import { beginCalloutEdit, cancelCalloutEdit, editingCalloutObject, finishCalloutEdit, isCalloutEditing } from './tools/calloutEdit'
 import { frameIndexAt } from '@/utils/frames'
 import { applyDash, dashPattern, strokeTarget, DASH_TOOL_TYPES } from '@/utils/lineDash'
 
@@ -136,6 +136,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     playerTrackerRef.current = new PlayerTracker(canvas)
 
     return () => {
+      cancelCalloutEdit()
       cancelBusyTools(canvas)
       canvas.dispose()
       fabricRef.current = null
@@ -377,6 +378,10 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   }, [currentTime, updateMagnifierContent])
 
   const speedSteps = useSpeedSteps()
+  const speedStepsRef = useRef(speedSteps)
+  useEffect(() => {
+    speedStepsRef.current = speedSteps
+  }, [speedSteps])
 
   // Control annotation visibility based on current time with fade effects.
   // The rule itself lives in src/export/annotationTiming.ts, shared with the
@@ -390,7 +395,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     if (!videoElement.paused || (autoHold !== null && autoHold.endedAt === null)) return
 
     const elapsed = elapsedFor(speedSteps)
+    const editing = editingCalloutObject()
     annotations.forEach((annotation) => {
+      if (annotation.object === editing) return
       const { visible, opacity } = annotationStateAt(annotation, currentTime, elapsed)
       annotation.object.visible = visible
       annotation.object.opacity = opacity
@@ -489,7 +496,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     previousToolRef.current = currentTool
     const canvas = fabricRef.current
     if (previous === currentTool || !canvas) return
-    finishCalloutEdit()
+    finishCalloutEdit({ select: false })
     const tool = NEW_TOOLS[previous]
     const ctx = toolContext(canvas, moduleCommit)
     if (tool?.onToolSwitch) tool.onToolSwitch(ctx)
@@ -508,7 +515,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       return canvas && tool ? { canvas, tool } : null
     }
     const abandon = (reason: AbandonReason) => {
-      if (abandonKeepsWork(reason) && !useDrawingStore.getState().isRestoring) finishCalloutEdit()
+      if (abandonKeepsWork(reason) && !useDrawingStore.getState().isRestoring) finishCalloutEdit({ select: reason !== 'play' })
       else cancelCalloutEdit()
       const current = active()
       if (!current) return
@@ -1152,7 +1159,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const handleDoubleClick = (e: fabric.IEvent) => {
       if ((currentTool === 'select' || currentTool === 'callout') && e.target) {
         const callout = useDrawingStore.getState().annotations.find((a) => a.object === e.target && a.toolType === 'callout')
-        if (callout && beginCalloutEdit(canvas, callout.id)) return
+        const stateAt = (annotation: Annotation) =>
+          annotationStateAt(annotation, useVideoStore.getState().currentTime, elapsedFor(speedStepsRef.current))
+        if (callout && beginCalloutEdit(canvas, callout.id, { stateAt })) return
       }
       NEW_TOOLS[currentTool]?.onDoubleClick?.(toolContext(canvas, moduleCommit), canvas.getPointer(e.e), e)
     }
