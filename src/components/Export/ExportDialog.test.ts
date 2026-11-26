@@ -40,19 +40,27 @@ describe('Export Video annotation wiring', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
     useDrawingStore.setState({ annotations: [] })
     vi.restoreAllMocks()
   })
 
+  /** The Modal portals into document.body, outside `container`. */
+  function dialog(): HTMLElement {
+    const el = document.body.querySelector<HTMLElement>('[role="dialog"]')
+    expect(el).not.toBeNull()
+    return el!
+  }
+
   async function clickButton(text: string) {
-    const button = [...container.querySelectorAll('button')].find((el) => el.textContent === text)
+    const button = [...dialog().querySelectorAll('button')].find((el) => el.textContent === text)
     expect(button).toBeDefined()
     await act(async () => button!.click())
   }
 
   it('defaults to burning live annotations into the selected in/out range and reports progress', async () => {
-    expect(container.querySelector<HTMLInputElement>('#includeAnnotations')?.checked).toBe(true)
-    expect(container.textContent).toContain('0:12') // includes the 2s freeze
+    expect(dialog().querySelector<HTMLInputElement>('#includeAnnotations')?.checked).toBe(true)
+    expect(dialog().textContent).toContain('0:12') // includes the 2s freeze
     vi.mocked(renderClip).mockImplementation(async (opts) => {
       opts.onProgress(80)
       return { success: true }
@@ -71,15 +79,15 @@ describe('Export Video annotation wiring', () => {
     await act(async () => useSpeedStore.setState({ regions }))
     const expected = buildOutputTimeline({ start: 10, end: 20 }, [annotation], 30, exportSpeedSteps(regions, { duration: 30, fps: 30 }), 30).duration
     expect(expected).toBeGreaterThan(20)
-    expect(container.textContent).toContain(`0:${Math.floor(expected)}`)
+    expect(dialog().textContent).toContain(`0:${Math.floor(expected)}`)
     await act(async () => useSpeedStore.setState({ regions: [] }))
-    expect(container.textContent).toContain('0:12')
+    expect(dialog().textContent).toContain('0:12')
   })
 
   it('can export a clean full-length video without drawings or annotation freezes', async () => {
     await act(async () => {
-      container.querySelector<HTMLInputElement>('#includeAnnotations')!.click()
-      container.querySelector<HTMLInputElement>('#useInOut')!.click()
+      dialog().querySelector<HTMLInputElement>('#includeAnnotations')!.click()
+      dialog().querySelector<HTMLInputElement>('#useInOut')!.click()
     })
     await clickButton('Export')
     expect(renderClip).toHaveBeenCalledWith(expect.objectContaining({
@@ -99,7 +107,7 @@ describe('Export Video annotation wiring', () => {
     await clickButton('Export')
     expect(renderClip).not.toHaveBeenCalled()
     expect(close).not.toHaveBeenCalled()
-    expect(container.textContent).toContain('Could not read video')
+    expect(dialog().textContent).toContain('Could not read video')
   })
 
   it('aborts the renderer when the export dialog unmounts', async () => {
