@@ -78,9 +78,9 @@ export function computeFrameSignature(
 ): AnnotationVisualState[] {
   const states: AnnotationVisualState[] = []
   for (const annotation of annotations) {
-    const { visible, opacity } = annotationStateAt(annotation, t, elapsed)
-    if (!visible || opacity <= 0) continue
     const holdElapsed = holdElapsedFor(annotation)
+    const { visible, opacity } = annotationStateAt(annotation, t, elapsed, holdElapsed)
+    if (!visible || opacity <= 0) continue
     if (!isRevealDue(annotation.startTime, t, holdElapsed, annotation.revealDelay, elapsed)) continue
     const noReveal = annotation.toolType !== undefined && revealKind(annotation.toolType) === 'none'
     const fraction =
@@ -161,7 +161,7 @@ export function buildDrawingSpans(
  * Hold time that counts toward each annotation's presentation time at an
  * output frame: every hold whose source frame index is on or after the
  * annotation's start frame (a freeze is usually recorded a frame or two after
- * the drawing). Annotations without presentation timing always get 0.
+ * the drawing). Annotations without presentation timing or a fade-in always get 0.
  */
 export function holdElapsedResolver<A extends AnnotationTimingInput>(
   segments: OutputSegment[],
@@ -170,7 +170,7 @@ export function holdElapsedResolver<A extends AnnotationTimingInput>(
 ): (annotation: A, frame: FramePresentation) => number {
   const holdInfo = new Map<A, { matches: boolean[]; before: number[] }>()
   for (const annotation of annotations) {
-    if (!hasPresentationTiming(annotation)) continue
+    if (!hasPresentationTiming(annotation) && !(annotation.fadeIn !== undefined && annotation.fadeIn > 0)) continue
     const startFrame = frameIndexAt(annotation.startTime, sourceFps)
     const matches = segments.map((seg) => seg.kind === 'hold' && frameIndexAt(seg.srcTime, sourceFps) >= startFrame)
     const before: number[] = []

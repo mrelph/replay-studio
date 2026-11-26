@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { stepLiveReveal, type ArmedReveal } from './liveReveal'
-import { revealFraction } from './annotationTiming'
+import { annotationStateAt, revealFraction } from './annotationTiming'
 import { buildSpeedSteps } from './speedMap'
 import { frameStart, timeForFrame } from '@/utils/frames'
 
@@ -185,5 +185,29 @@ describe('stepLiveReveal inside a slow-motion region', () => {
     const normalFraction = step(normal, 3.0, 3.2).get('a')?.fraction
     expect(slowFraction).toBeCloseTo(revealFraction(0.2, 0.4))
     expect(slowFraction).toBeCloseTo(normalFraction!)
+  })
+})
+
+describe('stepLiveReveal fade-in hold time', () => {
+  const zone = { id: 'z', startTime: 3, endTime: 6, fadeIn: 0.2 }
+  const step = (over: Partial<Parameters<typeof stepLiveReveal>[0]>) =>
+    stepLiveReveal({ annotations: [zone], prevTime: 3, time: 3, playing: false, autoHold: null, now: 0, fps: 30, armed: new Map(), ...over })
+
+  it('reports the hold time of a freeze on the start frame', () => {
+    const hold = { time: 3, startedAt: 1000, endedAt: null }
+    expect(step({ autoHold: hold, now: 1100 }).get('z')?.holdElapsed).toBeCloseTo(0.1)
+    expect(step({ autoHold: { ...hold, endedAt: 1500 }, playing: true, time: 3.1, now: 9000 }).get('z')?.holdElapsed).toBeCloseTo(0.5)
+    expect(annotationStateAt(zone, 3, undefined, step({ autoHold: hold, now: 1100 }).get('z')?.holdElapsed).opacity).toBeCloseTo(0.5)
+    expect(annotationStateAt(zone, 3, undefined, step({ autoHold: hold, now: 1250 }).get('z')?.holdElapsed).opacity).toBe(1)
+  })
+
+  it('reports 0 while paused by the user or for a hold on an earlier frame', () => {
+    expect(step({ autoHold: { time: 3, startedAt: 1000, endedAt: 1100 }, now: 2000 }).get('z')?.holdElapsed ?? 0).toBe(0)
+    expect(step({ autoHold: { time: 2.9, startedAt: 1000, endedAt: 1400 }, playing: true, time: 3.1, now: 9000 }).get('z')?.holdElapsed ?? 0).toBe(0)
+  })
+
+  it('leaves annotations without a fade-in as they were', () => {
+    const r = stepLiveReveal({ annotations: [{ id: 'b', startTime: 3, endTime: 6 }], prevTime: 3, time: 3, playing: false, autoHold: { time: 3, startedAt: 1000, endedAt: null }, now: 1100, fps: 30, armed: new Map() })
+    expect(r.get('b')).toEqual({ fraction: 1, due: true })
   })
 })

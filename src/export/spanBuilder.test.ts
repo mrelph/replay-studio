@@ -467,3 +467,34 @@ describe('a draw-on inside a slow-motion region', () => {
     expect(Math.abs(inside - outside)).toBeLessThanOrEqual(1)
   })
 })
+
+describe('fade-in during a hold', () => {
+  const play = (a: number, b: number): OutputSegment => ({ kind: 'play', srcStart: a, srcEnd: b })
+  const zone: SpanAnnotationLike = { id: 'z', startTime: 3, endTime: 5, fadeIn: 0.2, fadeOut: 0.15, toolType: 'zone' }
+  const segs: OutputSegment[] = [play(2.9, 3.0), { kind: 'hold', srcTime: 3.0, duration: 1 }, play(3.0, 4.0)]
+  const HOLD_START = 3
+  const opacityAt = (spans: DrawingSpan[], frame: number) =>
+    spans.find((s) => s.frameStart <= frame && frame < s.frameStart + s.frameCount)!.signature.find((g) => g.id === 'z')?.opacityBucket
+
+  it('fades in over the first 0.2 s of a freeze on the start frame and stays full after it', () => {
+    const spans = buildDrawingSpans(segs, [zone], 30, { sourceFps: 30 })
+    expect(opacityAt(spans, HOLD_START)).toBe(0.5)
+    expect(opacityAt(spans, HOLD_START + 4)).toBeCloseTo(0.66)
+    for (let f = HOLD_START + 6; f < HOLD_START + 60; f++) expect(opacityAt(spans, f)).toBe(1)
+  })
+
+  it('fades in with a delay of hold time for a later drawing in the sequence', () => {
+    const later = { ...zone, id: 'z', revealDelay: 0.5 }
+    const spans = buildDrawingSpans(segs, [later], 30, { sourceFps: 30 })
+    expect(opacityAt(spans, HOLD_START + 14)).toBeUndefined()
+    expect(opacityAt(spans, HOLD_START + 15)).toBe(0.5)
+    expect(opacityAt(spans, HOLD_START + 21)).toBe(1)
+  })
+
+  it('is unchanged without a hold', () => {
+    const spans = buildDrawingSpans([play(2.9, 4.0)], [zone], 30, { sourceFps: 30 })
+    expect(opacityAt(spans, HOLD_START)).toBe(0.5)
+    expect(opacityAt(spans, HOLD_START + 3)).toBe(0.5)
+    expect(opacityAt(spans, HOLD_START + 6)).toBe(1)
+  })
+})

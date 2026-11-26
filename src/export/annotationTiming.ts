@@ -68,9 +68,13 @@ export interface AnnotationTimingState {
  *   0.2. Both windows are measured with `elapsed` (on-screen seconds); the
  *   range itself stays in source time. Fade-in takes priority over fade-out when both windows overlap
  *   (matches the original `else if`).
+ * - `holdElapsed` is automatic-hold time that counts toward the annotation's
+ *   presentation time (see `revealElapsed`): when positive, the fade-in runs on
+ *   `revealElapsed`, so it advances through a freeze on the start frame and
+ *   waits for the annotation's `revealDelay`. Fade-out ignores it.
  */
-export function annotationStateAt(annotation: AnnotationTimingInput, t: number, elapsed: ElapsedBetween = sourceElapsed): AnnotationTimingState {
-  const { startTime, endTime, fadeIn = 0, fadeOut = 0, drawIn = 0 } = annotation
+export function annotationStateAt(annotation: AnnotationTimingInput, t: number, elapsed: ElapsedBetween = sourceElapsed, holdElapsed: number = 0): AnnotationTimingState {
+  const { startTime, endTime, fadeIn = 0, fadeOut = 0, drawIn = 0, revealDelay } = annotation
   const isInTimeRange = t >= startTime && t <= endTime
 
   if (!isInTimeRange) {
@@ -79,11 +83,12 @@ export function annotationStateAt(annotation: AnnotationTimingInput, t: number, 
 
   const timeInRange = elapsed(startTime, t)
   const timeToEnd = elapsed(t, endTime)
+  const fadeInElapsed = holdElapsed > 0 ? revealElapsed(startTime, t, holdElapsed, revealDelay, elapsed) : timeInRange
 
   let opacity = 1
 
-  if (fadeIn > 0 && !(drawIn > 0) && timeInRange < fadeIn) {
-    opacity = Math.max(0.5, timeInRange / fadeIn)
+  if (fadeIn > 0 && !(drawIn > 0) && fadeInElapsed < fadeIn) {
+    opacity = Math.max(0.5, fadeInElapsed / fadeIn)
   } else if (fadeOut > 0 && timeToEnd < fadeOut) {
     opacity = Math.max(0.2, timeToEnd / fadeOut)
   }

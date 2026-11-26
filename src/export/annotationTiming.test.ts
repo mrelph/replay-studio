@@ -125,3 +125,32 @@ describe('timing inside a slow-motion region', () => {
     expect(annotationStateAt({ startTime: 2.5, endTime: 3.5, fadeOut: 0.4 }, 3.35).opacity).toBeCloseTo(0.15 / 0.4)
   })
 })
+
+describe('fade-in during an automatic hold', () => {
+  const zone = { startTime: 3, endTime: 6, fadeIn: 0.2, fadeOut: 0.15 }
+
+  it('advances the fade-in with hold time on the start frame', () => {
+    expect(annotationStateAt(zone, 3, undefined, 0).opacity).toBe(0.5)
+    expect(annotationStateAt(zone, 3, undefined, 0.15).opacity).toBeCloseTo(0.75)
+    expect(annotationStateAt(zone, 3, undefined, 0.2).opacity).toBe(1)
+    expect(annotationStateAt(zone, 3, undefined, 1.5).opacity).toBe(1)
+  })
+
+  it('adds the hold to source time after playback resumes', () => {
+    expect(annotationStateAt(zone, 3.05, undefined, 0.1).opacity).toBeCloseTo(0.75)
+    expect(annotationStateAt(zone, 3.05, undefined, 1).opacity).toBe(1)
+  })
+
+  it('starts the fade after the reveal delay', () => {
+    const later = { ...zone, revealDelay: 0.35 }
+    expect(annotationStateAt(later, 3, undefined, 0.35).opacity).toBe(0.5)
+    expect(annotationStateAt(later, 3, undefined, 0.5).opacity).toBeCloseTo(0.75)
+    expect(annotationStateAt(later, 3, undefined, 0.55).opacity).toBe(1)
+  })
+
+  it('is unchanged without a hold, and leaves draw-on and fade-out alone', () => {
+    expect(annotationStateAt({ ...zone, revealDelay: 0.35 }, 3.1).opacity).toBeCloseTo(0.5)
+    expect(annotationStateAt({ ...zone, drawIn: 0.4 }, 3, undefined, 0.1).opacity).toBe(1)
+    expect(annotationStateAt(zone, 5.9, undefined, 2).opacity).toBeCloseTo(0.1 / 0.15)
+  })
+})

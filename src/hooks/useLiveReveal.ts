@@ -103,8 +103,8 @@ export function useLiveReveal(canvasRef: RefObject<fabric.Canvas | null>, videoE
         const next = new Map<string, { object: unknown; visible: boolean; opacity: number; fraction: number }>()
         let changed = applied.size !== annotations.length
         for (const annotation of annotations) {
-          const state = annotationStateAt(annotation, time, elapsed)
-          const { fraction, due } = reveals.get(annotation.id) ?? { fraction: 1, due: true }
+          const { fraction, due, holdElapsed } = reveals.get(annotation.id) ?? { fraction: 1, due: true }
+          const state = annotationStateAt(annotation, time, elapsed, holdElapsed)
           const visible = state.visible && due
           const opacity = state.opacity
           annotation.object.visible = visible
