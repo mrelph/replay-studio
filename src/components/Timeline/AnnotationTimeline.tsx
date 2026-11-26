@@ -394,7 +394,7 @@ export default function AnnotationTimeline() {
   if (duration === 0) return null
 
   return (
-    <div className="chrome bg-surface-elevated border-t border-border-subtle px-4 py-2">
+    <div className="bg-surface-elevated border-t border-border-subtle px-4 py-2">
       {/* Resize handle */}
       <div
         className="h-1.5 -mt-3 mb-1 cursor-ns-resize group flex items-center justify-center"
