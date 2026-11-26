@@ -770,26 +770,33 @@ function e2eExportFolder(): string | undefined {
 /** The current export folder, canonicalized and authorized for export writes this session. */
 async function currentExportFolder(): Promise<ExportFolderInfo> {
   const e2e = e2eExportFolder()
-  const info = e2e ? { path: e2e, isDefault: false } : await loadExportFolder(exportFolderPaths(), exportFolderFs)
-  const real = await canonicalize(info.path)
-  if (!real) return info
+  const info = e2e ? { path: e2e, isDefault: false, usable: true } : await loadExportFolder(exportFolderPaths(), exportFolderFs)
+  const real = info.usable ? await canonicalize(info.path) : null
+  if (!real) return { ...info, usable: false }
   authorizedExportFolders.add(real)
   return { ...info, path: real }
 }
 
+/** The main window if it is open; menu actions still run on macOS after it closes. */
+function liveMainWindow(): BrowserWindow | null {
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+}
+
 function notifyExportFolderChanged(info: ExportFolderInfo) {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('settings:exportFolderChanged', info)
+  liveMainWindow()?.webContents.send('settings:exportFolderChanged', info)
 }
 
 /** Folder picker shared by the File menu and the export dialogs' Change… button; null when cancelled. */
 async function chooseExportFolder(): Promise<ExportFolderInfo | null> {
   if (e2eExportFolder()) return currentExportFolder()
   const current = await currentExportFolder()
-  const result = await dialog.showOpenDialog(mainWindow!, {
+  const options: Electron.OpenDialogOptions = {
     title: 'Export Folder',
     defaultPath: current.path,
     properties: ['openDirectory', 'createDirectory'],
-  })
+  }
+  const win = liveMainWindow()
+  const result = await (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options))
   if (result.canceled || result.filePaths.length === 0) return null
   const real = await canonicalize(result.filePaths[0])
   if (!real) throw new Error(`Folder not accessible: ${result.filePaths[0]}`)
@@ -812,12 +819,18 @@ async function runExportFolderMenuAction(action: () => Promise<unknown>) {
   try {
     await action()
   } catch (err) {
-    dialog.showMessageBox(mainWindow!, {
+    const options: Electron.MessageBoxOptions = {
       type: 'error',
       title: 'Export Folder',
       message: "Couldn't change the export folder.",
       detail: err instanceof Error ? err.message : String(err),
-    })
+    }
+    const win = liveMainWindow()
+    try {
+      await (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options))
+    } catch (boxErr) {
+      console.error('Export folder error dialog failed:', boxErr)
+    }
   }
 }
 

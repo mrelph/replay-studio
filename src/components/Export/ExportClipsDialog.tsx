@@ -106,7 +106,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   const [quality, setQuality] = useState<ClipExportQuality>('high')
   const [burnIn, setBurnIn] = useState(true)
   const [saveEditableCopy, setSaveEditableCopy] = useState(true)
-  const { folder, changeFolder } = useExportFolder()
+  const { folder, needsFolder, changeFolder, resolveFolderForExport } = useExportFolder()
 
   const [exporting, setExporting] = useState(false)
   const [statuses, setStatuses] = useState<Record<string, ClipStatus>>({})
@@ -196,6 +196,8 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
   const handleExport = useCallback(async () => {
     if (!hasElectron || !probe || !sourcePath || !folder) return
+    const exportFolder = await resolveFolderForExport()
+    if (!exportFolder) return
 
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -222,7 +224,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
 
       const baseName = buildClipBaseName(nn, clip.name, clip.tags)
       baseNameByClipId[clip.id] = baseName
-      const outputPath = `${folder}/${baseName}.mp4`
+      const outputPath = `${exportFolder}/${baseName}.mp4`
 
       setStatus(clip.id, { kind: 'rendering', percent: 0 })
 
@@ -258,7 +260,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
             clip,
             annotations,
             sourcePath,
-            folder,
+            folder: exportFolder,
             baseName,
             quality,
             fps: probe.fps,
@@ -313,7 +315,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
       status: csvStatusFor(statusMap[clip.id] ?? { kind: 'cancelled' }),
     }))
     try {
-      const csvResult = await window.electronAPI.writeFile(`${folder}/clips.csv`, buildClipsCsv(csvRows))
+      const csvResult = await window.electronAPI.writeFile(`${exportFolder}/clips.csv`, buildClipsCsv(csvRows))
       if (!csvResult.success) {
         toast('error', `Couldn't write clips.csv: ${csvResult.error || 'unknown error'}`)
       }
@@ -333,6 +335,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     probe,
     sourcePath,
     folder,
+    resolveFolderForExport,
     selectedClips,
     selectedCount,
     annotations,
@@ -561,7 +564,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
         </div>
 
         {/* Folder */}
-        <ExportFolderRow folder={folder} onChange={changeFolder} disabled={exporting || !hasElectron} />
+        <ExportFolderRow folder={folder} needsFolder={needsFolder} onChange={changeFolder} disabled={exporting || !hasElectron} />
 
         {/* Overall progress */}
         {exporting && (

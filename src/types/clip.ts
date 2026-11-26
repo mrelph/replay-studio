@@ -64,7 +64,7 @@ export type ClipExportFormat = 'mp4' | 'gif'
  * (`clipEncodeRun`).
  */
 export interface ClipEncodeStartOptions {
-  /** Absolute path; must be inside a folder returned by chooseExportFolder. */
+  /** Absolute path; must be inside the export folder setting (authorized by main). */
   outputPath: string
   /** Absolute path of the source video (resolveVideoPath of the loaded src). */
   sourcePath: string

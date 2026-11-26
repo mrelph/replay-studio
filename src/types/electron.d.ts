@@ -62,6 +62,8 @@ export interface UpdateCheckResult {
 export interface ExportFolderInfo {
   path: string
   isDefault: boolean
+  /** False when main could not authorize any folder (even Downloads): the user has to pick one. */
+  usable: boolean
 }
 
 export interface UpdateDownloadedInfo {

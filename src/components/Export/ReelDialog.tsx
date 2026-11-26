@@ -79,7 +79,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
   const [nameTouched, setNameTouched] = useState(false)
   const [quality, setQuality] = useState<ClipExportQuality>('high')
   const [saveEditable, setSaveEditable] = useState(true)
-  const { folder, changeFolder } = useExportFolder()
+  const { folder, needsFolder, changeFolder, resolveFolderForExport } = useExportFolder()
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [kept, setKept] = useState<Record<string, ReelClipOutcome | 'saving-copy'>>({})
   const [lowSpace, setLowSpace] = useState<string | null>(null)
@@ -140,16 +140,18 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
 
   const handleExport = useCallback(async () => {
     if (!probe || !sourcePath || !folder || !plan) return
+    const exportFolder = await resolveFolderForExport()
+    if (!exportFolder) return
     const controller = new AbortController()
     abortRef.current = controller
     setLowSpace(null)
     setKept({})
     setPhase({ kind: 'exporting', progress: null })
 
-    const outputPath = `${folder}/${buildReelBaseName(effectiveName)}.mp4`
+    const outputPath = `${exportFolder}/${buildReelBaseName(effectiveName)}.mp4`
     const baseNames = saveIndividual ? individualBaseNames(inReel) : null
     const keptClipPaths = baseNames
-      ? Object.fromEntries(Object.entries(baseNames).map(([id, base]) => [id, `${folder}/${base}.mp4`]))
+      ? Object.fromEntries(Object.entries(baseNames).map(([id, base]) => [id, `${exportFolder}/${base}.mp4`]))
       : null
 
     const result = await renderReel({
@@ -179,7 +181,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
           if (outcomes[clip.id] !== 'exported') continue
           setKept((k) => ({ ...k, [clip.id]: 'saving-copy' }))
           const copy = await saveEditableCopyFiles({
-            clip, annotations, sourcePath, folder, baseName: baseNames[clip.id], quality, fps: probe.fps,
+            clip, annotations, sourcePath, folder: exportFolder, baseName: baseNames[clip.id], quality, fps: probe.fps,
           })
           outcomes[clip.id] = copy.success ? 'exported' : 'failed'
           setKept((k) => ({ ...k, [clip.id]: outcomes[clip.id] }))
@@ -195,7 +197,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
         file: `${baseNames[clip.id]}.mp4`,
         status: outcomes[clip.id] ?? 'cancelled',
       }))
-      const csv = await window.electronAPI.writeFile(`${folder}/clips.csv`, buildClipsCsv(rows))
+      const csv = await window.electronAPI.writeFile(`${exportFolder}/clips.csv`, buildClipsCsv(rows))
       if (!csv.success) toast('error', `Couldn't write clips.csv: ${csv.error || 'unknown error'}`)
     }
 
@@ -209,7 +211,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
       setPhase({ kind: 'failed', message: result.error || 'Reel export failed' })
       toast('error', 'Reel export failed')
     }
-  }, [probe, sourcePath, folder, plan, effectiveName, saveIndividual, inReel, annotations, speedRegions, quality, saveEditable])
+  }, [probe, sourcePath, folder, resolveFolderForExport, plan, effectiveName, saveIndividual, inReel, annotations, speedRegions, quality, saveEditable])
 
   const percent = phase.kind === 'exporting' ? phase.progress?.percent ?? 0 : 0
 
@@ -477,7 +479,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
         </div>
 
         {/* Folder */}
-        <ExportFolderRow folder={folder} onChange={changeFolder} disabled={exporting || !hasElectron} />
+        <ExportFolderRow folder={folder} needsFolder={needsFolder} onChange={changeFolder} disabled={exporting || !hasElectron} />
 
         {lowSpace && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-warning-subtle border border-warning/20" role="status">

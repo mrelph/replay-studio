@@ -23,6 +23,8 @@ export interface ExportFolderFs {
 export interface ExportFolderInfo {
   path: string
   isDefault: boolean
+  /** False when even the Downloads fallback is missing or unwritable: the user has to pick a folder. */
+  usable: boolean
 }
 
 type Settings = Record<string, unknown>
@@ -41,12 +43,18 @@ export async function loadExportFolder(paths: ExportFolderPaths, fs: ExportFolde
   const saved = (await readSettings(paths, fs)).exportFolder
   if (typeof saved === 'string' && path.isAbsolute(saved)) {
     try {
-      if (await fs.isWritableDirectory(saved)) return { path: saved, isDefault: false }
+      if (await fs.isWritableDirectory(saved)) return { path: saved, isDefault: false, usable: true }
     } catch {
       // Treat an fs error like a missing folder.
     }
   }
-  return { path: paths.downloads, isDefault: true }
+  let usable = false
+  try {
+    usable = await fs.isWritableDirectory(paths.downloads)
+  } catch {
+    // Unusable, as below.
+  }
+  return { path: paths.downloads, isDefault: true, usable }
 }
 
 export async function saveExportFolder(paths: ExportFolderPaths, fs: ExportFolderFs, folder: string): Promise<void> {

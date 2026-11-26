@@ -35,7 +35,7 @@ function memoryFs(opts: { files?: Record<string, string>; dirs?: string[]; readO
 describe('loadExportFolder', () => {
   it('falls back to Downloads when there is no settings file', async () => {
     const { fs } = memoryFs()
-    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: true })
   })
 
   it('returns a saved folder that exists', async () => {
@@ -43,12 +43,12 @@ describe('loadExportFolder', () => {
       files: { [paths.settingsFile]: JSON.stringify({ exportFolder: '/videos/out' }) },
       dirs: [paths.downloads, '/videos/out'],
     })
-    expect(await loadExportFolder(paths, fs)).toEqual({ path: '/videos/out', isDefault: false })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: '/videos/out', isDefault: false, usable: true })
   })
 
   it('falls back to Downloads when the saved folder no longer exists', async () => {
     const { fs } = memoryFs({ files: { [paths.settingsFile]: JSON.stringify({ exportFolder: '/gone' }) } })
-    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: true })
   })
 
   it('falls back to Downloads when the saved folder is not writable', async () => {
@@ -57,13 +57,13 @@ describe('loadExportFolder', () => {
       dirs: [paths.downloads, '/locked'],
       readOnly: ['/locked'],
     })
-    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: true })
   })
 
   it('falls back to Downloads on a corrupt settings file without throwing', async () => {
     for (const content of ['{not json', 'null', '[]', '42', JSON.stringify({ exportFolder: 7 })]) {
       const { fs } = memoryFs({ files: { [paths.settingsFile]: content } })
-      expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true })
+      expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: true })
     }
   })
 
@@ -72,7 +72,38 @@ describe('loadExportFolder', () => {
       files: { [paths.settingsFile]: JSON.stringify({ exportFolder: 'videos/out' }) },
       dirs: [paths.downloads, 'videos/out'],
     })
-    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: true })
+  })
+})
+
+describe('loadExportFolder when Downloads cannot be used', () => {
+  it('reports usable: false when Downloads is missing and nothing is saved', async () => {
+    const { fs } = memoryFs({ dirs: [] })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: false })
+  })
+
+  it('reports usable: false when the saved folder is gone and Downloads is unwritable', async () => {
+    const { fs } = memoryFs({
+      files: { [paths.settingsFile]: JSON.stringify({ exportFolder: '/gone' }) },
+      readOnly: [paths.downloads],
+    })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: false })
+  })
+
+  it('still returns a usable saved folder when Downloads is missing', async () => {
+    const { fs } = memoryFs({
+      files: { [paths.settingsFile]: JSON.stringify({ exportFolder: '/videos/out' }) },
+      dirs: ['/videos/out'],
+    })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: '/videos/out', isDefault: false, usable: true })
+  })
+
+  it('treats an fs error on Downloads as unusable without throwing', async () => {
+    const { fs } = memoryFs()
+    fs.isWritableDirectory = async () => {
+      throw new Error('EIO')
+    }
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: false })
   })
 })
 
@@ -80,7 +111,7 @@ describe('saveExportFolder / resetExportFolder', () => {
   it('round-trips a saved folder', async () => {
     const { fs } = memoryFs({ dirs: [paths.downloads, '/videos/out'] })
     await saveExportFolder(paths, fs, '/videos/out')
-    expect(await loadExportFolder(paths, fs)).toEqual({ path: '/videos/out', isDefault: false })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: '/videos/out', isDefault: false, usable: true })
   })
 
   it('reset removes the saved value', async () => {
@@ -88,14 +119,14 @@ describe('saveExportFolder / resetExportFolder', () => {
     await saveExportFolder(paths, fs, '/videos/out')
     await resetExportFolder(paths, fs)
     expect(JSON.parse(files.get(paths.settingsFile)!)).not.toHaveProperty('exportFolder')
-    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true })
+    expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: true })
   })
 
   it('reset is harmless with no settings file or a corrupt one', async () => {
     for (const files of [{}, { [paths.settingsFile]: '{not json' }]) {
       const { fs } = memoryFs({ files })
       await expect(resetExportFolder(paths, fs)).resolves.toBeUndefined()
-      expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true })
+      expect(await loadExportFolder(paths, fs)).toEqual({ path: paths.downloads, isDefault: true, usable: true })
     }
   })
 
