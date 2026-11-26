@@ -20,7 +20,7 @@ type CarrierLike = FreezeAnnotationLike & { toolType?: string }
 
 /**
  * Frozen voice clips moved onto the startTime of their frame's freeze carrier
- * (same rule as frameHoldSeconds), so buildOutputTimeline merges the two into
+ * (same rule as findFreezeCarrierAt: a carrier set to 0 counts too), so buildOutputTimeline merges the two into
  * one hold instead of two holds back to back. Other clips are returned as is.
  */
 export function alignVoiceToCarriers(annotations: CarrierLike[], voiceClips: VoiceClip[], fps: number): VoiceClip[] {
@@ -28,23 +28,29 @@ export function alignVoiceToCarriers(annotations: CarrierLike[], voiceClips: Voi
     if (!clip.frozen) return clip
     const frame = frameIndexAt(clip.startTime, fps)
     const carriers = annotations.filter(
-      (a) => typeof a.freezeDuration === 'number' && a.freezeDuration > 0 && frameIndexAt(a.startTime, fps) === frame,
+      (a) => typeof a.freezeDuration === 'number' && frameIndexAt(a.startTime, fps) === frame,
     )
     const carrier = carriers.find((a) => a.toolType === 'freeze') ?? carriers[0]
     return carrier && carrier.startTime !== clip.startTime ? { ...clip, startTime: carrier.startTime } : clip
   })
 }
 
-/** Freeze entries for buildOutputTimeline: the annotations plus the frozen voice clips, aligned to their carriers. */
+/** Freeze entries for buildOutputTimeline: the annotations plus the frozen voice clips, aligned to their carriers and placed by frame (frameFps). */
 export function withVoiceFreezes(annotations: CarrierLike[], voiceClips: VoiceClip[], fps: number): FreezeAnnotationLike[] {
-  return [...annotations, ...voiceFreezes(alignVoiceToCarriers(annotations, voiceClips, fps))]
+  const voice = voiceFreezes(alignVoiceToCarriers(annotations, voiceClips, fps)).map((entry) => ({ ...entry, frameFps: fps }))
+  return [...annotations, ...voice]
 }
 
-function inClip(clip: Pick<Clip, 'start' | 'end'>, voice: VoiceClip): boolean {
+/** A frozen clip is inside when its frame is in [frame of clip.start, frame of clip.end): an in-point is a raw time on its frame, later than the frame's own time. */
+function inClip(clip: Pick<Clip, 'start' | 'end'>, voice: VoiceClip, fps: number): boolean {
+  if (voice.frozen) {
+    const frame = frameIndexAt(voice.startTime, fps)
+    return frame >= frameIndexAt(clip.start, fps) && frame < frameIndexAt(clip.end, fps)
+  }
   return voice.startTime >= clip.start && voice.startTime < clip.end
 }
 
-/** Places clips whose startTime is in [clip.start, clip.end) on the output timeline. Frozen: the output start of the hold segment whose srcTime is on the clip's frame. Playing: output time of its source time (through play segments' speed). duration is cut at the output's end; a clip left with < 0.05 s is dropped. duck is true for playing clips. */
+/** Places clips inside the clip (inClip) on the output timeline. Frozen: the output start of the hold segment whose srcTime is on the clip's frame. Playing: output time of its source time (through play segments' speed). duration is cut at the output's end; a clip left with < 0.05 s is dropped. duck is true for playing clips. */
 export function placeVoice(segments: OutputSegment[], clip: Pick<Clip, 'start' | 'end'>, voiceClips: VoiceClip[], fps: number): VoicePlacement[] {
   const starts: number[] = []
   let total = 0
@@ -72,7 +78,7 @@ export function placeVoice(segments: OutputSegment[], clip: Pick<Clip, 'start' |
 
   const placements: VoicePlacement[] = []
   for (const voice of voiceClips) {
-    if (!inClip(clip, voice)) continue
+    if (!inClip(clip, voice, fps)) continue
     const outStart = outStartOf(voice)
     if (outStart === null) continue
     const duration = Math.min(voice.duration, total - outStart)
@@ -82,8 +88,8 @@ export function placeVoice(segments: OutputSegment[], clip: Pick<Clip, 'start' |
   return placements
 }
 
-export function voiceLimitError(clip: Pick<Clip, 'start' | 'end'>, voiceClips: VoiceClip[]): string | null {
-  const count = voiceClips.filter((voice) => inClip(clip, voice)).length
+export function voiceLimitError(clip: Pick<Clip, 'start' | 'end'>, voiceClips: VoiceClip[], fps: number): string | null {
+  const count = voiceClips.filter((voice) => inClip(clip, voice, fps)).length
   return count > MAX_VOICE_CLIPS_PER_CLIP ? `Too many voice clips in this clip (max ${MAX_VOICE_CLIPS_PER_CLIP})` : null
 }
 

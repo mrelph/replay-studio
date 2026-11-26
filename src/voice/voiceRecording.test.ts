@@ -4,6 +4,7 @@ import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVoiceStore } from '@/stores/voiceStore'
 import { useAppStore } from '@/stores/appStore'
+import { timeForFrame } from '@/utils/frames'
 import type { VoiceRecorder } from './recorder'
 import {
   beginVoiceRecording,
@@ -313,6 +314,149 @@ describe('voice recording', () => {
     video.currentTime = 5
     video.dispatchEvent(new Event('seeking'))
     expect(useVoiceRecording.getState().recording).toBeNull()
+  })
+
+  it('a frozen clip on a frame without a freeze is recorded at the frame\'s seek time', async () => {
+    setup(new FakeVideo(true, 2.51))
+    await beginVoiceRecording()
+    expect(useVoiceRecording.getState().recording!.startTime).toBe(timeForFrame(75, 30))
+  })
+
+  function slowMicrophone(ms: number) {
+    window.electronAPI = { requestMicrophone: () => new Promise((r) => setTimeout(() => r(true), ms)) } as never
+  }
+  afterEach(() => {
+    delete (window as { electronAPI?: unknown }).electronAPI
+  })
+
+  it('a playing clip starts where the video is once the microphone is ready', async () => {
+    const video = new FakeVideo(false, 1)
+    setup(video)
+    slowMicrophone(300)
+    const pending = beginVoiceRecording()
+    video.currentTime = 1.3
+    await vi.advanceTimersByTimeAsync(300)
+    await pending
+    expect(useVoiceRecording.getState().recording).toMatchObject({ frozen: false, startTime: 1.3 })
+  })
+
+  it('a frozen clip takes the frame showing once the microphone is ready', async () => {
+    const video = new FakeVideo(true, 2)
+    setup(video)
+    slowMicrophone(300)
+    const pending = beginVoiceRecording()
+    video.currentTime = timeForFrame(61, 30)
+    await vi.advanceTimersByTimeAsync(300)
+    await pending
+    expect(useVoiceRecording.getState().recording!.startTime).toBe(timeForFrame(61, 30))
+  })
+
+  it.each([
+    ['a pause during the wait of a playing recording', false],
+    ['a play during the wait of a frozen recording', true],
+  ])('%s cancels it', async (_name, paused) => {
+    const video = new FakeVideo(paused, 2)
+    setup(video)
+    slowMicrophone(300)
+    const pending = beginVoiceRecording()
+    video.paused = !paused
+    await vi.advanceTimersByTimeAsync(300)
+    await pending
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(recorders[0].cancel).toHaveBeenCalled()
+    expect(toast).toHaveBeenCalledWith('info', 'Recording cancelled: playback changed while the microphone was starting')
+  })
+
+  it('a playing recording runs on through the player\'s hold pause and hold seek, and a user pause after ends it', async () => {
+    const video = new FakeVideo(false, 1)
+    setup(video)
+    useVideoStore.setState({ autoHold: null })
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(500)
+    useVideoStore.getState().beginAutoHold(1.5)
+    video.currentTime = 1.5
+    video.dispatchEvent(new Event('seeking'))
+    video.paused = true
+    video.dispatchEvent(new Event('pause'))
+    expect(useVoiceRecording.getState().recording).not.toBeNull()
+    vi.advanceTimersByTime(1000)
+    useVideoStore.getState().endAutoHold()
+    video.paused = false
+    video.dispatchEvent(new Event('play'))
+    vi.advanceTimersByTime(500)
+    video.paused = true
+    video.dispatchEvent(new Event('pause'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(useVoiceStore.getState().clips[0]).toMatchObject({ startTime: 1, duration: 2, frozen: false })
+    useVideoStore.setState({ autoHold: null })
+  })
+
+  it('a playing recording ends on a seek that is not the hold\'s own', async () => {
+    const video = new FakeVideo(false, 1)
+    setup(video)
+    useVideoStore.setState({ autoHold: null })
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    video.currentTime = 0.5
+    video.dispatchEvent(new Event('seeking'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(useVoiceStore.getState().clips).toHaveLength(1)
+  })
+
+  it('a seek to another frame during a hold ends a playing recording', async () => {
+    const video = new FakeVideo(false, 1)
+    setup(video)
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    useVideoStore.getState().beginAutoHold(1.5)
+    video.currentTime = 4
+    video.dispatchEvent(new Event('seeking'))
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    useVideoStore.setState({ autoHold: null })
+  })
+
+  it('is refused during forward shuttle', async () => {
+    setup(new FakeVideo(false, 1))
+    useVideoStore.setState({ shuttleBaseRate: 1 })
+    await beginVoiceRecording()
+    expect(started).toBe(0)
+  })
+
+  it.each([
+    ['reverse', { reverseRate: 1 }],
+    ['forward shuttle', { shuttleBaseRate: 1 }],
+  ])('a playing recording ends when %s starts', async (_name, patch) => {
+    setup(new FakeVideo(false, 1))
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    useVideoStore.setState(patch)
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    useVideoStore.setState({ reverseRate: 0, shuttleBaseRate: null })
+  })
+
+  it('slow-motion recording does not start while a voice recording runs', async () => {
+    setup(new FakeVideo(false, 1))
+    await beginVoiceRecording()
+    useVideoStore.getState().beginSlowRecording()
+    expect(useVideoStore.getState().slowRecording).toBeNull()
+    cancelVoiceRecording()
+    useVideoStore.getState().beginSlowRecording()
+    expect(useVideoStore.getState().slowRecording).not.toBeNull()
+    useVideoStore.setState({ slowRecording: null })
+  })
+
+  it.each([
+    ['MacIntel', 'Microphone access is off. Allow Replay Studio in System Settings > Privacy & Security > Microphone.'],
+    ['Win32', 'Microphone not available'],
+  ])('a refused microphone on %s says %s', async (platform, message) => {
+    const spy = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
+    setup(new FakeVideo(false, 1))
+    window.electronAPI = { requestMicrophone: async () => false } as never
+    await beginVoiceRecording()
+    spy.mockRestore()
+    expect(toast).toHaveBeenCalledWith('error', message)
   })
 
   it('unloading the video cancels the recording', async () => {

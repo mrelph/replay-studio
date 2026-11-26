@@ -178,6 +178,41 @@ describe('playVoice', () => {
     expect(FakeAudio.made[1].paused).toBe(true)
   })
 
+  it('lets playing clips overlap, each ending on its own', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    playVoice('v1', first, 'play')
+    playVoice('v2', second, 'play')
+    expect(FakeAudio.made.map((a) => a.paused)).toEqual([false, false])
+    FakeAudio.made[0].dispatchEvent(new Event('ended'))
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).not.toHaveBeenCalled()
+  })
+
+  it('a hold voice or a preview leaves the playing clips sounding; each replaces its own channel only', () => {
+    playVoice('v1', undefined, 'play')
+    playVoice('v2', undefined, 'hold')
+    playVoice('v1', undefined, 'preview')
+    expect(FakeAudio.made.map((a) => a.paused)).toEqual([false, false, false])
+    playVoice('v2', undefined, 'hold')
+    expect(FakeAudio.made.map((a) => a.paused)).toEqual([false, true, false, false])
+    playVoice('v2')
+    expect(FakeAudio.made.map((a) => a.paused)).toEqual([false, true, true, false, false])
+    stopVoice('preview')
+    expect(FakeAudio.made[4].paused).toBe(true)
+    expect(FakeAudio.made[0].paused).toBe(false)
+  })
+
+  it('stopVoice with no channel stops every clip', () => {
+    const ends = [vi.fn(), vi.fn(), vi.fn()]
+    playVoice('v1', ends[0], 'play')
+    playVoice('v2', ends[1], 'play')
+    playVoice('v1', ends[2], 'hold')
+    stopVoice()
+    expect(FakeAudio.made.every((a) => a.paused)).toBe(true)
+    ends.forEach((end) => expect(end).toHaveBeenCalledTimes(1))
+  })
+
   it('ends at once when the clip has no audio', () => {
     const onEnd = vi.fn()
     playVoice('missing', onEnd)

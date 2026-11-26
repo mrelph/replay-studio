@@ -84,11 +84,14 @@ export function setVoicePlayerFactory(factory: PlayerFactory | null): void {
   playerFactory = factory ?? defaultFactory
 }
 
-let stopCurrent: (() => void) | null = null
+/** 'play': clips over moving video, several may overlap. 'hold': the frame's voice during a hold, one at a time. 'preview': click-to-hear, one at a time. */
+export type VoiceChannel = 'play' | 'hold' | 'preview'
 
-/** Plays a clip's audio from the start; returns a stop function. One clip at a time: starting another stops the first. `onEnd` runs once, when the clip ends, fails or is stopped. */
-export function playVoice(id: string, onEnd?: () => void): () => void {
-  stopVoice()
+const playing = new Set<{ channel: VoiceChannel; stop: () => void }>()
+
+/** Plays a clip's audio from the start on `channel`; returns a stop function. Starting a 'hold' or 'preview' clip stops the one already on that channel; 'play' clips overlap. `onEnd` runs once, when the clip ends, fails or is stopped. */
+export function playVoice(id: string, onEnd?: () => void, channel: VoiceChannel = 'preview'): () => void {
+  if (channel !== 'play') stopVoice(channel)
   const url = voiceAudioUrl(id)
   if (!url) {
     onEnd?.()
@@ -101,7 +104,7 @@ export function playVoice(id: string, onEnd?: () => void): () => void {
     done = true
     audio.removeEventListener('ended', finish)
     audio.removeEventListener('error', finish)
-    if (stopCurrent === stop) stopCurrent = null
+    playing.delete(entry)
     onEnd?.()
   }
   const stop = () => {
@@ -109,14 +112,16 @@ export function playVoice(id: string, onEnd?: () => void): () => void {
     audio.pause()
     finish()
   }
+  const entry = { channel, stop }
   audio.addEventListener('ended', finish)
   audio.addEventListener('error', finish)
-  stopCurrent = stop
+  playing.add(entry)
   const played = audio.play()
   if (played) played.catch(finish)
   return stop
 }
 
-export function stopVoice(): void {
-  stopCurrent?.()
+/** Stops the clips on `channel`, or every clip when no channel is given. */
+export function stopVoice(channel?: VoiceChannel): void {
+  for (const entry of [...playing]) if (!channel || entry.channel === channel) entry.stop()
 }

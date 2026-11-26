@@ -11,6 +11,8 @@ import { buildSpeedSteps, speedAt, type SpeedRegionLike, type SpeedStep } from '
 export interface FreezeAnnotationLike {
   startTime: number
   freezeDuration?: number
+  /** Set on frozen voice entries: inside the clip by frame at this rate, and held no earlier than clip.start. */
+  frameFps?: number
 }
 
 export interface OutputTimelineResult {
@@ -56,11 +58,16 @@ export function buildOutputTimeline(
   for (const annotation of annotations) {
     const freezeDuration = annotation.freezeDuration
     if (!freezeDuration || freezeDuration <= 0) continue
-    if (annotation.startTime < clip.start || annotation.startTime >= clip.end) continue
+    let startTime = annotation.startTime
+    if (annotation.frameFps !== undefined) {
+      const frame = frameIndexAt(startTime, annotation.frameFps)
+      if (frame < frameIndexAt(clip.start, annotation.frameFps) || frame >= frameIndexAt(clip.end, annotation.frameFps)) continue
+      startTime = Math.max(startTime, clip.start)
+    } else if (annotation.startTime < clip.start || annotation.startTime >= clip.end) continue
 
-    const existing = holdDurationByTime.get(annotation.startTime)
+    const existing = holdDurationByTime.get(startTime)
     holdDurationByTime.set(
-      annotation.startTime,
+      startTime,
       existing === undefined ? freezeDuration : Math.max(existing, freezeDuration)
     )
   }

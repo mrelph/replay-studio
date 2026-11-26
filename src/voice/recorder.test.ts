@@ -150,6 +150,32 @@ describe('startVoiceRecorder', () => {
     vi.useRealTimers()
   })
 
+  it('keeps the delivered audio when an error is followed by no stop', async () => {
+    vi.useFakeTimers()
+    const rec = new FakeMediaRecorder()
+    rec.stop = () => {
+      rec.state = 'inactive'
+    }
+    const { recorder } = await started(rec)
+    rec.ondataavailable?.({ data: new Blob(['abcd']) })
+    rec.onerror?.()
+    const result = recorder.stop()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect((await result)?.blob.size).toBe(4)
+    vi.useRealTimers()
+  })
+
+  it('keeps the delivered audio when recorder.stop() throws', async () => {
+    const rec = new FakeMediaRecorder()
+    rec.stop = () => {
+      throw new Error('boom')
+    }
+    const { recorder, track } = await started(rec)
+    rec.ondataavailable?.({ data: new Blob(['ab']) })
+    expect((await recorder.stop())?.blob.size).toBe(2)
+    expect(track.stop).toHaveBeenCalled()
+  })
+
   it('does not report anything after cancel()', async () => {
     const rec = new FakeMediaRecorder()
     const { recorder, track, onEnded } = await started(rec)

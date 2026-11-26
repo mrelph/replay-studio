@@ -39,7 +39,7 @@ export async function startVoiceRecorder(deps: VoiceRecorderDeps = {}): Promise<
       if (recorder.state !== 'inactive') recorder.stop()
     } catch {
       release()
-      resolveDone(null)
+      resolveWithChunks()
     }
   }
 
@@ -47,6 +47,10 @@ export async function startVoiceRecorder(deps: VoiceRecorderDeps = {}): Promise<
   const done = new Promise<{ blob: Blob; mime: string } | null>((resolve) => {
     resolveDone = resolve
   })
+  const resolveWithChunks = () => {
+    const mime = recorder.mimeType || chunks[0]?.type || 'audio/webm'
+    resolveDone(chunks.length > 0 ? { blob: new Blob(chunks, { type: mime }), mime } : null)
+  }
 
   recorder.ondataavailable = (event: BlobEvent) => {
     if (event.data && event.data.size > 0) chunks.push(event.data)
@@ -54,8 +58,7 @@ export async function startVoiceRecorder(deps: VoiceRecorderDeps = {}): Promise<
   recorder.onstop = () => {
     if (errorTimer !== null) clearTimeout(errorTimer)
     release()
-    const mime = recorder.mimeType || chunks[0]?.type || 'audio/webm'
-    resolveDone(chunks.length > 0 ? { blob: new Blob(chunks, { type: mime }), mime } : null)
+    resolveWithChunks()
     notifyEnded()
   }
   recorder.onerror = () => {
@@ -64,7 +67,7 @@ export async function startVoiceRecorder(deps: VoiceRecorderDeps = {}): Promise<
     if (errorTimer === null) {
       errorTimer = setTimeout(() => {
         release()
-        resolveDone(null)
+        resolveWithChunks()
       }, 1000)
     }
   }

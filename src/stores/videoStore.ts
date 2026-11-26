@@ -87,6 +87,12 @@ export function setSlowRegionSink(sink: ((region: SpeedRegion) => void) | null) 
   placeSlowRegion = sink
 }
 
+// voiceRecording imports this store, so it registers how to tell that a voice recording is running.
+let voiceRecordingRunning: () => boolean = () => false
+export function setVoiceRecordingProbe(probe: (() => boolean) | null) {
+  voiceRecordingRunning = probe ?? (() => false)
+}
+
 // HTMLVideoElement can't play backwards, so reverse shuttle is a seek loop:
 // each animation frame, once the previous seek has landed, jump back by the
 // wall-clock time elapsed × rate. Choppy on long-GOP footage but real-time.
@@ -180,7 +186,7 @@ export const useVideoStore = create<VideoState>((set, get) => ({
 
   beginSlowRecording: () => {
     const { videoElement, reverseRate, slowRecording } = get()
-    if (!videoElement || videoElement.paused || reverseRate > 0 || slowRecording) return
+    if (!videoElement || videoElement.paused || reverseRate > 0 || slowRecording || voiceRecordingRunning()) return
     set({ slowRecording: { startSrc: videoElement.currentTime, at: performance.now(), speed: DEFAULT_REGION_SPEED } })
   },
   endSlowRecording: (endSrc) => {

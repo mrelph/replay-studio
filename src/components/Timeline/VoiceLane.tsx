@@ -31,7 +31,7 @@ export default function VoiceLane({ duration, topClass }: { duration: number; to
       aria-label="Voice lane"
       onClick={() => {
         useVoiceStore.getState().select(null)
-        stopVoice()
+        stopVoice('preview')
       }}
     >
       {clips.map((clip) => {

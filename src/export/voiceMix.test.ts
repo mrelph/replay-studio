@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { OutputSegment } from '@/types/clip'
 import type { VoiceClip } from '@/types/voice'
+import { timeForFrame } from '@/utils/frames'
 import { buildOutputTimeline } from './outputTimeline'
 import { alignVoiceToCarriers, buildVoiceMix, placeVoice, voiceLimitError, withVoiceFreezes } from './voiceMix'
 
@@ -30,6 +31,33 @@ describe('timeline holds from frozen voice clips', () => {
     const annotations = [carrier, { startTime: 6, freezeDuration: 0.5 }]
     const clip = { start: 1, end: 9 }
     expect(buildOutputTimeline(clip, withVoiceFreezes(annotations, [], 30), 30)).toEqual(buildOutputTimeline(clip, annotations, 30))
+  })
+
+  it('aligns to a carrier whose freeze is 0, as the app does', () => {
+    const zero = { startTime: 3.02, freezeDuration: 0, toolType: 'freeze' }
+    expect(alignVoiceToCarriers([zero], [voice('v', 3.0005, 2, true)], 30)[0].startTime).toBe(3.02)
+    const { segments } = buildOutputTimeline({ start: 0, end: 10 }, withVoiceFreezes([zero], [voice('v', 3.0005, 2, true)], 30), 30)
+    expect(segments).toContainEqual({ kind: 'hold', srcTime: 3.02, duration: 2 })
+  })
+
+  it.each([
+    ['the frame start', 2],
+    ['the frame seek time', timeForFrame(60, 30)],
+  ])('a frozen clip at %s on the in-point\'s own frame is held and placed', (_name, startTime) => {
+    const clip = { start: 2.01, end: 5 }
+    const frozen = [voice('v', startTime, 1.5, true)]
+    const { segments } = buildOutputTimeline(clip, withVoiceFreezes([], frozen, 30), 30)
+    expect(segments[0]).toEqual({ kind: 'hold', srcTime: 2.01, duration: 1.5 })
+    expect(placeVoice(segments, clip, frozen, 30)).toEqual([{ id: 'v', outStart: 0, duration: 1.5, duck: false }])
+    expect(voiceLimitError(clip, Array.from({ length: 41 }, () => frozen[0]), 30)).not.toBeNull()
+  })
+
+  it('a frozen clip on the out-point\'s frame is left out', () => {
+    const clip = { start: 0, end: 5.01 }
+    const frozen = [voice('v', 5, 1, true)]
+    const { segments } = buildOutputTimeline(clip, withVoiceFreezes([], frozen, 30), 30)
+    expect(segments).toEqual([{ kind: 'play', srcStart: 0, srcEnd: 5.01 }])
+    expect(placeVoice(segments, clip, frozen, 30)).toEqual([])
   })
 
   it('moves only frozen clips onto their frame\'s carrier', () => {
@@ -105,9 +133,9 @@ describe('placeVoice', () => {
 describe('voiceLimitError', () => {
   it('allows 40 clips in a clip and refuses 41', () => {
     const clips = (n: number) => Array.from({ length: n }, (_, i) => voice(`v${i}`, i * 0.5, 0.4, false))
-    expect(voiceLimitError({ start: 0, end: 30 }, clips(40))).toBeNull()
-    expect(voiceLimitError({ start: 0, end: 30 }, clips(41))).toBe('Too many voice clips in this clip (max 40)')
-    expect(voiceLimitError({ start: 25, end: 30 }, clips(41))).toBeNull()
+    expect(voiceLimitError({ start: 0, end: 30 }, clips(40), 30)).toBeNull()
+    expect(voiceLimitError({ start: 0, end: 30 }, clips(41), 30)).toBe('Too many voice clips in this clip (max 40)')
+    expect(voiceLimitError({ start: 25, end: 30 }, clips(41), 30)).toBeNull()
   })
 })
 

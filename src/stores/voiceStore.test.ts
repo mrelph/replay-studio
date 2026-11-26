@@ -101,6 +101,26 @@ describe('voice store undo', () => {
     expect(useVoiceStore.getState().selectedId).toBeNull()
   })
 
+  it('a clip added while an undo is being restored is kept, and undo removes it', async () => {
+    useVoiceStore.getState().add(clip('a', 1), blob('a'))
+    const canvas = useDrawingStore.getState().canvas!
+    const load = canvas.loadFromJSON.bind(canvas)
+    let finish = () => {}
+    canvas.loadFromJSON = ((json: unknown, callback: () => void) => {
+      finish = () => load(json, callback)
+      return canvas
+    }) as never
+    undo()
+    expect(useDrawingStore.getState().isRestoring).toBe(true)
+    useVoiceStore.getState().add(clip('b', 5, false), blob('b'))
+    finish()
+    canvas.loadFromJSON = load as never
+    await Promise.resolve()
+    expect(ids()).toEqual(['b'])
+    undo()
+    expect(ids()).toEqual([])
+  })
+
   it('replaceAll pushes no history', () => {
     useVoiceStore.getState().replaceAll([clip('a', 1)])
     expect(useDrawingStore.getState().undoStack.length).toBe(0)

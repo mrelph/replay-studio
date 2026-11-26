@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import { toast } from '@/components/ui/Toast'
-import { useVideoStore } from '@/stores/videoStore'
+import { useVideoStore, setVoiceRecordingProbe } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVoiceStore } from '@/stores/voiceStore'
 import { useAppStore } from '@/stores/appStore'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 import { MAX_VOICE_SECONDS, MIN_VOICE_SECONDS, newVoiceClipId } from '@/utils/voiceClips'
-import { frameIndexAt } from '@/utils/frames'
+import { frameIndexAt, timeForFrame } from '@/utils/frames'
 import { useShortcutsStore, bindingToString } from '@/stores/shortcutsStore'
 import { startVoiceRecorder, type VoiceRecorder } from './recorder'
 
@@ -17,6 +17,7 @@ interface RecordingState {
 }
 
 const PERMISSION_WAIT_MS = 500
+const MAC_MICROPHONE_OFF = 'Microphone access is off. Allow Replay Studio in System Settings > Privacy & Security > Microphone.'
 
 export const useVoiceRecording = create<{ recording: RecordingState | null }>(() => ({ recording: null }))
 
@@ -39,6 +40,24 @@ let endRequested = false
 let detach: (() => void) | null = null
 let limitTimer: ReturnType<typeof setTimeout> | null = null
 
+setVoiceRecordingProbe(() => starting || active !== null)
+
+function isMac(): boolean {
+  return typeof navigator !== 'undefined' && /mac/i.test(navigator.platform ?? '')
+}
+
+/** A frozen clip's time on `time`'s frame: its freeze carrier's startTime, else the time a freeze marker on that frame gets. */
+function frozenStartTime(time: number, fps: number): number {
+  const carrier = findFreezeCarrierAt(useDrawingStore.getState().annotations as never, time, fps)
+  return carrier ? carrier.startTime : timeForFrame(frameIndexAt(time, fps), fps)
+}
+
+/** True while the player holds a freeze frame by itself (its own pause and seek). */
+function inAutoHold(): boolean {
+  const hold = useVideoStore.getState().autoHold
+  return hold !== null && hold.endedAt === null
+}
+
 function teardown() {
   detach?.()
   detach = null
@@ -51,23 +70,40 @@ function attach(video: HTMLVideoElement, frozen: boolean, startTime: number) {
   const startFrame = frameIndexAt(startTime, fps)
   const end = () => void endVoiceRecording()
   const onSeeking = () => {
-    if (frameIndexAt(video.currentTime, useVideoStore.getState().fps) !== startFrame) end()
+    const { fps: rate, autoHold } = useVideoStore.getState()
+    const frame = frameIndexAt(video.currentTime, rate)
+    if (frozen) {
+      if (frame !== startFrame) end()
+      return
+    }
+    // A playing recording runs on through the player's own hold, as the export's voice does.
+    if (autoHold && inAutoHold() && frame === frameIndexAt(autoHold.time, rate)) return
+    end()
+  }
+  const onPause = () => {
+    if (!inAutoHold()) end()
   }
   const unsubscribeStore = useVideoStore.subscribe((state, previous) => {
-    if (state.videoElement !== previous.videoElement) cancelVoiceRecording()
+    if (state.videoElement !== previous.videoElement) {
+      cancelVoiceRecording()
+      return
+    }
+    const reverseBegan = state.reverseRate > 0 && previous.reverseRate === 0
+    const shuttleBegan = state.shuttleBaseRate !== null && previous.shuttleBaseRate === null
+    if (!frozen && (reverseBegan || shuttleBegan)) end()
   })
   if (frozen) {
     video.addEventListener('play', end)
-    video.addEventListener('seeking', onSeeking)
   } else {
-    video.addEventListener('pause', end)
+    video.addEventListener('pause', onPause)
     video.addEventListener('ended', end)
   }
+  video.addEventListener('seeking', onSeeking)
   detach = () => {
     unsubscribeStore()
     video.removeEventListener('play', end)
     video.removeEventListener('seeking', onSeeking)
-    video.removeEventListener('pause', end)
+    video.removeEventListener('pause', onPause)
     video.removeEventListener('ended', end)
   }
 }
@@ -75,18 +111,12 @@ function attach(video: HTMLVideoElement, frozen: boolean, startTime: number) {
 export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'): Promise<void> {
   if (starting || active) return
   const video = useVideoStore.getState()
-  const { videoElement, reverseRate, slowRecording, fps } = video
-  if (!videoElement || reverseRate > 0 || slowRecording || useAppStore.getState().exportRunning) return
+  const { videoElement, reverseRate, shuttleBaseRate, slowRecording } = video
+  if (!videoElement || reverseRate > 0 || shuttleBaseRate !== null || slowRecording || useAppStore.getState().exportRunning) return
 
   const frozen = videoElement.paused
-  let startTime: number
-  if (frozen) {
-    const captured = video.captureDrawFrame()
-    const carrier = findFreezeCarrierAt(useDrawingStore.getState().annotations as never, captured, fps)
-    startTime = carrier ? carrier.startTime : captured
-  } else {
-    startTime = videoElement.currentTime
-  }
+  // Taking the frame ends any automatic hold, so the player does not resume while the microphone starts.
+  if (frozen) video.captureDrawFrame()
 
   starting = true
   startingSource = source
@@ -94,17 +124,21 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
   releasedWhileStarting = false
   let recorder: VoiceRecorder
   let waitedForPermission = false
+  let denied = false
   try {
     const askedAt = Date.now()
     const granted = await window.electronAPI?.requestMicrophone?.()
     waitedForPermission = Date.now() - askedAt > PERMISSION_WAIT_MS
-    if (granted === false) throw new Error('Microphone access denied')
+    if (granted === false) {
+      denied = true
+      throw new Error('Microphone access denied')
+    }
     recorder = await recorderFactory(() => {
       if (active === recorder) void endVoiceRecording(undefined, true)
     })
   } catch {
     starting = false
-    toast('error', 'Microphone not available')
+    toast('error', denied && isMac() ? MAC_MICROPHONE_OFF : 'Microphone not available')
     return
   }
   starting = false
@@ -117,6 +151,13 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
     }
     return
   }
+  if (videoElement.paused !== frozen) {
+    recorder.cancel()
+    toast('info', 'Recording cancelled: playback changed while the microphone was starting')
+    return
+  }
+  // Read now, not before the wait: the clip starts where the microphone did (the frame may also have been stepped).
+  const startTime = frozen ? frozenStartTime(videoElement.currentTime, useVideoStore.getState().fps) : videoElement.currentTime
   active = recorder
   activeSource = source
   useVoiceRecording.setState({ recording: { startedAt: Date.now(), startTime, frozen } })

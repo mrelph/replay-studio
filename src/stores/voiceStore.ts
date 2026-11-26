@@ -16,6 +16,20 @@ function readDuck(): VoiceDuck {
   }
 }
 
+/** Runs `apply` now, or once an undo/redo restore has finished: the restore overwrites clips, and saveState skips while it runs. */
+function afterRestore(apply: () => void) {
+  if (!useDrawingStore.getState().isRestoring) {
+    apply()
+    return
+  }
+  const unsubscribe = useDrawingStore.subscribe((state) => {
+    if (state.isRestoring) return
+    unsubscribe()
+    // The restore puts back its clips right after clearing isRestoring.
+    queueMicrotask(() => afterRestore(apply))
+  })
+}
+
 interface VoiceState {
   clips: VoiceClip[]
   selectedId: string | null
@@ -32,25 +46,27 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   selectedId: null,
   duck: readDuck(),
 
-  add: (clip, audio) => {
-    const state = get()
-    const { fps } = useVideoStore.getState()
-    const replaced = clip.frozen ? frozenVoiceAt(state.clips, clip.startTime, fps) : undefined
-    useDrawingStore.getState().saveState()
-    setVoiceAudio(clip.id, audio)
-    const clips = [...state.clips.filter((c) => c !== replaced), clip].sort((a, b) => a.startTime - b.startTime)
-    set({ clips, selectedId: replaced && state.selectedId === replaced.id ? null : state.selectedId })
-  },
+  add: (clip, audio) =>
+    afterRestore(() => {
+      const state = get()
+      const { fps } = useVideoStore.getState()
+      const replaced = clip.frozen ? frozenVoiceAt(state.clips, clip.startTime, fps) : undefined
+      useDrawingStore.getState().saveState()
+      setVoiceAudio(clip.id, audio)
+      const clips = [...state.clips.filter((c) => c !== replaced), clip].sort((a, b) => a.startTime - b.startTime)
+      set({ clips, selectedId: replaced && state.selectedId === replaced.id ? null : state.selectedId })
+    }),
 
-  remove: (id) => {
-    const state = get()
-    if (!state.clips.some((c) => c.id === id)) return
-    useDrawingStore.getState().saveState()
-    set({
-      clips: state.clips.filter((c) => c.id !== id),
-      selectedId: state.selectedId === id ? null : state.selectedId,
-    })
-  },
+  remove: (id) =>
+    afterRestore(() => {
+      const state = get()
+      if (!state.clips.some((c) => c.id === id)) return
+      useDrawingStore.getState().saveState()
+      set({
+        clips: state.clips.filter((c) => c.id !== id),
+        selectedId: state.selectedId === id ? null : state.selectedId,
+      })
+    }),
 
   select: (id) => set({ selectedId: id }),
 

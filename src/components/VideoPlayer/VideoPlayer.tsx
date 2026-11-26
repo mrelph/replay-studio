@@ -83,17 +83,21 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       setDuration(video.duration)
     }
 
-    // While a playing clip is heard the game sound is lowered; the store's volume is left alone.
+    // While any playing clip is heard the game sound is lowered; the store's volume is left alone.
     let duckGain: number | null = null
+    let playingVoices = 0
     const restoreVolume = () => {
       duckGain = null
       video.volume = useVideoStore.getState().volume
     }
     const startPlayingVoice = (id: string) => {
-      stopVoice()
       duckGain = DUCK_GAIN[useVoiceStore.getState().duck]
       video.volume = useVideoStore.getState().volume * duckGain
-      playVoice(id, restoreVolume)
+      playingVoices += 1
+      playVoice(id, () => {
+        playingVoices -= 1
+        if (playingVoices === 0) restoreVolume()
+      }, 'play')
     }
     const startVoiceOnFrame = () => {
       const { reverseRate, shuttleBaseRate, fps } = useVideoStore.getState()
@@ -120,7 +124,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       if (hold.voiceId) {
         const stop = playVoice(hold.voiceId, () => {
           if (holdVoiceStopRef.current === stop) holdVoiceStopRef.current = null
-        })
+        }, 'hold')
         holdVoiceStopRef.current = stop
       }
       freezeTimeoutRef.current = setTimeout(() => {
@@ -136,7 +140,10 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           return
         }
         isFreezeResumeRef.current = true
-        video.play()
+        // A resume that fails or never fires 'play' must not make the next user Play skip the frame's voice.
+        Promise.resolve(video.play()).catch(() => {}).finally(() => {
+          isFreezeResumeRef.current = false
+        })
       }, hold.seconds * 1000)
     }
 
@@ -179,7 +186,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           if (skip && (fired?.time ?? curTime) >= skip.startTime) playStartRef.current = null
           if (crossed) startPlayingVoice(crossed.id)
         }
-        // After the clip, so a hold's own voice replaces it.
+        // After the clip: both sound, as in the export.
         if (fired) startHold(fired)
       }
       lastTimeRef.current = video.currentTime
