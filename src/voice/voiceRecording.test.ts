@@ -3,6 +3,7 @@ import { toast } from '@/components/ui/Toast'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVoiceStore } from '@/stores/voiceStore'
+import { useAppStore } from '@/stores/appStore'
 import type { VoiceRecorder } from './recorder'
 import {
   beginVoiceRecording,
@@ -211,6 +212,18 @@ describe('voice recording', () => {
     setup(new FakeVideo(false, 1))
     useVideoStore.setState(patch)
     await beginVoiceRecording()
+    expect(started).toBe(0)
+    expect(useVoiceRecording.getState().recording).toBeNull()
+  })
+
+  it('is refused while an export runs', async () => {
+    setup(new FakeVideo(false, 1))
+    useAppStore.setState({ exportRunning: true })
+    try {
+      await beginVoiceRecording()
+    } finally {
+      useAppStore.setState({ exportRunning: false })
+    }
     expect(started).toBe(0)
     expect(useVoiceRecording.getState().recording).toBeNull()
   })

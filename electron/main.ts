@@ -34,6 +34,7 @@ import type {
   ReelStartResult,
 } from '../src/types/clip'
 import { UpdaterController, currentUpdateEnv, type AutoUpdaterLike } from './updater'
+import { validateVoiceMix } from './voiceMix'
 import {
   loadExportFolder,
   saveExportFolder,
@@ -878,6 +879,10 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
   ) {
     return { ok: false, error: 'Invalid reel part' }
   }
+  if (options.voice !== undefined) {
+    const voiceError = validateVoiceMix(options.voice)
+    if (voiceError) return { ok: false, error: `Encode denied: ${voiceError}` }
+  }
 
   let output: string | null = null
   if (!reel || reel.keep) {
@@ -900,7 +905,14 @@ ipcMain.handle('clip:encodeStart', async (event, options: ClipEncodeStartOptions
   if (reel) {
     const reserved = reserveReelPart(
       reel.reelId,
-      { sourcePath: source, width: options.width, height: options.height, fps: options.fps, quality: options.quality, hasAudio: probe.hasAudio },
+      {
+        sourcePath: source,
+        width: options.width,
+        height: options.height,
+        fps: options.fps,
+        quality: options.quality,
+        hasAudio: probe.hasAudio || options.voice !== undefined || options.forceAudio === true,
+      },
       options.frameCount,
       output
     )

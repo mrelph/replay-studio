@@ -4,6 +4,7 @@ import type { Annotation } from '@/stores/drawingStore'
 import type { VideoProbe } from '@/types/clip'
 import { computeMagnifierSampleRect, renderClip } from './clipRenderer'
 import { applyReveal } from './reveal'
+import { setVoiceAudio } from '@/voice/voiceAudio'
 
 describe('computeMagnifierSampleRect', () => {
   it('matches updateMagnifierContent\'s math when ref and video dims are equal (1:1, no scaling)', () => {
@@ -171,5 +172,76 @@ describe('renderClip speed regions', () => {
     })
     expect(result).toEqual({ success: false, error: 'Too many speed regions in this clip (max 40)' })
     expect(clipEncodeStart).not.toHaveBeenCalled()
+  })
+})
+
+describe('renderClip voice', () => {
+  const probe = { width: 64, height: 36, fps: 30, duration: 10, hasAudio: true }
+  const setup = () => {
+    const clipEncodeStart = vi.fn().mockResolvedValue({ ok: true, jobId: 'job' })
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        clipEncodeStart,
+        clipEncodeRun: vi.fn().mockResolvedValue({ success: true }),
+        clipEncodeCancel: vi.fn(),
+        onClipEncodeProgress: vi.fn(),
+        removeClipEncodeProgressListener: vi.fn(),
+      },
+    })
+    return clipEncodeStart
+  }
+  const run = (over: Partial<Parameters<typeof renderClip>[0]> = {}) =>
+    renderClip({
+      clip: { start: 0, end: 10 },
+      probe,
+      annotations: [],
+      includeDrawings: false,
+      quality: 'high',
+      outputPath: '/out.mp4',
+      sourcePath: '/src.mp4',
+      onProgress: () => {},
+      signal: new AbortController().signal,
+      ...over,
+    })
+  setVoiceAudio('frozen', { arrayBuffer: async () => new Uint8Array([7, 7]).buffer } as unknown as Blob)
+  const frozen = { id: 'frozen', startTime: 3.01, duration: 3, frozen: true, mime: 'audio/webm' }
+  const carrier = { id: 'f', startTime: 3, freezeDuration: 1, toolType: 'freeze' } as unknown as Annotation
+
+  it('lengthens the carrier\'s hold and sends the voice for MP4', async () => {
+    const start = setup()
+    expect(await run({ annotations: [carrier], voiceClips: [frozen], voiceDuck: 'off' })).toEqual({ success: true })
+    const sent = start.mock.calls[0][0]
+    expect(sent.segments).toEqual([
+      { kind: 'play', srcStart: 0, srcEnd: 3 },
+      { kind: 'hold', srcTime: 3, duration: 3 },
+      { kind: 'play', srcStart: 3, srcEnd: 10 },
+    ])
+    expect(sent.voice).toEqual({ tracks: [{ data: new Uint8Array([7, 7]), outStart: 3, duration: 3 }], duckWindows: [], duckGain: 0 })
+    expect(sent).not.toHaveProperty('forceAudio')
+  })
+
+  it('keeps the hold but sends no voice for GIF', async () => {
+    const start = setup()
+    await run({ voiceClips: [frozen], format: 'gif' })
+    const sent = start.mock.calls[0][0]
+    expect(sent.segments).toContainEqual({ kind: 'hold', srcTime: 3.01, duration: 3 })
+    expect(sent).not.toHaveProperty('voice')
+  })
+
+  it('sends neither voice nor forceAudio with no voice clips, and forceAudio only when asked', async () => {
+    const start = setup()
+    await run({ voiceClips: [] })
+    expect(start.mock.calls[0][0]).not.toHaveProperty('voice')
+    expect(start.mock.calls[0][0]).not.toHaveProperty('forceAudio')
+    await run({ forceAudio: true })
+    expect(start.mock.calls[1][0].forceAudio).toBe(true)
+  })
+
+  it('fails before encoding with more than 40 voice clips in the clip', async () => {
+    const start = setup()
+    const many = Array.from({ length: 41 }, (_, i) => ({ id: `v${i}`, startTime: i * 0.2, duration: 0.3, frozen: false, mime: 'audio/webm' }))
+    expect(await run({ voiceClips: many })).toEqual({ success: false, error: 'Too many voice clips in this clip (max 40)' })
+    expect(start).not.toHaveBeenCalled()
   })
 })

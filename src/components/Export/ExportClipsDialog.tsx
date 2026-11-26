@@ -3,10 +3,13 @@ import { CheckCircle2, XCircle, Loader2, AlertTriangle, Ban, Circle } from 'luci
 import { useClipStore } from '@/stores/clipStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useSpeedStore } from '@/stores/speedStore'
+import { useVoiceStore } from '@/stores/voiceStore'
+import { useAppStore } from '@/stores/appStore'
 import { Modal, Button, Select } from '@/components/ui'
 import { toast } from '@/components/ui/Toast'
 import { buildOutputTimeline, exportSpeedSteps } from '@/export/outputTimeline'
 import { renderClip } from '@/export/clipRenderer'
+import { withVoiceFreezes } from '@/export/voiceMix'
 import { saveEditableCopy as saveEditableCopyFiles } from '@/export/saveEditableCopy'
 import { buildClipBaseName, orderLabel } from '@/export/clipFilename'
 import { buildClipsCsv, type ClipCsvRow, type ClipCsvStatus } from '@/export/clipsCsv'
@@ -95,6 +98,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   const clips = useClipStore((s) => s.clips)
   const annotations = useDrawingStore((s) => s.annotations)
   const speedRegions = useSpeedStore((s) => s.regions)
+  const voiceClips = useVoiceStore((s) => s.clips)
 
   const { sourcePath, probe, error: probeError, loading: loadingProbe } = useVideoProbe(videoSrc)
 
@@ -136,8 +140,9 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
   const totalDuration = useMemo(() => {
     if (!probe) return 0
     const speedSteps = exportSpeedSteps(speedRegions, probe)
-    return selectedClips.reduce((sum, { clip }) => sum + buildOutputTimeline(clip, annotations, probe.fps, speedSteps).duration, 0)
-  }, [selectedClips, annotations, speedRegions, probe])
+    const freezes = withVoiceFreezes(annotations, voiceClips, probe.fps)
+    return selectedClips.reduce((sum, { clip }) => sum + buildOutputTimeline(clip, freezes, probe.fps, speedSteps).duration, 0)
+  }, [selectedClips, annotations, speedRegions, voiceClips, probe])
 
   const toggleClip = useCallback((id: string) => {
     setSelected((s) => ({ ...s, [id]: !s[id] }))
@@ -203,6 +208,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     abortControllerRef.current = controller
 
     setExporting(true)
+    useAppStore.getState().setExportRunning(true)
     setSummary(null)
     setStatuses(Object.fromEntries(selectedClips.map(({ clip }) => [clip.id, { kind: 'pending' } as ClipStatus])))
 
@@ -234,6 +240,8 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
           probe,
           annotations,
           speedRegions,
+          voiceClips: useVoiceStore.getState().clips,
+          voiceDuck: useVoiceStore.getState().duck,
           includeDrawings: burnIn,
           quality,
           outputPath,
@@ -298,6 +306,7 @@ export default function ExportClipsDialog({ onClose, videoSrc }: ExportClipsDial
     const finalSummary: ExportSummary = { exportedCount, failedCount, cancelledCount }
     setSummary(finalSummary)
     setExporting(false)
+    useAppStore.getState().setExportRunning(false)
     abortControllerRef.current = null
 
     // Write clips.csv for this run (even a partial one) so the coach has a

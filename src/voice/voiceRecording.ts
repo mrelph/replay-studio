@@ -3,6 +3,7 @@ import { toast } from '@/components/ui/Toast'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useVoiceStore } from '@/stores/voiceStore'
+import { useAppStore } from '@/stores/appStore'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 import { MAX_VOICE_SECONDS, MIN_VOICE_SECONDS, newVoiceClipId } from '@/utils/voiceClips'
 import { frameIndexAt } from '@/utils/frames'
@@ -73,7 +74,7 @@ export async function beginVoiceRecording(source: VoiceRecordingSource = 'key'):
   if (starting || active) return
   const video = useVideoStore.getState()
   const { videoElement, reverseRate, slowRecording, fps } = video
-  if (!videoElement || reverseRate > 0 || slowRecording) return
+  if (!videoElement || reverseRate > 0 || slowRecording || useAppStore.getState().exportRunning) return
 
   const frozen = videoElement.paused
   let startTime: number

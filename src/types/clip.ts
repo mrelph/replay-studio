@@ -84,7 +84,16 @@ export interface ClipEncodeStartOptions {
    * export at `outputPath` that the reel also uses.
    */
   reel?: ClipEncodeReelPart
+  /** Voice clips mixed over the audio (MP4 only); see src/export/voiceMix.ts. */
+  voice?: VoiceMix
+  /** Gives the output an audio stream (silence where there is none), so every part of a voiced reel has one. */
+  forceAudio?: boolean
 }
+
+/** One voice recording placed on the output timeline, in output seconds. */
+export interface VoiceTrack { data: Uint8Array; outStart: number; duration: number }
+/** Base audio is multiplied by `duckGain` inside `duckWindows` (output seconds). */
+export interface VoiceMix { tracks: VoiceTrack[]; duckWindows: { start: number; end: number }[]; duckGain: number }
 
 export interface ClipEncodeReelPart {
   reelId: string

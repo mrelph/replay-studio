@@ -35,6 +35,7 @@ import type {
   SpeedGrid,
   VideoProbe,
 } from '../src/types/clip'
+import { validateVoiceMix, voiceFilterParts } from './voiceMix'
 
 // ---------------------------------------------------------------------------
 // Probing
@@ -151,6 +152,12 @@ export function validateClipEncodeOptions(options: ClipEncodeStartOptions): stri
   if (options.format !== undefined && options.format !== 'mp4' && options.format !== 'gif') return 'Invalid format'
   if (options.format === 'gif' && fps > 15) return 'GIF frame rate must be at most 15 fps'
   if (options.reel && options.format === 'gif') return 'Reel parts must use MP4'
+  if (options.forceAudio !== undefined && typeof options.forceAudio !== 'boolean') return 'Invalid forceAudio'
+  if (options.voice !== undefined) {
+    if (options.format === 'gif') return 'Voice can only be mixed into MP4'
+    const voiceError = validateVoiceMix(options.voice)
+    if (voiceError) return voiceError
+  }
   if (!Array.isArray(segments) || segments.length === 0) {
     return 'Invalid segments: at least one required'
   }
@@ -342,6 +349,15 @@ export interface BuildClipEncodeFilterGraphInput {
   /** Present iff there is at least one overlay span (drawings are being burned in). */
   overlayConcatListPath?: string
   magnifiers: MagnifierOp[]
+  /** Voice recordings (files in the job's temp dir) mixed over the audio; see electron/voiceMix.ts. */
+  voice?: {
+    paths: string[]
+    tracks: { outStart: number; duration: number }[]
+    duckWindows: { start: number; end: number }[]
+    duckGain: number
+  }
+  /** Output an audio stream even when the source has none (silence). */
+  forceAudio?: boolean
 }
 
 /**
@@ -351,10 +367,10 @@ export interface BuildClipEncodeFilterGraphInput {
  * the concat demuxer. Pure — no I/O, fully testable.
  */
 export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInput): string[] {
-  const { outputPath, sourcePath, fps, frameCount, quality, hasAudio, overlayConcatListPath, magnifiers } = input
+  const { outputPath, sourcePath, fps, frameCount, quality, hasAudio, overlayConcatListPath, magnifiers, voice } = input
   const sourceFps = input.sourceFps ?? fps
   const isGif = input.format === 'gif'
-  const includeAudio = hasAudio && !isGif
+  const includeAudio = !isGif && (hasAudio || input.forceAudio === true || voice !== undefined)
   const segments = alignSegmentsToFrames(input.segments, sourceFps)
   const { crf, preset } = QUALITY_SETTINGS[quality]
   // With speed segments, count frames from the renderer's own (frame-start)
@@ -472,7 +488,7 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
   // --- Audio: same source input (seeked identically), so times use the same offset. ---
   if (includeAudio) {
     included.forEach(({ segment, i }) => {
-      if (segment.kind === 'play' && (segment.speed ?? 1) === 1) {
+      if (hasAudio && segment.kind === 'play' && (segment.speed ?? 1) === 1) {
         const start = segment.srcStart - seekOffset
         const end = segment.srcEnd - seekOffset
         filterParts.push(
@@ -490,13 +506,27 @@ export function buildClipEncodeFilterGraph(input: BuildClipEncodeFilterGraphInpu
       }
     })
     const aConcatInputs = included.map(({ i }) => `[a${i}]`).join('')
-    filterParts.push(`${aConcatInputs}concat=n=${included.length}:v=0:a=1[aout]`)
+    filterParts.push(`${aConcatInputs}concat=n=${included.length}:v=0:a=1[${voice ? 'abase' : 'aout'}]`)
+    if (voice) {
+      const firstVoiceInput = overlayConcatListPath ? 2 : 1
+      filterParts.push(
+        ...voiceFilterParts('abase', 'aout', {
+          tracks: voice.tracks.map((track, k) => ({ inputIndex: firstVoiceInput + k, ...track })),
+          duckWindows: voice.duckWindows,
+          duckGain: voice.duckGain,
+          totalDuration: frameCount / fps,
+        })
+      )
+    }
   }
 
   const args: string[] = ['-y', '-ss', fmt(seekOffset), '-i', sourcePath]
 
   if (overlayConcatListPath) {
     args.push('-f', 'concat', '-safe', '0', '-i', overlayConcatListPath)
+  }
+  if (includeAudio && voice) {
+    for (const voicePath of voice.paths) args.push('-i', voicePath)
   }
 
   args.push('-filter_complex', filterParts.join(';'))
@@ -698,6 +728,8 @@ interface EncodeJob {
   format: ClipExportFormat
   segments: OutputSegment[]
   hasAudio: boolean
+  forceAudio: boolean
+  voice: BuildClipEncodeFilterGraphInput['voice']
   tmpDir: string
   overlayPaths: string[]
   child: ChildProcessWithoutNullStreams | null
@@ -722,6 +754,23 @@ export async function startClipEncodeJob(
     return { ok: false, error: err instanceof Error ? err.message : 'Could not create a temp directory' }
   }
 
+  let voice: EncodeJob['voice']
+  if (options.voice) {
+    const paths = options.voice.tracks.map((_, n) => path.join(tmpDir, `voice-${n}.webm`))
+    try {
+      await Promise.all(options.voice.tracks.map((track, n) => fsp.writeFile(paths[n], track.data)))
+    } catch (err) {
+      await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+      return { ok: false, error: err instanceof Error ? err.message : 'Could not write the voice audio' }
+    }
+    voice = {
+      paths,
+      tracks: options.voice.tracks.map(({ outStart, duration }) => ({ outStart, duration })),
+      duckWindows: options.voice.duckWindows.map(({ start, end }) => ({ start, end })),
+      duckGain: options.voice.duckGain,
+    }
+  }
+
   const job: EncodeJob = {
     outputPath: options.outputPath,
     sourcePath: options.sourcePath,
@@ -734,6 +783,8 @@ export async function startClipEncodeJob(
     format: options.format ?? 'mp4',
     segments: options.segments,
     hasAudio,
+    forceAudio: options.forceAudio === true,
+    voice,
     tmpDir,
     overlayPaths: [],
     child: null,
@@ -849,6 +900,8 @@ export async function runClipEncodeJob(
     hasAudio: job.hasAudio,
     overlayConcatListPath,
     magnifiers: input.magnifiers,
+    ...(job.voice ? { voice: job.voice } : {}),
+    ...(job.forceAudio ? { forceAudio: true } : {}),
   })
   const scriptPath = path.join(job.tmpDir, 'filter_graph.txt')
   const { args, script } = withFilterScript(built, scriptPath)

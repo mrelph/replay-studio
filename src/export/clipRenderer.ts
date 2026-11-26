@@ -8,6 +8,9 @@ import { buildDrawingSpansWithinBudget, signatureKey, type DrawingSpan, type Spa
 import { applyReveal, stripReveal } from './reveal'
 import { prepareRebuiltObject } from '@/utils/calloutGeometry'
 import { buildMagnifierOps, computeMagnifierSampleRect, MAGNIFIER_ZOOM_LEVEL, type MagnifierAnnotationLike } from './magnifierOps'
+import { alignVoiceToCarriers, buildVoiceMix, placeVoice, voiceLimitError } from './voiceMix'
+import type { VoiceClip, VoiceDuck } from '@/types/voice'
+import { voiceFreezes } from '@/utils/voiceClips'
 
 // Re-exported for `clipRenderer.test.ts` and any other caller that imported
 // the magnifier math from this module before it moved to `magnifierOps.ts`.
@@ -24,6 +27,11 @@ export interface RenderClipOptions {
   annotations: Annotation[]
   /** Slow-motion regions from `useSpeedStore`, in source seconds. */
   speedRegions?: SpeedRegionLike[]
+  /** Voice clips from `useVoiceStore`; frozen ones lengthen their frame's hold, and MP4 mixes them in. */
+  voiceClips?: VoiceClip[]
+  voiceDuck?: VoiceDuck
+  /** MP4 only: give the output an audio stream even when it has none (every part of a voiced reel). */
+  forceAudio?: boolean
   includeDrawings: boolean
   quality: ClipExportQuality
   outputPath: string
@@ -126,8 +134,14 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
   const limitError = speedRegionLimitError(clip, speedRegions)
   if (limitError) return { success: false, error: limitError }
   const speedSteps = exportSpeedSteps(speedRegions, probe)
+  const voiceClips = alignVoiceToCarriers(annotations, opts.voiceClips ?? [], probe.fps)
+  const voiceError = voiceLimitError(clip, voiceClips)
+  if (voiceError) return { success: false, error: voiceError }
 
-  const { segments, frameCount } = buildOutputTimeline(clip, annotations, fps, speedSteps, probe.fps)
+  const { segments, frameCount } = buildOutputTimeline(clip, [...annotations, ...voiceFreezes(voiceClips)], fps, speedSteps, probe.fps)
+  const voice = format === 'mp4' && voiceClips.length > 0
+    ? await buildVoiceMix(placeVoice(segments, clip, voiceClips, probe.fps), opts.voiceDuck ?? 'low')
+    : undefined
 
   if (signal.aborted) return { success: false, error: 'Cancelled' }
 
@@ -142,6 +156,8 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
     format,
     segments,
     ...(reel ? { reel } : {}),
+    ...(voice ? { voice } : {}),
+    ...(opts.forceAudio && format === 'mp4' ? { forceAudio: true } : {}),
   })
   if (!startResult.ok) return { success: false, error: startResult.error }
   const { jobId } = startResult

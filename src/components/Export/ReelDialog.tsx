@@ -5,12 +5,15 @@ import {
 import { useClipStore } from '@/stores/clipStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useSpeedStore } from '@/stores/speedStore'
+import { useVoiceStore } from '@/stores/voiceStore'
+import { useAppStore } from '@/stores/appStore'
 import { useClipPrefsStore } from '@/stores/clipPrefsStore'
 import { Modal, Button, Select } from '@/components/ui'
 import { toast } from '@/components/ui/Toast'
 import { buildOutputTimeline, exportSpeedSteps } from '@/export/outputTimeline'
 import { buildReelBaseName, buildReelPlan, defaultReelName, MAX_CARD_SECONDS, MIN_CARD_SECONDS } from '@/export/reelPlan'
 import { renderReel, type ReelClipOutcome, type ReelProgress } from '@/export/reelRenderer'
+import { withVoiceFreezes } from '@/export/voiceMix'
 import { inclusionForTags, individualBaseNames, moveInOrder, reelClips, reelProgressLabel, syncOrder } from '@/export/reelSelection'
 import { saveEditableCopy as saveEditableCopyFiles } from '@/export/saveEditableCopy'
 import { buildClipsCsv, type ClipCsvRow } from '@/export/clipsCsv'
@@ -63,6 +66,8 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
   const clips = useClipStore((s) => s.clips)
   const annotations = useDrawingStore((s) => s.annotations)
   const speedRegions = useSpeedStore((s) => s.regions)
+  const voiceClips = useVoiceStore((s) => s.clips)
+  const voiceDuck = useVoiceStore((s) => s.duck)
   const { sourcePath, probe, error: probeError, loading: loadingProbe } = useVideoProbe(videoSrc)
 
   const titleCards = useClipPrefsStore((s) => s.reelTitleCards)
@@ -103,6 +108,13 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  // Recording is refused while this is set; the effect's cleanup also covers an unmount mid-export.
+  useEffect(() => {
+    if (!exporting) return
+    useAppStore.getState().setExportRunning(true)
+    return () => useAppStore.getState().setExportRunning(false)
+  }, [exporting])
+
   const allTags = useMemo(() => {
     const byKey = new Map<string, string>()
     for (const clip of clips) for (const tag of clip.tags) if (!byKey.has(tag.toLowerCase())) byKey.set(tag.toLowerCase(), tag)
@@ -117,8 +129,8 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
   const speedSteps = useMemo(() => (probe ? exportSpeedSteps(speedRegions, probe) : undefined), [probe, speedRegions])
   const plan = useMemo(() => {
     if (!probe || inReel.length === 0) return null
-    return buildReelPlan(inReel, annotations, probe.fps, { titleCards, cardSeconds }, speedSteps, probe.fps)
-  }, [probe, inReel, annotations, titleCards, cardSeconds, speedSteps])
+    return buildReelPlan(inReel, withVoiceFreezes(annotations, voiceClips, probe.fps), probe.fps, { titleCards, cardSeconds }, speedSteps, probe.fps)
+  }, [probe, inReel, annotations, voiceClips, titleCards, cardSeconds, speedSteps])
 
   const clipById = useMemo(() => new Map(clips.map((c) => [c.id, c])), [clips])
 
@@ -159,6 +171,8 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
       probe,
       annotations,
       speedRegions,
+      voiceClips,
+      voiceDuck,
       quality,
       sourcePath,
       outputPath,
@@ -211,7 +225,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
       setPhase({ kind: 'failed', message: result.error || 'Reel export failed' })
       toast('error', 'Reel export failed')
     }
-  }, [probe, sourcePath, folder, resolveFolderForExport, plan, effectiveName, saveIndividual, inReel, annotations, speedRegions, quality, saveEditable])
+  }, [probe, sourcePath, folder, resolveFolderForExport, plan, effectiveName, saveIndividual, inReel, annotations, speedRegions, voiceClips, voiceDuck, quality, saveEditable])
 
   const percent = phase.kind === 'exporting' ? phase.progress?.percent ?? 0 : 0
 
@@ -324,7 +338,7 @@ export default function ReelDialog({ onClose, videoSrc, initialTags }: ReelDialo
                 const clip = clipById.get(id)
                 if (!clip) return null
                 const on = !!included[id]
-                const seconds = probe ? buildOutputTimeline(clip, annotations, probe.fps, speedSteps).duration : clip.end - clip.start
+                const seconds = probe ? buildOutputTimeline(clip, withVoiceFreezes(annotations, voiceClips, probe.fps), probe.fps, speedSteps).duration : clip.end - clip.start
                 const reelNumber = on ? inReel.indexOf(clip) + 1 : null
                 return (
                   <li

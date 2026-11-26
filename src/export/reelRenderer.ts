@@ -7,6 +7,8 @@ import { renderClip as defaultRenderClip, type RenderClipOptions } from './clipR
 import { estimateEncodeBytes, type ReelPart, type ReelPlan } from './reelPlan'
 import type { SpeedRegionLike } from './speedMap'
 import { renderTitleCardRgba, type TitleCardInput } from './titleCard'
+import { alignVoiceToCarriers, placeVoice } from './voiceMix'
+import type { VoiceClip, VoiceDuck } from '@/types/voice'
 
 /** Share of the progress bar given to the final join (it copies video, so it's quick). */
 const JOIN_SHARE = 0.05
@@ -31,6 +33,9 @@ export interface RenderReelOptions {
   annotations: Annotation[]
   /** Slow-motion regions; the plan must be built with the same ones. */
   speedRegions?: SpeedRegionLike[]
+  /** Voice clips; the plan must be built with their frozen holds (withVoiceFreezes). */
+  voiceClips?: VoiceClip[]
+  voiceDuck?: VoiceDuck
   quality: ClipExportQuality
   sourcePath: string
   /** The reel MP4, inside an authorized export folder. */
@@ -66,7 +71,8 @@ async function renderCardPart(
   reelId: string,
   opts: RenderReelOptions,
   deps: ReelRenderDeps,
-  onPercent: (percent: number) => void
+  onPercent: (percent: number) => void,
+  forceAudio: boolean
 ): Promise<ClipExportResult> {
   const { probe, plan, quality, sourcePath, signal } = opts
   const rgba = await deps.renderCardRgba({
@@ -90,6 +96,7 @@ async function renderCardPart(
     quality,
     segments: part.segments,
     reel: { reelId, keep: false },
+    ...(forceAudio ? { forceAudio: true } : {}),
   })
   if (!started.ok) return { success: false, error: started.error }
   const { jobId } = started
@@ -119,7 +126,7 @@ async function renderCardPart(
 }
 
 export async function renderReel(opts: RenderReelOptions, deps: ReelRenderDeps = defaultDeps): Promise<RenderReelResult> {
-  const { plan, probe, annotations, speedRegions, quality, sourcePath, outputPath, keptClipPaths, onProgress, onLowSpace, signal } = opts
+  const { plan, probe, annotations, speedRegions, voiceClips, voiceDuck, quality, sourcePath, outputPath, keptClipPaths, onProgress, onLowSpace, signal } = opts
   const api = window.electronAPI
   const keptClips: Record<string, ReelClipOutcome> = {}
   const markRemainingKept = (outcome: ReelClipOutcome) => {
@@ -130,6 +137,11 @@ export async function renderReel(opts: RenderReelOptions, deps: ReelRenderDeps =
   }
 
   if (plan.parts.length === 0) return { success: false, error: 'The reel has no clips', keptClips }
+  // Parts are joined by stream copy, so all of them need audio once any clip has voice.
+  const alignedVoice = alignVoiceToCarriers(annotations, voiceClips ?? [], probe.fps)
+  const forceAudio = alignedVoice.length > 0 && plan.parts.some(
+    (part) => part.kind === 'clip' && placeVoice(part.segments, part.clip, alignedVoice, probe.fps).length > 0
+  )
   if (signal.aborted) return { success: false, error: 'Cancelled', keptClips }
 
   const started = await api.reelStart({ outputPath })
@@ -163,7 +175,7 @@ export async function renderReel(opts: RenderReelOptions, deps: ReelRenderDeps =
 
       let result: ClipExportResult
       if (part.kind === 'card') {
-        result = await renderCardPart(part, reelId, opts, deps, partProgress)
+        result = await renderCardPart(part, reelId, opts, deps, partProgress, forceAudio)
       } else {
         const keptPath = keptClipPaths?.[part.clip.id]
         result = await deps.renderClip({
@@ -171,6 +183,9 @@ export async function renderReel(opts: RenderReelOptions, deps: ReelRenderDeps =
           probe,
           annotations,
           speedRegions,
+          ...(voiceClips ? { voiceClips } : {}),
+          ...(voiceDuck ? { voiceDuck } : {}),
+          ...(forceAudio ? { forceAudio: true } : {}),
           includeDrawings: true,
           quality,
           outputPath: keptPath ?? TEMP_PART_PLACEHOLDER,

@@ -3,9 +3,12 @@ import { CheckCircle, AlertTriangle } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useSpeedStore } from '@/stores/speedStore'
+import { useVoiceStore } from '@/stores/voiceStore'
+import { useAppStore } from '@/stores/appStore'
 import { Modal, Button, Select } from '@/components/ui'
 import { renderClip } from '@/export/clipRenderer'
 import { buildOutputTimeline, exportSpeedSteps } from '@/export/outputTimeline'
+import { withVoiceFreezes } from '@/export/voiceMix'
 
 interface ExportDialogProps {
   onClose: () => void
@@ -27,6 +30,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
   const { inPoint, outPoint, duration, fps: sourceFps } = useVideoStore()
   const { annotations } = useDrawingStore()
   const speedRegions = useSpeedStore((s) => s.regions)
+  const voiceClips = useVoiceStore((s) => s.clips)
 
   const [settings, setSettings] = useState<ExportSettings>({
     format: 'mp4',
@@ -48,7 +52,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
   const clipDuration = endTime - startTime
   const outputDuration = buildOutputTimeline(
     { start: startTime, end: endTime },
-    settings.includeAnnotations ? annotations : [],
+    withVoiceFreezes(settings.includeAnnotations ? annotations : [], voiceClips, sourceFps),
     settings.fps,
     exportSpeedSteps(speedRegions, { duration, fps: sourceFps }),
     sourceFps
@@ -79,6 +83,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
     const controller = new AbortController()
     abortControllerRef.current = controller
     setIsExporting(true)
+    useAppStore.getState().setExportRunning(true)
     setProgress(0)
     setError(null)
 
@@ -98,6 +103,8 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
         probe,
         annotations: settings.includeAnnotations ? annotations : [],
         speedRegions: useSpeedStore.getState().regions,
+        voiceClips: useVoiceStore.getState().clips,
+        voiceDuck: useVoiceStore.getState().duck,
         includeDrawings: settings.includeAnnotations && annotations.length > 0,
         sourcePath: inputPath,
         outputPath: savePath,
@@ -119,6 +126,7 @@ export default function ExportDialog({ onClose, videoSrc }: ExportDialogProps) {
     } finally {
       abortControllerRef.current = null
       setIsExporting(false)
+      useAppStore.getState().setExportRunning(false)
     }
   }, [settings, startTime, endTime, videoSrc, onClose, annotations])
 

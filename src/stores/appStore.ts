@@ -10,11 +10,14 @@ interface RecentFile {
 interface AppState {
   recentFiles: RecentFile[]
   maxRecentFiles: number
+  /** True while any export dialog is encoding; not persisted. */
+  exportRunning: boolean
 
   // Actions
   addRecentFile: (path: string) => void
   removeRecentFile: (path: string) => void
   clearRecentFiles: () => void
+  setExportRunning: (running: boolean) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -22,6 +25,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       recentFiles: [],
       maxRecentFiles: 10,
+      exportRunning: false,
 
       addRecentFile: (path) => {
         const name = path.split(/[/\\]/).pop() || path
@@ -49,6 +53,8 @@ export const useAppStore = create<AppState>()(
       clearRecentFiles: () => {
         set({ recentFiles: [] })
       },
+
+      setExportRunning: (running) => set({ exportRunning: running }),
     }),
     {
       name: 'replay-studio-storage',

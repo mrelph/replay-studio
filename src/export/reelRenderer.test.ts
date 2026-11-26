@@ -141,4 +141,25 @@ describe('renderReel', () => {
     expect(result).toMatchObject({ success: false, error: 'Reel denied: invalid destination' })
     expect(d.renderClip).not.toHaveBeenCalled()
   })
+  it('starts every part with forceAudio once any clip has a voice clip, passing the voice to the clips', async () => {
+    const { api } = mockApi()
+    const d = deps()
+    const voiceClips = [{ id: 'v', startTime: 10.5, duration: 1, frozen: false, mime: 'audio/webm' }]
+    const result = await renderReel({ ...baseOpts(), voiceClips, voiceDuck: 'full' }, d)
+    expect(result.success).toBe(true)
+    for (const call of api.clipEncodeStart.mock.calls) expect((call[0] as { forceAudio?: boolean }).forceAudio).toBe(true)
+    const clipOpts = (d.renderClip as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0])
+    expect(clipOpts.map((o) => [o.forceAudio, o.voiceClips, o.voiceDuck])).toEqual([
+      [true, voiceClips, 'full'],
+      [true, voiceClips, 'full'],
+    ])
+  })
+
+  it('leaves forceAudio off when no voice clip falls in the reel', async () => {
+    const { api } = mockApi()
+    const d = deps()
+    await renderReel({ ...baseOpts(), voiceClips: [{ id: 'v', startTime: 50, duration: 1, frozen: false, mime: 'audio/webm' }] }, d)
+    for (const call of api.clipEncodeStart.mock.calls) expect(call[0]).not.toHaveProperty('forceAudio')
+    for (const call of (d.renderClip as ReturnType<typeof vi.fn>).mock.calls) expect(call[0]).not.toHaveProperty('forceAudio')
+  })
 })
