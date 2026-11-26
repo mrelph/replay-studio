@@ -17,7 +17,8 @@ import { ringTool } from './tools/ringTool'
 import { zoneTool } from './tools/zoneTool'
 import { calloutTool } from './tools/calloutTool'
 import { liveToolContext as toolContext } from './tools/toolContext'
-import { abandonGesture, type AbandonReason } from './tools/abandon'
+import { abandonGesture, abandonKeepsWork, type AbandonReason } from './tools/abandon'
+import { beginCalloutEdit, cancelCalloutEdit, finishCalloutEdit, isCalloutEditing } from './tools/calloutEdit'
 import { frameIndexAt } from '@/utils/frames'
 import { applyDash, dashPattern, strokeTarget, DASH_TOOL_TYPES } from '@/utils/lineDash'
 
@@ -488,6 +489,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     previousToolRef.current = currentTool
     const canvas = fabricRef.current
     if (previous === currentTool || !canvas) return
+    finishCalloutEdit()
     const tool = NEW_TOOLS[previous]
     const ctx = toolContext(canvas, moduleCommit)
     if (tool?.onToolSwitch) tool.onToolSwitch(ctx)
@@ -506,6 +508,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       return canvas && tool ? { canvas, tool } : null
     }
     const abandon = (reason: AbandonReason) => {
+      if (abandonKeepsWork(reason) && !useDrawingStore.getState().isRestoring) finishCalloutEdit()
+      else cancelCalloutEdit()
       const current = active()
       if (!current) return
       abandonGesture(current.tool, toolContext(current.canvas, moduleCommit), reason, useDrawingStore.getState().isRestoring)
@@ -605,6 +609,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     let isErasing = false
 
     const handleMouseDown = (e: fabric.IEvent) => {
+      // The press that ends a callout edit (or moves its caret) starts nothing.
+      if (isCalloutEditing()) return
       // Every pointer-down with a drawing tool starts a new drawing (the pen's
       // stroke has already begun: Fabric fires this right after the brush's
       // own mouse-down), so stop the video on the exact frame now. A gesture
@@ -1144,6 +1150,10 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
 
     const handleDoubleClick = (e: fabric.IEvent) => {
+      if ((currentTool === 'select' || currentTool === 'callout') && e.target) {
+        const callout = useDrawingStore.getState().annotations.find((a) => a.object === e.target && a.toolType === 'callout')
+        if (callout && beginCalloutEdit(canvas, callout.id)) return
+      }
       NEW_TOOLS[currentTool]?.onDoubleClick?.(toolContext(canvas, moduleCommit), canvas.getPointer(e.e), e)
     }
 

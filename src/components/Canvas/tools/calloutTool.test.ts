@@ -240,6 +240,31 @@ describe('callout tool', () => {
     expect(Math.hypot(end.x - target.x, end.y - target.y)).toBeGreaterThan(0)
   })
 
+  it('wraps a long label at 40% of the canvas width when it is committed', async () => {
+    const { ctx, commit, tool } = setup()
+    const typed = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ')
+    const label = place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })
+    label.set({ text: typed })
+    label.exitEditing()
+    await tick()
+    const committed = calloutParts(commit.mock.calls[0][0])!.label as fabric.IText
+    const lines = (committed.text ?? '').split('\n')
+    expect(lines.length).toBeGreaterThan(1)
+    expect(lines.join(' ')).toBe(typed)
+    const width = (line: string) => new fabric.IText(line, { fontSize: committed.fontSize, fontFamily: committed.fontFamily }).width ?? 0
+    lines.forEach((line) => expect(width(line)).toBeLessThanOrEqual(0.4 * 600))
+    expect(width(`${lines[0]} ${lines[1].split(' ')[0]}`)).toBeGreaterThan(0.4 * 600)
+  })
+
+  it('commits a short label unchanged', async () => {
+    const { ctx, commit, tool } = setup()
+    const label = place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })
+    label.set({ text: 'PP  unit' })
+    label.exitEditing()
+    await tick()
+    expect((calloutParts(commit.mock.calls[0][0])!.label as fabric.IText).text).toBe('PP  unit')
+  })
+
   it('finishes with the colour, width and style current at the finish', async () => {
     const { ctx, commit, tool } = setup()
     const label = place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })

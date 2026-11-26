@@ -2,6 +2,7 @@ import { fabric } from '@/lib/fabric'
 import { restyleObject, type AnnotationStyle } from '@/utils/annotationStyle'
 import { textFormatProps } from '@/utils/textFormat'
 import { calloutDotRadius, labelClearOfDot, labelOrigin, labelPosition, leaderEnd, plateBox } from '@/utils/calloutGeometry'
+import { wrapLabel } from '@/utils/wrapLabel'
 import type { CanvasTool, ToolContext, ToolPoint } from './types'
 
 export interface CalloutOptions {
@@ -41,6 +42,23 @@ export function buildCallout({ target, label, color, strokeWidth, style }: Callo
   const callout = new fabric.Group([dotAt(target, color, strokeWidth), leader, label], { objectCaching: false })
   restyleObject(callout, 'callout', style)
   return callout
+}
+
+/** The label's text broken between words to at most 40% of the canvas's logical width, measured in the label's own font and scale. */
+export function wrapCalloutText(label: fabric.IText, canvas: fabric.Canvas): string {
+  const scratch = new fabric.IText('', {
+    fontSize: label.fontSize,
+    fontFamily: label.fontFamily,
+    fontWeight: label.fontWeight,
+    fontStyle: label.fontStyle,
+    charSpacing: label.charSpacing,
+  })
+  const scale = Math.abs(label.scaleX ?? 1)
+  const measure = (line: string) => {
+    scratch.set({ text: line })
+    return (scratch.width ?? 0) * scale
+  }
+  return wrapLabel(label.text ?? '', (0.4 * canvas.getWidth()) / canvas.getZoom(), measure)
 }
 
 /** Preview objects are never picked, saved or snapshotted. */
@@ -136,7 +154,7 @@ export function createCalloutTool(): CanvasTool {
     target = null
     canvas = null
     if (!text.text || text.text.trim() === '') return
-    text.set({ fill: ctx.color })
+    text.set({ text: wrapCalloutText(text, ctx.canvas), fill: ctx.color })
     ctx.commit(buildCallout({ target: point, label: text, color: ctx.color, strokeWidth: ctx.strokeWidth, style: ctx.style }), 'callout')
   }
 
