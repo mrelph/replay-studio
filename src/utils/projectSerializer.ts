@@ -391,7 +391,8 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
       })
 
     case 'group': {
-      const objects = (data.objects?.map((o: SerializedAnnotation['fabricData']) => deserializeFabricObject(fabric, o)) || []).filter(Boolean)
+      const objects = data.objects?.map((o: SerializedAnnotation['fabricData']) => deserializeFabricObject(fabric, o)) || []
+      if (objects.length === 0 || objects.some((o: unknown) => !o)) return null
       return new fabric.Group(objects, commonProps)
     }
 

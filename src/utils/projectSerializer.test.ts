@@ -502,10 +502,7 @@ describe('serializeFabricObject / deserializeFabricObject round-trip (real fabri
     expect(restored._objects).toHaveLength(2)
   })
 
-  // Current behavior: an unrecognized `type` falls through to the `default`
-  // branch of deserializeFabricObject, which always returns a plain 50x50
-  // rect regardless of the original shape's dimensions. This is documented
-  // here rather than changed, since fixing it is out of scope for this pass.
+  // An unrecognized `type` yields null so the loader skips and counts it.
   it('returns null for an unknown type (no placeholder rect)', () => {
     const data: SerializedAnnotation['fabricData'] = {
       type: 'star', // not handled by deserializeFabricObject
@@ -605,6 +602,16 @@ describe('save/load foundations (1.4)', () => {
     expect(roundTrip(object, { dashed: true }).dashed).toBe(true)
     const old = JSON.stringify({ version: '1.3', annotations: [makeAnnotation()] })
     expect(importProjectFromJSON(old).annotations[0].dashed).toBeUndefined()
+  })
+
+  it('returns null for a group with an unknown child, no children or no objects', () => {
+    const rect = { type: 'rect', left: 0, top: 0, width: 5, height: 5 }
+    const unknown = { type: 'polygon', left: 0, top: 0 }
+    expect(deserializeFabricObject(fabric, { type: 'group', left: 0, top: 0, objects: [rect, unknown] })).toBeNull()
+    expect(deserializeFabricObject(fabric, { type: 'group', left: 0, top: 0, objects: [unknown] })).toBeNull()
+    expect(deserializeFabricObject(fabric, { type: 'group', left: 0, top: 0, objects: [] })).toBeNull()
+    expect(deserializeFabricObject(fabric, { type: 'group', left: 0, top: 0 })).toBeNull()
+    expect(deserializeFabricObject(fabric, { type: 'group', left: 0, top: 0, objects: [rect, rect] })).not.toBeNull()
   })
 
   it('returns null for an unknown type', () => {

@@ -238,26 +238,22 @@ function App() {
           continue
         }
         restoredAnnotations.push({
-        id: serializedAnn.id,
-        object,
-        startTime: serializedAnn.startTime,
-        endTime: serializedAnn.endTime,
-        layer: serializedAnn.layer,
-        toolType: serializedAnn.toolType,
-        fadeIn: serializedAnn.fadeIn,
-        fadeOut: serializedAnn.fadeOut,
-        drawIn: serializedAnn.drawIn,
-        revealDelay: serializedAnn.revealDelay,
-        dashed: serializedAnn.dashed,
-        freezeDuration: serializedAnn.freezeDuration,
-        freezeAuto: serializedAnn.freezeAuto,
-        name: serializedAnn.name,
+          id: serializedAnn.id,
+          object,
+          startTime: serializedAnn.startTime,
+          endTime: serializedAnn.endTime,
+          layer: serializedAnn.layer,
+          toolType: serializedAnn.toolType,
+          fadeIn: serializedAnn.fadeIn,
+          fadeOut: serializedAnn.fadeOut,
+          drawIn: serializedAnn.drawIn,
+          revealDelay: serializedAnn.revealDelay,
+          dashed: serializedAnn.dashed,
+          freezeDuration: serializedAnn.freezeDuration,
+          freezeAuto: serializedAnn.freezeAuto,
+          name: serializedAnn.name,
         })
       }
-      if (skippedCount > 0) {
-        toast('error', `${skippedCount} ${skippedCount === 1 ? 'drawing' : 'drawings'} could not be loaded`)
-      }
-
       // Projects without a media path continue to use the current video, which
       // preserves compatibility with existing project files.
       const targetVideoSrc = project.videoPath
@@ -269,6 +265,10 @@ function App() {
         activeProjectRequestIdRef.current = null
         toast('error', 'This project does not reference a video')
         return
+      }
+
+      if (skippedCount > 0) {
+        toast('error', `${skippedCount} ${skippedCount === 1 ? 'drawing' : 'drawings'} could not be loaded`)
       }
 
       // Commit only after the target video's metadata and its own Fabric canvas
