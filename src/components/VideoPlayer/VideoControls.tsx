@@ -184,7 +184,7 @@ export default function VideoControls() {
   }
 
   return (
-    <div className="bg-surface-elevated px-4 py-3 border-t border-border-subtle shadow-sm relative z-50">
+    <div className="chrome bg-surface-elevated px-4 py-3 border-t border-border-subtle shadow-sm relative z-50">
       {/* Timeline */}
       <div
         className="relative mb-3 group"
@@ -198,7 +198,7 @@ export default function VideoControls() {
         {/* Hover time tooltip */}
         {hoverTime && (
           <div
-            className="absolute -top-8 px-2 py-1 bg-surface-elevated text-text-primary text-xs font-mono rounded shadow-lg border border-border-subtle pointer-events-none z-20 whitespace-nowrap"
+            className="chrome-reset absolute -top-8 px-2 py-1 bg-surface-elevated text-text-primary text-xs font-mono rounded shadow-lg border border-border-subtle pointer-events-none z-20 whitespace-nowrap"
             style={{ left: hoverTime.x, transform: 'translateX(-50%)' }}
           >
             {formatTime(hoverTime.time)}
@@ -414,7 +414,7 @@ export default function VideoControls() {
             </IconButton>
             {showVolumeSlider && (
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-1">
-                <div className="p-2 bg-surface-elevated rounded-lg shadow-lg border border-border-subtle">
+                <div className="chrome-reset p-2 bg-surface-elevated rounded-lg shadow-lg border border-border-subtle">
                   <input
                     type="range"
                     min="0"

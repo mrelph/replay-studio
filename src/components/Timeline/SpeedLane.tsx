@@ -119,7 +119,7 @@ export default function SpeedLane({ duration }: { duration: number }) {
               className="absolute right-0 top-0 bottom-0 pointer-events-none"
               style={{ width: ramp, backgroundImage: RAMP_FADE, transform: 'scaleX(-1)' }}
             />
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white leading-none truncate px-1 pointer-events-none">
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-accent-text leading-none truncate px-1 pointer-events-none">
               {formatSpeed(region.speed)}
             </span>
             <div

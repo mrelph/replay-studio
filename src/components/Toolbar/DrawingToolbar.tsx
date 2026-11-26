@@ -183,7 +183,7 @@ export default function DrawingToolbar() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   return (
-    <div role="toolbar" aria-label="Drawing tools" className="min-h-12 bg-surface-elevated/95 border-t border-border-subtle flex flex-wrap items-center px-3 py-1 gap-x-1 gap-y-1 backdrop-blur-sm flex-shrink-0">
+    <div role="toolbar" aria-label="Drawing tools" className="chrome min-h-12 bg-surface-elevated/95 border-t border-border-subtle flex flex-wrap items-center px-3 py-1 gap-x-1 gap-y-1 backdrop-blur-sm flex-shrink-0">
       {/* Select */}
       <ToolGroup label="Select">
         <ToolButton tool="select" label="Select" shortcut="V" icon={<MousePointer2 className="w-4 h-4" />} />

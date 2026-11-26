@@ -35,7 +35,7 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-
 
   return (
     <div
-      className={`fixed inset-0 bg-surface-overlay backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-200 ${
+      className={`chrome-reset fixed inset-0 bg-surface-overlay backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-200 ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={disableClose ? undefined : onClose}

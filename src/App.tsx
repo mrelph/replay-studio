@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Film, FolderOpen, Save, HelpCircle, X, Sun, Moon, Monitor, Layers, PenTool, Users, Download, Scissors, Snowflake } from 'lucide-react'
+import { Film, FolderOpen, Save, HelpCircle, X, Layers, PenTool, Users, Download, Scissors, Snowflake } from 'lucide-react'
 import VideoPlayer from './components/VideoPlayer/VideoPlayer'
 import DrawingToolbar from './components/Toolbar/DrawingToolbar'
 import DrawingCanvas from './components/Canvas/DrawingCanvas'
@@ -12,14 +12,14 @@ import ReelDialog from './components/Export/ReelDialog'
 import LayerPanel from './components/LayerPanel/LayerPanel'
 import ClipPanel from './components/Clips/ClipPanel'
 import UpdateBanner from './components/UpdateBanner'
-import { Button, IconButton, Kbd, ToastContainer, toast } from './components/ui'
+import { Button, IconButton, Kbd, Select, ToastContainer, toast } from './components/ui'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAudienceStream } from './hooks/useAudienceStream'
 import { useAppStore } from './stores/appStore'
 import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
 import { useAudienceStore } from './stores/audienceStore'
-import { useThemeStore } from './stores/themeStore'
+import { useThemeStore, THEME_OPTIONS, type ThemeMode } from './stores/themeStore'
 import { useClipStore } from './stores/clipStore'
 import { useSpeedStore } from './stores/speedStore'
 import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject, hasProjectContent } from './utils/projectSerializer'
@@ -45,21 +45,21 @@ function videoUrlForPath(filePath: string) {
   return `local-video://video/${encodeURIComponent(filePath)}`
 }
 
-function ThemeToggle() {
+function ThemePicker() {
   const { theme, setTheme } = useThemeStore()
 
-  const cycleTheme = () => {
-    if (theme === 'dark') setTheme('light')
-    else if (theme === 'light') setTheme('system')
-    else setTheme('dark')
-  }
-
   return (
-    <IconButton onClick={cycleTheme} title={`Theme: ${theme}`}>
-      {theme === 'dark' ? <Moon className="w-4 h-4" /> :
-       theme === 'light' ? <Sun className="w-4 h-4" /> :
-       <Monitor className="w-4 h-4" />}
-    </IconButton>
+    <Select
+      value={theme}
+      onChange={(e) => setTheme(e.target.value as ThemeMode)}
+      aria-label="Colour theme"
+      title="Colour theme"
+      className="!text-xs !py-1 !px-2"
+    >
+      {THEME_OPTIONS.map(({ id, label }) => (
+        <option key={id} value={id}>{label}</option>
+      ))}
+    </Select>
   )
 }
 
@@ -476,7 +476,7 @@ function App() {
         </div>
       )}
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 bg-surface-elevated border-b border-border-subtle shadow-sm">
+      <header className="chrome flex items-center justify-between px-4 py-2 bg-surface-elevated border-b border-border-subtle shadow-sm">
         <div className="flex items-center gap-2">
           <Film className="w-4 h-4 text-text-tertiary" />
           <span className="text-sm text-text-secondary font-medium">Replay Studio</span>
@@ -524,7 +524,7 @@ function App() {
               </Button>
             </>
           )}
-          <ThemeToggle />
+          <ThemePicker />
           <IconButton
             onClick={() => setShowShortcuts(true)}
             title="Keyboard Shortcuts (?)"

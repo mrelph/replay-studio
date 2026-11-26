@@ -99,7 +99,7 @@ function ClipBar({ clip, index, duration, isSelected, onSelect, onUpdateRange }:
       onMouseLeave={() => setIsHovered(false)}
     >
       {isHovered && !isDragging && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded shadow-lg border border-border-subtle pointer-events-none z-30 whitespace-nowrap">
+        <div className="chrome-reset absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded shadow-lg border border-border-subtle pointer-events-none z-30 whitespace-nowrap">
           <span className="font-medium">{clip.name}</span>
           <span className="text-text-disabled ml-1.5">{formatTime(clip.start)}&ndash;{formatTime(clip.end)}</span>
           {clip.tags.length > 0 && <span className="text-text-tertiary ml-1.5">{clip.tags.join(', ')}</span>}
@@ -254,7 +254,7 @@ function TimelineMarker({ annotation, duration, isSelected, row, onSelect, onUpd
     >
       {/* Hover tooltip */}
       {isHovered && !isDragging && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded shadow-lg border border-border-subtle pointer-events-none z-30 whitespace-nowrap">
+        <div className="chrome-reset absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-surface-elevated text-text-primary text-xs rounded shadow-lg border border-border-subtle pointer-events-none z-30 whitespace-nowrap">
           <span className="font-medium capitalize">{annotation.toolType || annotation.id.split('-')[0]}</span>
           <span className="text-text-disabled ml-1.5">{formatMarkerTime(annotation.startTime)}-{formatMarkerTime(annotation.endTime)}</span>
         </div>
@@ -394,7 +394,7 @@ export default function AnnotationTimeline() {
   if (duration === 0) return null
 
   return (
-    <div className="bg-surface-elevated border-t border-border-subtle px-4 py-2">
+    <div className="chrome bg-surface-elevated border-t border-border-subtle px-4 py-2">
       {/* Resize handle */}
       <div
         className="h-1.5 -mt-3 mb-1 cursor-ns-resize group flex items-center justify-center"
