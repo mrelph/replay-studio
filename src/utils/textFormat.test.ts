@@ -63,6 +63,14 @@ describe('textFormatProps', () => {
   })
 })
 
+describe('textFormatProps font', () => {
+  it('passes the chosen font through', () => {
+    expect(textFormatProps({
+      fontSize: 24, bold: false, italic: false, underline: false, fontFamily: 'Georgia', plate: false,
+    }).fontFamily).toBe('Georgia')
+  })
+})
+
 describe('readTextFormat', () => {
   it('folds handle scaling into the size', () => {
     expect(readTextFormat(fakeText({ fontSize: 24, scaleY: 2 })).fontSize).toBe(48)

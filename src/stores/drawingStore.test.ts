@@ -61,6 +61,25 @@ describe('drawingStore undo', () => {
     expect(useDrawingStore.getState().annotations[0].drawIn).toBe(0.35)
   })
 
+  it('keeps dashed across undo', () => {
+    const canvas = testCanvas()
+    useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })
+    const object = new fabric.Line([0, 0, 40, 20], { stroke: '#f00', strokeWidth: 4 })
+    useDrawingStore.getState().addAnnotation({
+      id: 'a',
+      object,
+      startTime: 0,
+      endTime: 2,
+      layer: useDrawingStore.getState().activeLayerId,
+      toolType: 'line',
+      dashed: true,
+    } as never)
+    useDrawingStore.getState().saveState()
+    useDrawingStore.setState((state) => ({ annotations: state.annotations.map((a) => ({ ...a, dashed: false })) }))
+    useDrawingStore.getState().undo()
+    expect(useDrawingStore.getState().annotations[0].dashed).toBe(true)
+  })
+
   it('keeps revealDelay and freezeAuto across undo', () => {
     const canvas = testCanvas()
     useDrawingStore.setState({ canvas, annotations: [], undoStack: [], redoStack: [], isRestoring: false })

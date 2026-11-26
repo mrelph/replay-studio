@@ -732,7 +732,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             top: pointer.y,
             ...textFormatProps(textFormat),
             fill: strokeColor,
-            fontFamily: 'Arial',
             shadow: shadowForStyle(annotationStyle, strokeColor),
           })
           canvas.add(text)

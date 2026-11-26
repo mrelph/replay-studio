@@ -156,11 +156,11 @@ describe('clips round-trip and validation', () => {
     }
   }
 
-  it('serializeProject writes version 1.3 and a deep-copied clips array', () => {
+  it('serializeProject writes version 1.4 and a deep-copied clips array', () => {
     const clips = [makeClip()]
     const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', clips)
 
-    expect(project.version).toBe('1.3')
+    expect(project.version).toBe('1.4')
     expect(project.clips).toEqual(clips)
     // Deep copy: mutating the input must not reach the serialized project.
     clips[0].name = 'Mutated'
@@ -170,7 +170,7 @@ describe('clips round-trip and validation', () => {
   it('round-trips speed regions and loads files without them', () => {
     const speedRegions = [{ id: 'a', start: 2, end: 4, speed: 0.5 }, { id: 'b', start: 6, end: 8, speed: 2 }]
     const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', [], speedRegions)
-    expect(project.version).toBe('1.3')
+    expect(project.version).toBe('1.4')
     expect(importProjectFromJSON(exportProjectToJSON(project)).speedRegions).toEqual(speedRegions)
 
     const old = JSON.stringify({ version: '1.2', annotations: [], clips: [] })
@@ -504,7 +504,7 @@ describe('serializeFabricObject / deserializeFabricObject round-trip (real fabri
   // branch of deserializeFabricObject, which always returns a plain 50x50
   // rect regardless of the original shape's dimensions. This is documented
   // here rather than changed, since fixing it is out of scope for this pass.
-  it('falls back to a default 50x50 rect for an unknown type', () => {
+  it('returns null for an unknown type (no placeholder rect)', () => {
     const data: SerializedAnnotation['fabricData'] = {
       type: 'star', // not handled by deserializeFabricObject
       left: 7,
@@ -514,9 +514,7 @@ describe('serializeFabricObject / deserializeFabricObject round-trip (real fabri
     }
 
     const restored = deserializeFabricObject(fabric, data)
-    expect(restored.type).toBe('rect')
-    expect(restored.width).toBe(50)
-    expect(restored.height).toBe(50)
+    expect(restored).toBeNull()
   })
 })
 
@@ -556,5 +554,58 @@ describe('hasProjectContent', () => {
     expect(hasProjectContent({ annotations: 1, speedRegions: 0, clips: 0 })).toBe(true)
     expect(hasProjectContent({ annotations: 0, speedRegions: 1, clips: 0 })).toBe(true)
     expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 2 })).toBe(true)
+  })
+})
+
+describe('save/load foundations (1.4)', () => {
+  const roundTrip = (object: fabric.Object, extra: Partial<Parameters<typeof serializeProject>[0][number]> = {}) => {
+    const project = serializeProject(
+      [{ id: 'a', object, startTime: 0, endTime: 2, layer: 0, toolType: 'arrow', ...extra }],
+      '/v.mp4', null, null, 'T'
+    )
+    return importProjectFromJSON(exportProjectToJSON(project)).annotations[0]
+  }
+
+  it('keeps an arrowhead anchor, position and rotation through save and load', () => {
+    const line = new fabric.Line([0, 0, 120, 80], { stroke: '#f00', strokeWidth: 4 })
+    const head = new fabric.Triangle({
+      left: 120, top: 80, width: 20, height: 24, angle: 37, originX: 'center', originY: 'bottom',
+    })
+    const group = new fabric.Group([line, head], {})
+    const saved = roundTrip(group)
+    const loaded = deserializeFabricObject(fabric, saved.fabricData) as fabric.Group
+    const before = group.getObjects()[1]
+    const after = loaded.getObjects()[1]
+    expect(after.originX).toBe('center')
+    expect(after.originY).toBe('bottom')
+    expect(after.left).toBeCloseTo(before.left as number)
+    expect(after.top).toBeCloseTo(before.top as number)
+    expect(after.angle).toBe(37)
+  })
+
+  it('round-trips strokeLineCap and defaults when the keys are absent', () => {
+    const round = new fabric.Line([0, 0, 10, 10], { stroke: '#f00', strokeWidth: 4, strokeLineCap: 'round' })
+    const saved = roundTrip(round)
+    expect(deserializeFabricObject(fabric, saved.fabricData).strokeLineCap).toBe('round')
+
+    const plain = serializeFabricObject(new fabric.Rect({ width: 10, height: 10 }))
+    expect(plain).not.toHaveProperty('originX')
+    expect(plain).not.toHaveProperty('strokeLineCap')
+    const fresh = new fabric.Rect({})
+    const loaded = deserializeFabricObject(fabric, plain)
+    expect(loaded.originX).toBe(fresh.originX)
+    expect(loaded.originY).toBe(fresh.originY)
+    expect(loaded.strokeLineCap).toBe(fresh.strokeLineCap)
+  })
+
+  it('round-trips dashed and loads older files without it', () => {
+    const object = new fabric.Rect({ width: 10, height: 10 })
+    expect(roundTrip(object, { dashed: true }).dashed).toBe(true)
+    const old = JSON.stringify({ version: '1.3', annotations: [makeAnnotation()] })
+    expect(importProjectFromJSON(old).annotations[0].dashed).toBeUndefined()
+  })
+
+  it('returns null for an unknown type', () => {
+    expect(deserializeFabricObject(fabric, { type: 'polygon', left: 0, top: 0 })).toBeNull()
   })
 })

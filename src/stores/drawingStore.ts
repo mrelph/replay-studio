@@ -17,6 +17,7 @@ export interface Annotation {
   fadeOut?: number
   drawIn?: number
   revealDelay?: number
+  dashed?: boolean
   name?: string
   freezeDuration?: number  // seconds to hold video at this annotation's startTime
   freezeAuto?: boolean
@@ -41,6 +42,7 @@ interface AnnotationSnapshot {
   fadeOut?: number
   drawIn?: number
   revealDelay?: number
+  dashed?: boolean
   name?: string
   freezeDuration?: number
   freezeAuto?: boolean
@@ -110,6 +112,7 @@ function snapshotMetadata(annotation: Annotation): AnnotationSnapshot {
     fadeOut: annotation.fadeOut,
     drawIn: annotation.drawIn,
     revealDelay: annotation.revealDelay,
+    dashed: annotation.dashed,
     name: annotation.name,
     freezeDuration: annotation.freezeDuration,
     freezeAuto: annotation.freezeAuto,

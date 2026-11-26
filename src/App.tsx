@@ -229,9 +229,17 @@ function App() {
       const project = importProjectFromJSON(result.content)
       // Build every detached object before switching media. A malformed
       // annotation therefore cannot leave the user on a half-loaded project.
-      const restoredAnnotations: Annotation[] = project.annotations.map((serializedAnn) => ({
+      const restoredAnnotations: Annotation[] = []
+      let skippedCount = 0
+      for (const serializedAnn of project.annotations) {
+        const object = deserializeFabricObject(fabric, serializedAnn.fabricData)
+        if (!object) {
+          skippedCount += 1
+          continue
+        }
+        restoredAnnotations.push({
         id: serializedAnn.id,
-        object: deserializeFabricObject(fabric, serializedAnn.fabricData),
+        object,
         startTime: serializedAnn.startTime,
         endTime: serializedAnn.endTime,
         layer: serializedAnn.layer,
@@ -240,10 +248,15 @@ function App() {
         fadeOut: serializedAnn.fadeOut,
         drawIn: serializedAnn.drawIn,
         revealDelay: serializedAnn.revealDelay,
+        dashed: serializedAnn.dashed,
         freezeDuration: serializedAnn.freezeDuration,
         freezeAuto: serializedAnn.freezeAuto,
         name: serializedAnn.name,
-      }))
+        })
+      }
+      if (skippedCount > 0) {
+        toast('error', `${skippedCount} ${skippedCount === 1 ? 'drawing' : 'drawings'} could not be loaded`)
+      }
 
       // Projects without a media path continue to use the current video, which
       // preserves compatibility with existing project files.

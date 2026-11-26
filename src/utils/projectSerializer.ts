@@ -16,6 +16,7 @@ export interface SerializedAnnotation {
   fadeOut?: number
   drawIn?: number
   revealDelay?: number
+  dashed?: boolean
   name?: string
   freezeDuration?: number
   freezeAuto?: boolean
@@ -33,6 +34,10 @@ export interface SerializedAnnotation {
     stroke?: string
     strokeWidth?: number
     angle?: number
+    /** Absent unless not Fabric's default ('left' / 'top' / 'butt'). */
+    originX?: string
+    originY?: string
+    strokeLineCap?: string
     scaleX?: number
     scaleY?: number
     opacity?: number
@@ -128,6 +133,9 @@ export function serializeFabricObject(input: fabric.Object): SerializedAnnotatio
     stroke: obj.stroke,
     strokeWidth: obj.strokeWidth,
     shadow: serializeShadow(obj.shadow),
+    ...(obj.originX && obj.originX !== 'left' ? { originX: obj.originX as string } : {}),
+    ...(obj.originY && obj.originY !== 'top' ? { originY: obj.originY as string } : {}),
+    ...(obj.strokeLineCap && obj.strokeLineCap !== 'butt' ? { strokeLineCap: obj.strokeLineCap as string } : {}),
   }
 
   switch (obj.type) {
@@ -178,7 +186,7 @@ export function serializeProject(
   const now = new Date().toISOString()
 
   return {
-    version: '1.3',
+    version: '1.4',
     name: projectName || 'Untitled Project',
     createdAt: now,
     modifiedAt: now,
@@ -198,6 +206,7 @@ export function serializeProject(
         fadeOut: ann.fadeOut,
         drawIn: ann.drawIn,
         revealDelay: ann.revealDelay,
+        dashed: ann.dashed,
         name: ann.name,
         freezeDuration: ann.freezeDuration,
         freezeAuto: ann.freezeAuto,
@@ -296,7 +305,7 @@ export function importProjectFromJSON(json: string): ProjectData {
 }
 
 // Recreate Fabric.js object from serialized data
-export function deserializeFabricObject(fabric: any, data: SerializedAnnotation['fabricData']): any {
+export function deserializeFabricObject(fabric: any, data: SerializedAnnotation['fabricData']): any | null {
   const commonProps = {
     left: data.left,
     top: data.top,
@@ -309,6 +318,9 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
     strokeWidth: data.strokeWidth,
     selectable: true,
     evented: true,
+    ...(data.originX ? { originX: data.originX } : {}),
+    ...(data.originY ? { originY: data.originY } : {}),
+    ...(data.strokeLineCap ? { strokeLineCap: data.strokeLineCap } : {}),
   }
 
   // Files saved with a stored shadow rebuild exactly that; older files keep the legacy glow.
@@ -379,16 +391,11 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
       })
 
     case 'group': {
-      const objects = data.objects?.map((o: SerializedAnnotation['fabricData']) => deserializeFabricObject(fabric, o)) || []
+      const objects = (data.objects?.map((o: SerializedAnnotation['fabricData']) => deserializeFabricObject(fabric, o)) || []).filter(Boolean)
       return new fabric.Group(objects, commonProps)
     }
 
     default:
-      // Return a basic rect as fallback
-      return new fabric.Rect({
-        ...commonProps,
-        width: 50,
-        height: 50,
-      })
+      return null
   }
 }
