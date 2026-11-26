@@ -113,6 +113,24 @@ describe('voice recording', () => {
     expect(clips[0]).toMatchObject({ duration: 2, frozen: false, startTime: 1, mime: 'audio/webm' })
   })
 
+  it('saving a frozen clip asks the first Play to preview its hold', async () => {
+    useVideoStore.setState({ pendingPreview: null })
+    setup(new FakeVideo(true, 2))
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    await endVoiceRecording()
+    expect(useVideoStore.getState().pendingPreview).toBe(useVoiceStore.getState().clips[0].startTime)
+  })
+
+  it('saving a playing clip leaves the preview alone', async () => {
+    useVideoStore.setState({ pendingPreview: null })
+    setup(new FakeVideo(false, 2))
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    await endVoiceRecording()
+    expect(useVideoStore.getState().pendingPreview).toBeNull()
+  })
+
   it.each([
     ['reversing', { reverseRate: 2 }],
     ['recording slow motion', { slowRecording: { startSrc: 1, at: 0, speed: 0.5 } }],

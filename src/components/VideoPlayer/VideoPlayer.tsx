@@ -7,7 +7,9 @@ import { formatTimecode, frameIndexAt, snapToFrame } from '@/utils/frames'
 import { MAX_PAUSE_DRIFT_SECONDS, autoFreezeOwnsFrame, frameHasDrawings, recordedHold, setFrameFreeze } from '@/utils/freezeMarkers'
 import { previewHoldFor } from '@/utils/holdPreview'
 import { useSpeedPlayback } from '@/hooks/useSpeedPlayback'
-import type { Annotation } from '@/stores/drawingStore'
+import { useVoiceStore } from '@/stores/voiceStore'
+import { DUCK_GAIN } from '@/utils/voiceClips'
+import { effectiveHolds, holdIdAt, playVoice, stopVoice, voiceCrossed, type EffectiveHold } from '@/voice/voicePlayback'
 
 interface VideoPlayerProps {
   src: string
@@ -38,9 +40,12 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
   // True while the freeze logic's own snap-to-frame seek is in flight, so
   // 'seeking' doesn't treat it as a user seek (which cancels the resume timer).
   const isFreezeSeekRef = useRef(false)
+  // Stops the voice of the hold in progress, if it has one.
+  const holdVoiceStopRef = useRef<(() => void) | null>(null)
 
   // Reset triggered freezes when user seeks or pauses
   const resetFreezes = useCallback(() => {
+    stopVoice()
     triggeredFreezesRef.current.clear()
     lastTimeRef.current = 0
     useVideoStore.getState().clearAutoHold()
@@ -72,15 +77,38 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       setDuration(video.duration)
     }
 
+    // While a playing clip is heard the game sound is lowered; the store's volume is left alone.
+    let duckGain: number | null = null
+    const restoreVolume = () => {
+      duckGain = null
+      video.volume = useVideoStore.getState().volume
+    }
+    const startPlayingVoice = (id: string) => {
+      stopVoice()
+      duckGain = DUCK_GAIN[useVoiceStore.getState().duck]
+      video.volume = useVideoStore.getState().volume * duckGain
+      playVoice(id, restoreVolume)
+    }
+    const stopHoldVoice = () => {
+      holdVoiceStopRef.current?.()
+      holdVoiceStopRef.current = null
+    }
+
     // Holds the video on a freeze's frame, then resumes once its time is up.
-    const startHold = (ann: Annotation) => {
+    const startHold = (hold: EffectiveHold) => {
       if (!video.paused) isFreezePauseRef.current = true
-      useVideoStore.getState().beginAutoHold(ann.startTime)
-      if (video.currentTime !== ann.startTime) {
+      useVideoStore.getState().beginAutoHold(hold.time)
+      if (video.currentTime !== hold.time) {
         isFreezeSeekRef.current = true
-        video.currentTime = ann.startTime
+        video.currentTime = hold.time
       }
       if (!video.paused) video.pause()
+      if (hold.voiceId) {
+        const stop = playVoice(hold.voiceId, () => {
+          if (holdVoiceStopRef.current === stop) holdVoiceStopRef.current = null
+        })
+        holdVoiceStopRef.current = stop
+      }
       freezeTimeoutRef.current = setTimeout(() => {
         freezeTimeoutRef.current = null
         useVideoStore.getState().endAutoHold()
@@ -94,7 +122,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
           return
         }
         video.play()
-      }, (ann.freezeDuration ?? 0) * 1000)
+      }, hold.seconds * 1000)
     }
 
     const handleTimeUpdate = () => {
@@ -112,19 +140,23 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
 
       setCurrentTime(video.currentTime)
 
-      // Freeze frame logic: detect when playback crosses a freeze annotation's startTime
+      // Freeze frame logic: detect when playback crosses a hold's time
       if (!video.paused) {
         const prevTime = lastTimeRef.current
         const curTime = video.currentTime
-        const annotations = useDrawingStore.getState().annotations
-        for (const ann of annotations) {
-          if (!ann.freezeDuration || ann.freezeDuration <= 0) continue
-          if (triggeredFreezesRef.current.has(ann.id)) continue
+        const { clips } = useVoiceStore.getState()
+        const { reverseRate, shuttleBaseRate, fps } = useVideoStore.getState()
+        if (reverseRate === 0 && shuttleBaseRate === null) {
+          const crossed = voiceCrossed(clips, prevTime, curTime)
+          if (crossed) startPlayingVoice(crossed.id)
+        }
+        for (const hold of effectiveHolds(useDrawingStore.getState().annotations, clips, fps)) {
+          if (triggeredFreezesRef.current.has(hold.id)) continue
 
-          // Trigger if we crossed the startTime between the last update and now
-          if (prevTime <= ann.startTime && curTime >= ann.startTime) {
-            triggeredFreezesRef.current.add(ann.id)
-            startHold(ann)
+          // Trigger if we crossed the hold's time between the last update and now
+          if (prevTime <= hold.time && curTime >= hold.time) {
+            triggeredFreezesRef.current.add(hold.id)
+            startHold(hold)
             break
           }
         }
@@ -172,7 +204,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
     const interceptPlay = () => {
       if (!video.paused) return false
       const { pendingPreview, fps } = useVideoStore.getState()
-      const freeze = previewHoldFor(useDrawingStore.getState().annotations, pendingPreview, video.currentTime, fps)
+      const freeze = previewHoldFor(useDrawingStore.getState().annotations, useVoiceStore.getState().clips, pendingPreview, video.currentTime, fps)
       if (!freeze) return false
       useVideoStore.getState().setPendingPreview(null)
       // The frame's hold is calculated from its drawings; nothing to record.
@@ -191,6 +223,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         clearTimeout(freezeTimeoutRef.current)
         freezeTimeoutRef.current = null
         useVideoStore.getState().endAutoHold()
+        stopHoldVoice()
       }
       const timing = useVideoStore.getState().freezeTiming
       if (!timing) return
@@ -215,7 +248,7 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
       if (frameHasDrawings(useDrawingStore.getState().annotations, time, fps)) useDrawingStore.getState().syncFrames([time])
       // Playback is resuming from this very frame; the coach already held it
       // live, so don't let the new freeze fire again right now.
-      triggeredFreezesRef.current.add(id)
+      triggeredFreezesRef.current.add(holdIdAt(time, fps))
       const stamp = formatTimecode(time, fps)
       toast('success', hold.capped ? `Freeze recorded at ${stamp} (capped at ${hold.seconds}s)` : `${hold.seconds}s freeze recorded at ${stamp}`)
     }
@@ -233,7 +266,10 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         freezeTimeoutRef.current = null
         useVideoStore.getState().clearAutoHold()
       }
-      if (!freezePause) useVideoStore.getState().endSlowRecording()
+      if (!freezePause) {
+        useVideoStore.getState().endSlowRecording()
+        stopVoice()
+      }
     }
     const handleEnded = () => {
       handleEnding()
@@ -270,7 +306,10 @@ export default function VideoPlayer({ src, onVideoRef }: VideoPlayerProps) {
         clearTimeout(freezeTimeoutRef.current)
         freezeTimeoutRef.current = null
         useVideoStore.getState().clearAutoHold()
+        stopHoldVoice()
       }
+      // setVolume has just written the plain value to the element.
+      if (state.volume !== prev.volume && duckGain !== null) video.volume = state.volume * duckGain
     })
 
     return () => {

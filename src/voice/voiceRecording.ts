@@ -124,6 +124,9 @@ export async function endVoiceRecording(): Promise<void> {
     { id: newVoiceClipId(), startTime: recording.startTime, duration, frozen: recording.frozen, mime: result.mime },
     result.blob,
   )
+  // As after drawing: the first Play previews the frame's new hold.
+  const { videoElement, setPendingPreview } = useVideoStore.getState()
+  if (recording.frozen && videoElement?.paused) setPendingPreview(recording.startTime)
 }
 
 export function cancelVoiceRecording(): void {
