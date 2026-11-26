@@ -1,10 +1,11 @@
 import { frameIndexAt, lastTimeInFrame } from '@/utils/frames'
 
-export type StayPreset = 'freeze' | 1 | 2 | 4 | 'end'
+export type StayPreset = 'freeze' | 1 | 1.5 | 2 | 4 | 'end'
 
 export const STAY_PRESETS: { value: StayPreset; label: string }[] = [
   { value: 'freeze', label: 'Freeze only' },
   { value: 1, label: '1s' },
+  { value: 1.5, label: '1.5s' },
   { value: 2, label: '2s' },
   { value: 4, label: '4s' },
   { value: 'end', label: 'To end' },

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { stayTiming, STAY_PRESETS, STAY_TOOL_TYPES } from './stayPreset'
 import { annotationStateAt } from '@/export/annotationTiming'
+import { useToolStore } from '@/stores/toolStore'
 import { frameStart, timeForFrame } from './frames'
 
 const d = { fadeIn: 0.1, fadeOut: 0.1 }
@@ -9,6 +10,14 @@ describe('stayTiming', () => {
   it('N seconds keeps the tool fades and clamps to the video', () => {
     expect(stayTiming(2, 3, 60, 30, d)).toEqual({ endTime: 5, fadeIn: 0.1, fadeOut: 0.1 })
     expect(stayTiming(4, 58, 60, 30, d).endTime).toBe(60)
+  })
+
+  it('1.5s ends one and a half seconds after the start', () => {
+    expect(stayTiming(1.5, 10, 60, 30, d).endTime).toBe(11.5)
+  })
+
+  it('1.5s is the default stay', () => {
+    expect(useToolStore.getState().stayPreset).toBe(1.5)
   })
 
   it('To end runs to the video duration', () => {
@@ -50,7 +59,8 @@ describe('stayTiming', () => {
   })
 
   it('exposes the chips and tool set', () => {
-    expect(STAY_PRESETS.map((p) => p.label)).toEqual(['Freeze only', '1s', '2s', '4s', 'To end'])
+    expect(STAY_PRESETS.map((p) => p.label)).toEqual(['Freeze only', '1s', '1.5s', '2s', '4s', 'To end'])
+    expect(STAY_PRESETS.map((p) => p.value)).toEqual(['freeze', 1, 1.5, 2, 4, 'end'])
     expect(STAY_TOOL_TYPES.has('path')).toBe(true)
     expect(STAY_TOOL_TYPES.has('tracker')).toBe(false)
   })

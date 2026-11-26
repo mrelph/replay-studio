@@ -54,7 +54,7 @@ export const useToolStore = create<ToolState>((set) => ({
   textFormat: DEFAULT_TEXT_FORMAT,
   isDrawing: false,
   annotationStyle: 'outline',
-  stayPreset: 2,
+  stayPreset: 1.5,
   lineDash: 'solid',
 
   setCurrentTool: (tool) => set({ currentTool: tool }),

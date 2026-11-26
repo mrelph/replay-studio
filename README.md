@@ -38,7 +38,7 @@ See [RELEASING.md](RELEASING.md) for how releases are cut and what auto-update l
 - Outline, Glow and Clean styles
 - Solid / Dashed switch (`D`) for lines, arrows, arc arrows and freehand strokes
 - Draw-on animation: drawings draw themselves along the stroke, with a per-annotation Draw-on time
-- "Stays" chips (Freeze only, 1s, 2s, 4s, To end) set how long drawings stay on screen
+- "Stays" chips (Freeze only, 1s, 1.5s, 2s, 4s, To end; 1.5s is the default) set how long drawings stay on screen
 - Undo / Redo and Clear all
 
 ### Freeze Frames and Slow Motion
