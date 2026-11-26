@@ -18,7 +18,7 @@ describe('tokens.css', () => {
   const darkTokens = themeTokens('dark')
 
   it('the dark block defines the chrome tokens', () => {
-    for (const token of ['--chrome-bg', '--chrome-bg-raised', '--chrome-border', '--chrome-text', '--chrome-text-secondary', '--chrome-text-tertiary']) {
+    for (const token of ['--chrome-bg', '--chrome-bg-raised', '--chrome-border', '--chrome-border-strong', '--chrome-text', '--chrome-text-secondary', '--chrome-text-tertiary']) {
       expect(darkTokens.has(token)).toBe(true)
     }
   })

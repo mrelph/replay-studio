@@ -62,6 +62,7 @@
   --chrome-bg: #1a1d27;
   --chrome-bg-raised: #0b0d13;
   --chrome-border: #1f2230;
+  --chrome-border-strong: #3a3d4a;
   --chrome-text: #f0f0f4;
   --chrome-text-secondary: #a0a3b1;
   --chrome-text-tertiary: #6b6f80;
@@ -118,6 +119,7 @@
   --chrome-bg: #ffffff;
   --chrome-bg-raised: #eef0f4;
   --chrome-border: #e8eaef;
+  --chrome-border-strong: #c0c3cc;
   --chrome-text: #1a1c24;
   --chrome-text-secondary: #5a5d6a;
   --chrome-text-tertiary: #8a8d9a;
@@ -126,6 +128,8 @@
 /* Broadcast Night */
 [data-theme="broadcast"],
 [data-theme="broadcast"] .chrome-reset {
+  color-scheme: dark;
+
   /* Surfaces */
   --color-bg-base: #0a111f;
   --color-bg-elevated: #111b2e;
@@ -181,6 +185,7 @@
   --chrome-bg: #17294a;
   --chrome-bg-raised: #223a66;
   --chrome-border: #36507f;
+  --chrome-border-strong: #4a6aa3;
   --chrome-text: #eef2f8;
   --chrome-text-secondary: #a9b8d2;
   --chrome-text-tertiary: #7f93b5;
@@ -189,6 +194,8 @@
 /* Floodlit Pitch */
 [data-theme="pitch"],
 [data-theme="pitch"] .chrome-reset {
+  color-scheme: dark;
+
   /* Surfaces */
   --color-bg-base: #111413;
   --color-bg-elevated: #191e1c;
@@ -244,6 +251,7 @@
   --chrome-bg: #163a2a;
   --chrome-bg-raised: #1f4f3a;
   --chrome-border: #356b52;
+  --chrome-border-strong: #4a8a6c;
   --chrome-text: #eef6f1;
   --chrome-text-secondary: #a6c4b4;
   --chrome-text-tertiary: #7da291;
@@ -252,6 +260,8 @@
 /* Arena Ice */
 [data-theme="ice"],
 [data-theme="ice"] .chrome-reset {
+  color-scheme: light;
+
   /* Surfaces */
   --color-bg-base: #f2f5f8;
   --color-bg-elevated: #ffffff;
@@ -307,6 +317,7 @@
   --chrome-bg: #16263a;
   --chrome-bg-raised: #22384f;
   --chrome-border: #3d5673;
+  --chrome-border-strong: #56738f;
   --chrome-text: #f2f5f8;
   --chrome-text-secondary: #a9b9cb;
   --chrome-text-tertiary: #7f93a9;
@@ -315,6 +326,8 @@
 /* Courtside */
 [data-theme="court"],
 [data-theme="court"] .chrome-reset {
+  color-scheme: dark;
+
   /* Surfaces */
   --color-bg-base: #12112a;
   --color-bg-elevated: #1a1838;
@@ -370,6 +383,7 @@
   --chrome-bg: #2a2766;
   --chrome-bg-raised: #3a3688;
   --chrome-border: #544fb0;
+  --chrome-border-strong: #6f69d6;
   --chrome-text: #f4f3ff;
   --chrome-text-secondary: #bbb8e6;
   --chrome-text-tertiary: #918dcc;
@@ -396,11 +410,16 @@
 [data-theme="court"] .chrome {
   background-color: var(--chrome-bg);
   --color-border-default: var(--chrome-border);
+  --color-border-strong: var(--chrome-border-strong);
   --color-text-disabled: var(--chrome-text-tertiary);
 }
 
-/* Ice's red accent is too dark to read as text on its navy chrome */
+/* Ice's red accent is too dark to read as text on its navy chrome; the
+   ice block's `.chrome-reset` selector restores the root values */
 [data-theme="ice"] .chrome {
   --color-accent: #ff6b63;
   --color-accent-hover: #ff8d86;
+  --color-accent-text: #2a0500;
+  /* the theme picker sits in this dark header */
+  color-scheme: dark;
 }
