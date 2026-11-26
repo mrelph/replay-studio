@@ -15,6 +15,8 @@ export interface LiveRevealAnnotation {
 export interface ArmedReveal {
   peak: number
   due: boolean
+  /** Peak fade-in elapsed seconds once a hold has counted toward the fade-in (latched like `peak`). */
+  fade?: number
 }
 
 export interface LiveRevealState {
@@ -90,8 +92,17 @@ export function stepLiveReveal(input: LiveRevealInput): Map<string, LiveRevealSt
     // past it; never let an armed shape un-draw or disappear again.
     const due = state.due || isRevealDue(startTime, time, holdElapsed, revealDelay, elapsed)
     const fraction = Math.max(state.peak, revealFraction(revealElapsed(startTime, time, holdElapsed, revealDelay, elapsed), drawIn))
-    armed.set(id, { peak: fraction, due })
-    result.set(id, withFade({ fraction, due }, holdElapsed))
+    // A later freeze replaces the hold that brought this drawing in; never let its
+    // fade-in fall back. The returned hold time reproduces the latched fade-in
+    // elapsed in `annotationStateAt` (0 falls back to source time, which is larger).
+    let fade = state.fade
+    let fadeHold = holdElapsed
+    if (fadeIn !== undefined && fadeIn > 0 && (holdElapsed > 0 || fade !== undefined)) {
+      fade = Math.max(fade ?? 0, revealElapsed(startTime, time, holdElapsed, revealDelay, elapsed))
+      fadeHold = Math.max(0, fade + (revealDelay ?? 0) - Math.max(0, elapsed ? elapsed(startTime, time) : time - startTime))
+    }
+    armed.set(id, fade === undefined ? { peak: fraction, due } : { peak: fraction, due, fade })
+    result.set(id, withFade({ fraction, due }, fadeHold))
   }
 
   return result

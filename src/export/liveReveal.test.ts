@@ -211,3 +211,52 @@ describe('stepLiveReveal fade-in hold time', () => {
     expect(r.get('b')).toEqual({ fraction: 1, due: true })
   })
 })
+
+describe('stepLiveReveal fade-in latch', () => {
+  const zone = { id: 'z', startTime: 3, endTime: 6, fadeIn: 0.2, fadeOut: 0.15, revealDelay: 0.5 }
+  const opacity = (r: Map<string, { holdElapsed?: number }>, t: number, ann: typeof zone = zone) => annotationStateAt(ann, t, undefined, r.get(ann.id)?.holdElapsed).opacity
+  const run = (ann: typeof zone) => {
+    const armed = new Map<string, ArmedReveal>()
+    const step = (over: Partial<Parameters<typeof stepLiveReveal>[0]>) =>
+      stepLiveReveal({ annotations: [ann], prevTime: 3, time: 3, playing: false, autoHold: null, now: 0, fps: 30, armed, ...over })
+    return { armed, step }
+  }
+
+  it('stays at full strength through a later freeze and after it', () => {
+    const { step } = run(zone)
+    const first = { time: 3, startedAt: 1000, endedAt: null }
+    expect(opacity(step({ autoHold: first, now: 1500 }), 3)).toBe(0.5)
+    expect(opacity(step({ autoHold: first, now: 1800 }), 3)).toBe(1)
+    const ended = { ...first, endedAt: 1800 }
+    expect(opacity(step({ autoHold: ended, playing: true, prevTime: 3, time: 3.3, now: 2100 }), 3.3)).toBe(1)
+    const second = { time: 3.3, startedAt: 2100, endedAt: null }
+    for (const now of [2100, 2105, 2150, 2300]) expect(opacity(step({ autoHold: second, prevTime: 3.3, time: 3.3, now }), 3.3)).toBe(1)
+    expect(opacity(step({ autoHold: { ...second, endedAt: 2105 }, playing: true, prevTime: 3.3, time: 3.4, now: 2200 }), 3.4)).toBe(1)
+  })
+
+  it('leaves a drawing with no delay as it was', () => {
+    const plain = { ...zone, revealDelay: 0 }
+    const { step, armed } = run(plain)
+    const hold = { time: 3, startedAt: 1000, endedAt: null }
+    expect(step({ autoHold: hold, now: 1100 }).get('z')?.holdElapsed).toBeCloseTo(0.1)
+    expect(armed.size).toBe(0)
+  })
+
+  it('restarts the fade-in from the floor after playback leaves and plays back in', () => {
+    const { step, armed } = run(zone)
+    step({ autoHold: { time: 3, startedAt: 1000, endedAt: null }, now: 1800 })
+    step({ autoHold: { time: 3, startedAt: 1000, endedAt: 1800 }, playing: true, prevTime: 3, time: 2.5, now: 2000 })
+    expect(armed.has('z')).toBe(false)
+    step({ playing: true, prevTime: 2.99, time: 3.0, now: 3000 })
+    const hold = { time: 3, startedAt: 4000, endedAt: null }
+    expect(opacity(step({ autoHold: hold, now: 4500 }), 3)).toBe(0.5)
+    expect(opacity(step({ autoHold: hold, now: 4600 }), 3)).toBeCloseTo(0.5)
+  })
+
+  it('still fades out a latched drawing near its end', () => {
+    const { step } = run(zone)
+    step({ autoHold: { time: 3, startedAt: 1000, endedAt: null }, now: 1800 })
+    const ended = { time: 3, startedAt: 1000, endedAt: 1800 }
+    expect(opacity(step({ autoHold: ended, playing: true, prevTime: 5.9, time: 5.95, now: 9000 }), 5.95)).toBeCloseTo(0.05 / 0.15)
+  })
+})
