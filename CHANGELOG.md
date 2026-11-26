@@ -8,12 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Audio waveform visualization in timeline
 - Annotation data import/export (JSON format)
-- Customizable keyboard shortcuts
 - Plugin system for custom drawing tools
 - Collaborative annotation features
 - Cloud storage integration
+
+## [1.9.1] - 2026-11-25
+
+### Changed
+- Updated Electron to 44.11.6 and other dependencies to pick up security fixes.
+- The README now matches the current app, and the changelog covers 1.1.0 to
+  1.5.0.
 
 ## [1.9.0] - 2026-11-25
 
