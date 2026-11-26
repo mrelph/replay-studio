@@ -136,6 +136,10 @@ Replay Studio uses Zustand for state management, organized into four domain-spec
 └─────────────────────────────────────────────────┘
 ```
 
+### Narration
+
+`voiceStore` holds the voice clips (id, start time, duration, whether the frame froze, MIME type). The recorded audio is kept apart in `src/voice/voiceAudio.ts`, keyed by clip id, so undo can bring a clip back with its sound. Recording lives in `src/voice/voiceRecording.ts` and playback in `src/voice/voicePlayback.ts`. The project file (version 1.5) stores each clip's audio as base64; it is cleared on a new video or project load.
+
 ### Why Zustand?
 
 - Minimal boilerplate compared to Redux

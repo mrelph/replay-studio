@@ -4,6 +4,9 @@ import { CLIP_COLORS } from '@/stores/clipStore'
 import { stripReveal } from '@/export/reveal'
 import { normalizeTags, clampNotes } from './clipTags'
 import type { SpeedRegion } from './speedRegions'
+import type { VoiceClip } from '@/types/voice'
+import { sanitizeVoiceClips } from './voiceClips'
+import { getVoiceAudio } from '@/voice/voiceAudio'
 
 export interface SerializedAnnotation {
   id: string
@@ -81,11 +84,80 @@ export interface ProjectData {
   clips?: Clip[]
   /** Added in project version 1.3; absent in older files. */
   speedRegions?: SpeedRegion[]
+  /** Added in project version 1.5; absent in older files. */
+  voiceClips?: SerializedVoiceClip[]
 }
 
-/** Whether a project has anything worth saving: annotations, speed regions or clips (counts). */
-export function hasProjectContent(counts: { annotations: number; speedRegions: number; clips: number }): boolean {
-  return counts.annotations > 0 || counts.speedRegions > 0 || counts.clips > 0
+export type SerializedVoiceClip = VoiceClip & { data: string }
+
+/** Whether a project has anything worth saving: annotations, speed regions, clips or voice clips (counts). */
+export function hasProjectContent(counts: { annotations: number; speedRegions: number; clips: number; voiceClips: number }): boolean {
+  return counts.annotations > 0 || counts.speedRegions > 0 || counts.clips > 0 || counts.voiceClips > 0
+}
+
+function readBlobBytes(blob: Blob): Promise<Uint8Array> {
+  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer))
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsArrayBuffer(blob)
+  })
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
+function base64ToBytes(data: string): Uint8Array<ArrayBuffer> | null {
+  try {
+    const binary = atob(data)
+    const bytes = new Uint8Array(new ArrayBuffer(binary.length))
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return bytes
+  } catch {
+    return null
+  }
+}
+
+export async function serializeVoiceClips(
+  clips: VoiceClip[],
+  getAudio: (id: string) => Blob | undefined = getVoiceAudio
+): Promise<SerializedVoiceClip[]> {
+  const result: SerializedVoiceClip[] = []
+  for (const clip of clips) {
+    const blob = getAudio(clip.id)
+    if (!blob) continue
+    result.push({ ...clip, data: bytesToBase64(await readBlobBytes(blob)) })
+  }
+  return result
+}
+
+export function restoreVoiceClips(entries: unknown): { clips: VoiceClip[]; audio: Map<string, Blob> } {
+  const clips: VoiceClip[] = []
+  const audio = new Map<string, Blob>()
+  if (!Array.isArray(entries)) return { clips, audio }
+  const sanitized = sanitizeVoiceClips(entries.map((entry) => (entry && typeof entry === 'object' ? { ...entry, data: undefined } : entry)))
+  const byId = new Map<string, unknown>()
+  for (const entry of entries) {
+    if (entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string') {
+      byId.set((entry as { id: string }).id, (entry as { data?: unknown }).data)
+    }
+  }
+  for (const clip of sanitized) {
+    const data = byId.get(clip.id)
+    if (typeof data !== 'string' || data === '' || audio.has(clip.id)) continue
+    const bytes = base64ToBytes(data)
+    if (!bytes) continue
+    clips.push(clip)
+    audio.set(clip.id, new Blob([bytes], { type: clip.mime }))
+  }
+  return { clips, audio }
 }
 
 /**
@@ -183,12 +255,13 @@ export function serializeProject(
   outPoint?: number | null,
   projectName?: string,
   clips?: Clip[],
-  speedRegions?: SpeedRegion[]
+  speedRegions?: SpeedRegion[],
+  voice?: SerializedVoiceClip[]
 ): ProjectData {
   const now = new Date().toISOString()
 
   return {
-    version: '1.4',
+    version: '1.5',
     name: projectName || 'Untitled Project',
     createdAt: now,
     modifiedAt: now,
@@ -219,6 +292,7 @@ export function serializeProject(
     // project that has already been serialized (e.g. while a save is pending).
     clips: (clips ?? []).map((clip) => ({ ...clip })),
     speedRegions: (speedRegions ?? []).map((region) => ({ ...region })),
+    voiceClips: (voice ?? []).map((clip) => ({ ...clip })),
   }
 }
 
@@ -299,6 +373,8 @@ export function importProjectFromJSON(json: string): ProjectData {
         ? data.speedRegions.filter((entry: unknown) => entry && typeof entry === 'object')
         : []
     }
+
+    if (data.voiceClips !== undefined && !Array.isArray(data.voiceClips)) data.voiceClips = []
 
     return data as ProjectData
   } catch (e) {

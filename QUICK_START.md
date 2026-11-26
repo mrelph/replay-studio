@@ -134,6 +134,15 @@ Mark a specific section of video for export:
 - Made a mistake? Press `Ctrl+Z` to undo
 - Changed your mind? Press `Ctrl+Y` to redo
 
+### Recording Narration
+
+1. Pause on a frame, or let the video play
+2. **Hold `N`** (or the mic button beside Freeze and Slow) and talk; release to stop. The first time, allow the microphone when asked
+3. Paused, the frame freezes for as long as you talk. Playing, your voice goes over the video and the game sound drops (change it with "Game sound under voice" in the timeline header)
+4. Click a clip on the Voice lane to hear it; press `Delete` to remove it
+
+A tap under 0.3 seconds records nothing, and a clip stops by itself at 120 seconds. MP4 exports include your voice; GIFs are silent. Everything stays on your computer.
+
 ### Exporting Your Work
 
 When you're ready to save your annotated video:
@@ -161,6 +170,7 @@ When you're ready to save your annotated video:
 | `P` | Pen tool (draw) |
 | `A` | Arrow tool |
 | `V` | Select tool (move things) |
+| `N` (hold) | Record voice |
 | `I` | Set In point |
 | `O` | Set Out point |
 | `Ctrl+Z` | Undo |

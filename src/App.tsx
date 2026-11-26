@@ -23,7 +23,10 @@ import { useAudienceStore } from './stores/audienceStore'
 import { useThemeStore, THEME_OPTIONS, type ThemeMode } from './stores/themeStore'
 import { useClipStore } from './stores/clipStore'
 import { useSpeedStore } from './stores/speedStore'
-import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject, hasProjectContent } from './utils/projectSerializer'
+import { useVoiceStore } from './stores/voiceStore'
+import { clearVoiceAudio, setVoiceAudio } from './voice/voiceAudio'
+import { cancelVoiceRecording } from './voice/voiceRecording'
+import { serializeProject, exportProjectToJSON, importProjectFromJSON, deserializeFabricObject, hasProjectContent, serializeVoiceClips, restoreVoiceClips } from './utils/projectSerializer'
 import type { ProjectData } from './utils/projectSerializer'
 import type { Annotation } from './stores/drawingStore'
 import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
@@ -90,6 +93,7 @@ function App() {
   const { annotations, canvas, replaceAnnotations, isRestoring } = useDrawingStore()
   const { clips, setClips } = useClipStore()
   const speedRegionCount = useSpeedStore((state) => state.regions.length)
+  const voiceClipCount = useVoiceStore((state) => state.clips.length)
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null)
   const videoSrcRef = useRef<string | null>(null)
   const nextProjectRequestIdRef = useRef(0)
@@ -111,6 +115,9 @@ function App() {
       // a project load restores its own clips once it is hydrated below.
       useClipStore.getState().setClips([])
       useSpeedStore.getState().replaceAll([])
+      cancelVoiceRecording()
+      useVoiceStore.getState().replaceAll([])
+      clearVoiceAudio()
       useDrawingStore.getState().clearHistory()
     } else if (activeProjectRequestIdRef.current !== projectRequestId) {
       return null
@@ -200,7 +207,8 @@ function App() {
         actualVideoPath = await window.electronAPI.resolveVideoPath(videoSrc)
       }
 
-      const project = serializeProject(useDrawingStore.getState().annotations, actualVideoPath, inPoint, outPoint, undefined, clips, useSpeedStore.getState().regions)
+      const voice = await serializeVoiceClips(useVoiceStore.getState().clips)
+      const project = serializeProject(useDrawingStore.getState().annotations, actualVideoPath, inPoint, outPoint, undefined, clips, useSpeedStore.getState().regions, voice)
       const json = exportProjectToJSON(project)
 
       const result = await window.electronAPI.writeFile(filePath, json)
@@ -326,6 +334,10 @@ function App() {
       setOutPoint(project.outPoint ?? null)
       setClips(project.clips ?? [])
       useSpeedStore.getState().replaceAll(project.speedRegions ?? [])
+      const voice = restoreVoiceClips(project.voiceClips)
+      clearVoiceAudio()
+      voice.audio.forEach((blob, id) => setVoiceAudio(id, blob))
+      useVoiceStore.getState().replaceAll(voice.clips)
       setCurrentProjectPath(filePath)
       activeProjectRequestIdRef.current = null
       setPendingProjectLoad((pending) => pending?.requestId === requestId ? null : pending)
@@ -491,7 +503,7 @@ function App() {
           >
             <FolderOpen className="w-4 h-4" />
           </IconButton>
-          {hasProjectContent({ annotations: annotations.length, speedRegions: speedRegionCount, clips: clips.length }) && (
+          {hasProjectContent({ annotations: annotations.length, speedRegions: speedRegionCount, clips: clips.length, voiceClips: voiceClipCount }) && (
             <IconButton
               onClick={handleSaveProject}
               title="Save Project (Ctrl+S)"

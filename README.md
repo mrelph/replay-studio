@@ -48,6 +48,13 @@ See [RELEASING.md](RELEASING.md) for how releases are cut and what auto-update l
 - `H` records a freeze by holding the current frame
 - Hold `W` while the video plays to record a 50% slow-motion region; adjust regions on the timeline's Speed lane (25%, 50%, 75%, 2x); timeline bars that overlap in time are packed onto separate rows
 
+### Narration
+- Hold `N` (or the mic button beside Freeze and Slow) to record your voice; a tap under 0.3 s records nothing, and a clip stops by itself at 120 s
+- Recorded on a paused frame, the frame freezes for as long as the voice lasts (or the frame's own freeze if that is longer); each frame holds one voice clip, and recording again replaces it
+- Recorded while the video plays, the voice goes over the moving video and the game sound drops; "Game sound under voice" in the timeline header sets Low, Off or Full
+- Clips show on the Voice lane: click one to select and hear it, then press Delete or Backspace (or the Delete button) to remove it. Undo and Redo cover them
+- The microphone permission is asked on first use. Everything stays on your computer
+
 ### Clips and Highlight Reels
 - Mark clips from In/Out (`Shift+C`) or around the playhead (`X`)
 - Tag clips, add notes, set tags that auto-apply to new clips, and filter by tag
@@ -59,7 +66,7 @@ See [RELEASING.md](RELEASING.md) for how releases are cut and what auto-update l
 - MP4 or GIF with annotations burned in (drawings, timing and fades, zoom lenses, freezes, slow motion)
 - Quality presets (High 1080p, Medium 720p, Low 480p) and frame rate (24, 30, 60 fps; GIFs are capped at 15 fps)
 - Full video or In/Out range only; turn "Include annotations" off to export the plain video
-- MP4 exports keep the source audio
+- MP4 exports keep the source audio and include your narration (single export, clips and reel); GIFs are silent
 - The single-export save dialog opens in the export folder
 
 ### Themes
@@ -67,7 +74,7 @@ See [RELEASING.md](RELEASING.md) for how releases are cut and what auto-update l
 - The drawing toolbar and video controls wrap onto extra lines in a narrow window
 
 ### Projects
-- Save and load projects as `.rsproj` files (annotations, freezes, clips and speed regions)
+- Save and load projects as `.rsproj` files (annotations, freezes, clips, speed regions and voice clips with their audio)
 
 ## Keyboard Shortcuts
 
@@ -82,6 +89,7 @@ Press `?` in the app for the full list; most shortcuts can be rebound there. See
 | `Shift+C` / `X` | Add clip from In/Out / mark a moment around the playhead |
 | `H` | Freeze the current frame |
 | `W` (hold) | Slow motion while held |
+| `N` (hold) | Record voice while held |
 | `V` `P` `A` `R` `C` `T` `S` | Select, Freehand, Arrow, Rectangle, Ellipse, Text, Spotlight |
 | `D` | Solid / Dashed |
 | `1`-`9` | Color presets |

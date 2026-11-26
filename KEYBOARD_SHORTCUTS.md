@@ -34,6 +34,7 @@ exactly. If you change a default binding in that file, update this doc too.
 | `Space` | Play / Pause |
 | `H` | Freeze: stop on this frame and time it; press again (or Play) to resume and record the freeze. Drawing also adds freezes on its own (see Freeze frames). Also the ❄ button beside Play |
 | `W` | Slow motion: hold while the video plays; releasing saves that stretch as a 50% speed region (see Slow motion). Also the Slow button beside Freeze, which you press and hold |
+| `N` | Narration: hold to record your voice. Paused, the frame freezes for the length of the voice; playing, the voice goes over the video (see Narration). Also the mic button beside Slow, which you press and hold |
 | `→` | Next frame |
 | `←` | Previous frame |
 | `L` | Shuttle forward — tap again for 2x / 4x / 8x |
@@ -202,6 +203,24 @@ stretch as a slow-motion region.
 - Slow motion repeats frames rather than inventing new ones, so 60 fps footage
   looks smoother than 30 fps.
 - Regions are saved in the project file. Undo and Redo cover them, in the same history as drawings.
+
+## Narration
+
+Hold **`N`** (or press and hold the mic button beside Slow) to record your
+voice. Release to save it.
+
+- A tap under 0.3 seconds records nothing. A clip stops by itself at 120 seconds.
+- Paused: the frame freezes for as long as the voice lasts, or for the frame's
+  own freeze if that is longer. A frame holds one voice clip; recording again
+  replaces it.
+- Playing: the voice goes over the moving video and the game sound drops. Set
+  how far with "Game sound under voice" (Low, Off, Full) in the timeline header.
+- Clips show on the Voice lane. Click one to select it and hear it. `Delete` or
+  `Backspace` (or the Delete button) removes it.
+- The microphone permission is asked the first time you record.
+- Voice clips are saved in the project file with their audio. Undo and Redo
+  cover them, in the same history as drawings.
+- MP4 exports (single, clips and reel) contain the voice. GIFs are silent.
 
 ## Zones
 

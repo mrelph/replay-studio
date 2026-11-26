@@ -32,7 +32,7 @@ Electron two-process app:
 - `electron/ffmpegExport.ts` — export pipeline using `child_process.spawn` + `ffmpeg-static`
 - `electron/preload.cjs` — THE live preload script (CommonJS), exposes `window.electronAPI` via contextBridge
 - `src/` — React renderer
-  - `src/stores/` — Zustand stores: `videoStore` (playback, in/out points), `toolStore` (active tool, color, stroke), `drawingStore` (annotations, undo/redo), `appStore`, plus `shortcutsStore`, `audienceStore`, `themeStore`, `waveformStore`
+  - `src/stores/` — Zustand stores: `videoStore` (playback, in/out points), `toolStore` (active tool, color, stroke), `drawingStore` (annotations, undo/redo), `appStore`, plus `voiceStore` (voice clips), `shortcutsStore`, `audienceStore`, `themeStore`, `waveformStore`
   - `src/components/Canvas/DrawingCanvas.tsx` + `Canvas/tools/` — Fabric.js drawing tools (spotlight, magnifier; player tracker + YOLO detector via onnxruntime-web exist but are hidden from the UI and docs until tracking is reliable)
   - `src/plugins/ToolRegistry.ts` — tool plugin registration
   - `src/types/electron.d.ts` — renderer-side types for `window.electronAPI` (keep in sync with preload.cjs)
@@ -53,6 +53,7 @@ Data flow: renderer calls `window.electronAPI.*` (preload) → `ipcRenderer.invo
 - **Preload**: `electron/preload.cjs` is the file actually loaded (main.ts resolves `preload.cjs`; vite.config.ts copies it to `dist-electron/`). `electron/preload.ts` is NOT built or used — do not edit it expecting changes to apply. Preload must stay CommonJS even though the package is `"type": "module"`.
 - `dist-electron/` is gitignored EXCEPT `dist-electron/preload.cjs`, which is tracked — rebuilds overwrite it; commit intentional changes.
 - YOLO model `public/models/yolov8n.onnx` is gitignored and the `public/` dir may be absent locally; object detection needs the model downloaded separately (packaged via `asarUnpack: dist/models`).
+- Voice audio lives in `src/voice/voiceAudio.ts` keyed by clip id and is not deleted with the clip (undo needs it); it is cleared on new video / project load.
 - `onnxruntime-web` is excluded from Vite `optimizeDeps` and split into its own chunk — don't "fix" that.
 - **Hidden features (code kept, no UI entry points):** player tracker/YOLO (unreliable) and the audience view + laser pointer (not a core use case). Product focus is editing and making clips. Don't re-surface these without asking.
 - README.md was brought up to date for 1.9.0; when it and the code disagree, trust the code. Deeper docs: ARCHITECTURE.md, KEYBOARD_SHORTCUTS.md, TROUBLESHOOTING.md.

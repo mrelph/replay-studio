@@ -6,6 +6,8 @@ import {
   deserializeFabricObject,
   serializeProject,
   hasProjectContent,
+  serializeVoiceClips,
+  restoreVoiceClips,
   type ProjectData,
   type SerializedAnnotation,
 } from './projectSerializer'
@@ -165,7 +167,7 @@ describe('clips round-trip and validation', () => {
     const clips = [makeClip()]
     const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', clips)
 
-    expect(project.version).toBe('1.4')
+    expect(project.version).toBe('1.5')
     expect(project.clips).toEqual(clips)
     // Deep copy: mutating the input must not reach the serialized project.
     clips[0].name = 'Mutated'
@@ -175,7 +177,7 @@ describe('clips round-trip and validation', () => {
   it('round-trips speed regions and loads files without them', () => {
     const speedRegions = [{ id: 'a', start: 2, end: 4, speed: 0.5 }, { id: 'b', start: 6, end: 8, speed: 2 }]
     const project = serializeProject([], '/videos/test.mp4', null, null, 'Test', [], speedRegions)
-    expect(project.version).toBe('1.4')
+    expect(project.version).toBe('1.5')
     expect(importProjectFromJSON(exportProjectToJSON(project)).speedRegions).toEqual(speedRegions)
 
     const old = JSON.stringify({ version: '1.2', annotations: [], clips: [] })
@@ -552,10 +554,62 @@ describe('shadow persistence', () => {
 
 describe('hasProjectContent', () => {
   it('is true when there are annotations, speed regions or clips, and false for an empty project', () => {
-    expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 0 })).toBe(false)
-    expect(hasProjectContent({ annotations: 1, speedRegions: 0, clips: 0 })).toBe(true)
-    expect(hasProjectContent({ annotations: 0, speedRegions: 1, clips: 0 })).toBe(true)
-    expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 2 })).toBe(true)
+    expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 0, voiceClips: 0 })).toBe(false)
+    expect(hasProjectContent({ annotations: 1, speedRegions: 0, clips: 0, voiceClips: 0 })).toBe(true)
+    expect(hasProjectContent({ annotations: 0, speedRegions: 1, clips: 0, voiceClips: 0 })).toBe(true)
+    expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 2, voiceClips: 0 })).toBe(true)
+    expect(hasProjectContent({ annotations: 0, speedRegions: 0, clips: 0, voiceClips: 1 })).toBe(true)
+  })
+})
+
+describe('voice clips in the project file (1.5)', () => {
+  const clipA = { id: 'v1', startTime: 1, duration: 2, frozen: true, mime: 'audio/webm' }
+  const clipB = { id: 'v2', startTime: 5, duration: 3, frozen: false, mime: 'audio/webm' }
+  const bytesA = Uint8Array.from({ length: 70000 }, (_, i) => i % 251)
+  const bytesB = Uint8Array.from([0, 1, 2, 255, 254])
+  const audio = new Map<string, Blob>([
+    ['v1', new Blob([bytesA], { type: 'audio/webm' })],
+    ['v2', new Blob([bytesB], { type: 'audio/webm' })],
+  ])
+  const readBytes = (blob: Blob) =>
+    new Promise<number[]>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(Array.from(new Uint8Array(reader.result as ArrayBuffer)))
+      reader.readAsArrayBuffer(blob)
+    })
+
+  it('round-trips two clips with identical bytes', async () => {
+    const voice = await serializeVoiceClips([clipA, clipB], (id) => audio.get(id))
+    const project = serializeProject([], '/v.mp4', null, null, 'T', [], [], voice)
+    expect(project.version).toBe('1.5')
+    const loaded = importProjectFromJSON(exportProjectToJSON(project))
+    const restored = restoreVoiceClips(loaded.voiceClips)
+    expect(restored.clips).toEqual([clipA, clipB])
+    expect(await readBytes(restored.audio.get('v1') as Blob)).toEqual(Array.from(bytesA))
+    expect(await readBytes(restored.audio.get('v2') as Blob)).toEqual(Array.from(bytesB))
+    expect(restored.audio.get('v1')?.type).toBe('audio/webm')
+  })
+
+  it('leaves out clips without audio', async () => {
+    const voice = await serializeVoiceClips([clipA, clipB], (id) => (id === 'v2' ? audio.get(id) : undefined))
+    expect(voice.map((c) => c.id)).toEqual(['v2'])
+  })
+
+  it('restores a 1.4 file to no voice clips', () => {
+    const old = importProjectFromJSON(JSON.stringify({ version: '1.4', annotations: [] }))
+    expect(old.voiceClips).toBeUndefined()
+    expect(restoreVoiceClips(old.voiceClips).clips).toEqual([])
+  })
+
+  it('skips an entry whose data is missing or not base64 and keeps the other', () => {
+    const restored = restoreVoiceClips([
+      { ...clipA, data: 42 },
+      { ...clipB, id: 'v3', data: '!!not base64!!' },
+      { ...clipB, id: 'v4' },
+      { ...clipB, data: 'AAEC' },
+    ])
+    expect(restored.clips.map((c) => c.id)).toEqual(['v2'])
+    expect([...restored.audio.keys()]).toEqual(['v2'])
   })
 })
 
