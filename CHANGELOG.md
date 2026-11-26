@@ -58,9 +58,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Callout (`Shift+T`). Press on the thing you are naming, drag to where the
   label should sit, release and type; click away or press Escape to finish. You
   get a dot on the target, a leader line and a label on a background plate,
-  using the current text options. An empty label is discarded. The words cannot
-  be edited afterwards (delete it and make a new one); it can be moved,
-  restyled and re-timed like other drawings.
+  using the current text options. You can pick a colour, size, style, line or
+  Stays chip while typing and carry on typing; the label shows the new colour
+  at once. Pressing Play or moving the playhead to another frame finishes the
+  callout on the frame where you started it. An empty label is discarded. The
+  words cannot be edited afterwards (delete it and make a new one); it can be
+  moved, restyled and re-timed like other drawings.
 - The new tools work with automatic freeze and drawn-order reveal, Stays chips,
   Outline / Glow / Clean (on a ring or zone these apply to the edge only, so the
   inside stays a clean tint), slow-motion regions, Undo / Redo, saving and
@@ -76,6 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The text tool now uses the font you pick. It was always Arial.
 - Arrowheads keep their position and angle after a project is saved and
   reloaded.
+- Round line ends and corner joins on lines and pen strokes are kept when a
+  project is reloaded. They used to come back square.
 - A drawing the app cannot read is skipped, with a message saying how many,
   instead of loading as a small rectangle.
 
