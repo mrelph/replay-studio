@@ -13,6 +13,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collaborative annotation features
 - Cloud storage integration
 
+## [1.9.2] - 2026-11-26
+
+### Added
+- Four colour themes beside Dark, Light and System: Broadcast Night, Floodlit
+  Pitch, Arena Ice and Courtside. Pick one from the theme menu in the header.
+- An export folder setting. Exports go to Downloads by default. File → Export
+  Folder… picks another folder, and Reset Export Folder to Downloads puts it
+  back. Clip and reel exports show where they will save, with a Change… button,
+  and no longer ask for a folder every time.
+- Double-click a callout to edit its text. Long callout labels wrap at word
+  boundaries.
+- Shift+Cmd+Z (Shift+Ctrl+Z) redoes, as well as the existing redo shortcut.
+
+### Changed
+- A new drawing stays on screen for 1.5 seconds by default.
+- Timeline bars that overlap in time never share a row. The timeline grows to
+  eight rows, then scrolls and shows how many rows are hidden. Double-click the
+  resize handle to go back to automatic height.
+- Undo and redo cover slow-motion regions: adding, moving, resizing, deleting
+  and changing speed.
+- The drawing toolbar and video controls wrap onto a second row in a narrow
+  window instead of running off the edge.
+
+### Fixed
+- A freeze inside a slow-motion or 2x region no longer makes the frame step
+  uneven on either side of it, on replay or in exports.
+- Opening a different video clears the undo history, so Undo can no longer
+  bring back regions from the previous video.
+- Escape closes every dialog, and no longer cancels an export that is running.
+- The Clear All confirmation opens over the whole app instead of inside the
+  toolbar.
+- The Clips and Layers panels stay below the toolbar when it wraps.
+
 ## [1.9.1] - 2026-11-25
 
 ### Changed
