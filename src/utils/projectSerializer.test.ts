@@ -12,6 +12,7 @@ import {
 import { applyReveal } from '@/export/reveal'
 import { buildRing } from '@/components/Canvas/tools/ringTool'
 import { buildCallout } from '@/components/Canvas/tools/calloutTool'
+import { buildZone } from '@/components/Canvas/tools/zoneTool'
 import { calloutParts } from './calloutGeometry'
 import { surfaceParts } from './surfaceShape'
 import type { Clip } from '@/types/clip'
@@ -597,6 +598,17 @@ describe('save/load foundations (1.4)', () => {
     expect(loaded.originX).toBe(fresh.originX)
     expect(loaded.originY).toBe(fresh.originY)
     expect(loaded.strokeLineCap).toBe(fresh.strokeLineCap)
+  })
+
+  it('round-trips a zone outline\'s round corner joins and defaults when the key is absent', () => {
+    const zone = buildZone({ points: [{ x: 10, y: 10 }, { x: 200, y: 20 }, { x: 60, y: 30 }], color: '#ff0000', strokeWidth: 4, style: 'outline' })
+    const saved = roundTrip(zone, { toolType: 'zone' })
+    const loaded = deserializeFabricObject(fabric, saved.fabricData) as fabric.Group
+    expect(loaded.getObjects()[1].strokeLineJoin).toBe('round')
+
+    const plain = serializeFabricObject(new fabric.Rect({ width: 10, height: 10 }))
+    expect(plain).not.toHaveProperty('strokeLineJoin')
+    expect(deserializeFabricObject(fabric, plain).strokeLineJoin).toBe(new fabric.Rect({}).strokeLineJoin)
   })
 
   it('round-trips dashed and loads older files without it', () => {

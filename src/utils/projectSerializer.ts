@@ -34,10 +34,11 @@ export interface SerializedAnnotation {
     stroke?: string
     strokeWidth?: number
     angle?: number
-    /** Absent unless not Fabric's default ('left' / 'top' / 'butt'). */
+    /** Absent unless not Fabric's default ('left' / 'top' / 'butt' / 'miter'). */
     originX?: string
     originY?: string
     strokeLineCap?: string
+    strokeLineJoin?: string
     scaleX?: number
     scaleY?: number
     opacity?: number
@@ -136,6 +137,7 @@ export function serializeFabricObject(input: fabric.Object): SerializedAnnotatio
     ...(obj.originX && obj.originX !== 'left' ? { originX: obj.originX as string } : {}),
     ...(obj.originY && obj.originY !== 'top' ? { originY: obj.originY as string } : {}),
     ...(obj.strokeLineCap && obj.strokeLineCap !== 'butt' ? { strokeLineCap: obj.strokeLineCap as string } : {}),
+    ...(obj.strokeLineJoin && obj.strokeLineJoin !== 'miter' ? { strokeLineJoin: obj.strokeLineJoin as string } : {}),
   }
 
   switch (obj.type) {
@@ -321,6 +323,7 @@ export function deserializeFabricObject(fabric: any, data: SerializedAnnotation[
     ...(data.originX ? { originX: data.originX } : {}),
     ...(data.originY ? { originY: data.originY } : {}),
     ...(data.strokeLineCap ? { strokeLineCap: data.strokeLineCap } : {}),
+    ...(data.strokeLineJoin ? { strokeLineJoin: data.strokeLineJoin } : {}),
   }
 
   // Files saved with a stored shadow rebuild exactly that; older files keep the legacy glow.
