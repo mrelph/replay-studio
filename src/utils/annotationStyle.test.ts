@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { fabric } from '@/lib/fabric'
 import { shadowForStyle, restyleObject, arrowHeadSize } from './annotationStyle'
 import { useToolStore } from '@/stores/toolStore'
@@ -21,7 +21,13 @@ const mockContext = new Proxy({} as Record<string, unknown>, {
     return true
   },
 })
-HTMLCanvasElement.prototype.getContext = (() => mockContext) as unknown as HTMLCanvasElement['getContext']
+const originalGetContext = HTMLCanvasElement.prototype.getContext
+beforeAll(() => {
+  HTMLCanvasElement.prototype.getContext = (() => mockContext) as unknown as HTMLCanvasElement['getContext']
+})
+afterAll(() => {
+  HTMLCanvasElement.prototype.getContext = originalGetContext
+})
 
 describe('annotationStyle', () => {
   it('outline is a tight dark edge', () => {

@@ -1,7 +1,7 @@
 import { fabric } from '@/lib/fabric'
 import { restyleObject, type AnnotationStyle } from '@/utils/annotationStyle'
 import { textFormatProps } from '@/utils/textFormat'
-import { calloutDotRadius, labelPosition, leaderEnd, plateBox } from '@/utils/calloutGeometry'
+import { calloutDotRadius, labelOrigin, labelPosition, leaderEnd, plateBox } from '@/utils/calloutGeometry'
 import type { CanvasTool, ToolContext, ToolPoint } from './types'
 
 export interface CalloutOptions {
@@ -54,7 +54,7 @@ export function createCalloutTool(): CanvasTool {
   let canvas: fabric.Canvas | null = null
   let preview: fabric.Object[] = []
   let label: fabric.IText | null = null
-  // The context the label was opened with: its colour, width and style finish the callout.
+  // The context the label was opened with; DrawingCanvas's reads colour, width and style live, so the finish uses the current ones.
   let labelCtx: ToolContext | null = null
 
   const removePreview = () => {
@@ -136,6 +136,7 @@ export function createCalloutTool(): CanvasTool {
     target = null
     canvas = null
     if (!text.text || text.text.trim() === '') return
+    text.set({ fill: ctx.color })
     ctx.commit(buildCallout({ target: point, label: text, color: ctx.color, strokeWidth: ctx.strokeWidth, style: ctx.style }), 'callout')
   }
 
@@ -167,6 +168,7 @@ export function createCalloutTool(): CanvasTool {
       const text = new fabric.IText('', {
         left: at.x,
         top: at.y,
+        ...labelOrigin(target, at),
         ...textFormatProps(ctx.textFormat),
         textPlate: true,
         fill: ctx.color,
@@ -188,6 +190,16 @@ export function createCalloutTool(): CanvasTool {
     },
     cancel() {
       reset()
+    },
+    onToolSwitch() {
+      // Picking another tool (Select, to move it) keeps what was typed; anything else is abandoned.
+      if (!label || !label.text || label.text.trim() === '' || !canvas || !isLive(canvas)) {
+        reset()
+        return
+      }
+      label.off('editing:exited', onExited)
+      if (label.isEditing) label.exitEditing()
+      finish()
     },
     isBusy() {
       return target !== null

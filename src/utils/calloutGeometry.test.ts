@@ -6,6 +6,7 @@ import {
   CALLOUT_DRAG_MIN,
   calloutDotRadius,
   calloutParts,
+  labelOrigin,
   labelPosition,
   leaderEnd,
   plateBox,
@@ -38,6 +39,15 @@ describe('callout geometry', () => {
     expect(CALLOUT_CLICK_OFFSET).toEqual({ x: 80, y: -80 })
     expect(labelPosition({ x: 100, y: 100 }, { x: 103, y: 102 })).toEqual({ x: 180, y: 20 })
     expect(labelPosition({ x: 100, y: 100 }, { x: 300, y: 60 })).toEqual({ x: 300, y: 60 })
+  })
+
+  it('anchors the label corner nearest the target', () => {
+    const target = { x: 100, y: 100 }
+    expect(labelOrigin(target, { x: 150, y: 150 })).toEqual({ originX: 'left', originY: 'top' })
+    expect(labelOrigin(target, { x: 50, y: 150 })).toEqual({ originX: 'right', originY: 'top' })
+    expect(labelOrigin(target, { x: 50, y: 50 })).toEqual({ originX: 'right', originY: 'bottom' })
+    expect(labelOrigin(target, { x: 150, y: 50 })).toEqual({ originX: 'left', originY: 'bottom' })
+    expect(labelOrigin(target, { x: 100, y: 100 })).toEqual({ originX: 'left', originY: 'top' })
   })
 
   it('grows the text box by the padding the plate is drawn with', () => {

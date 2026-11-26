@@ -45,6 +45,11 @@ export function labelPosition(target: ToolPoint, release: ToolPoint): ToolPoint 
   return { x: target.x + CALLOUT_CLICK_OFFSET.x, y: target.y + CALLOUT_CLICK_OFFSET.y }
 }
 
+/** The label's corner nearest the target sits at the label position, so the text grows away from the target as it is typed. */
+export function labelOrigin(target: ToolPoint, at: ToolPoint): { originX: 'left' | 'right'; originY: 'top' | 'bottom' } {
+  return { originX: at.x < target.x ? 'right' : 'left', originY: at.y < target.y ? 'bottom' : 'top' }
+}
+
 export function calloutParts(object: fabric.Object): { dot: fabric.Object; leader: fabric.Object; label: fabric.Object } | null {
   if (!(object instanceof fabric.Group)) return null
   const items = object.getObjects()

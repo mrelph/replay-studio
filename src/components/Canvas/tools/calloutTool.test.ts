@@ -53,6 +53,13 @@ function place(tool: ReturnType<typeof createCalloutTool>, ctx: ToolContext, tar
   return ctx.canvas.getActiveObject() as fabric.IText & { textPlate?: boolean }
 }
 
+function plateOf(label: fabric.IText) {
+  const width = label.width ?? 0
+  const height = label.height ?? 0
+  const center = label.getCenterPoint()
+  return plateBox({ left: center.x - width / 2, top: center.y - height / 2, width, height }, label.fontSize ?? 24)
+}
+
 describe('callout tool', () => {
   it('opens a plated label up and right of a clicked target, with the caret in it', () => {
     const { ctx, canvas, tool } = setup()
@@ -196,6 +203,75 @@ describe('callout tool', () => {
     expect(() => tool.cancel?.(ctx)).not.toThrow()
     await tick()
     expect(commit).not.toHaveBeenCalled()
+    expect(tool.isBusy?.()).toBe(false)
+  })
+
+  it.each([
+    ['right and below', { x: 360, y: 250 }],
+    ['left and below', { x: 240, y: 250 }],
+    ['left and above', { x: 240, y: 150 }],
+    ['right and above', { x: 360, y: 150 }],
+    ['just left and above', { x: 294, y: 194 }],
+    ['just left', { x: 291, y: 200 }],
+    ['just above', { x: 300, y: 191 }],
+  ])('a label %s of the target grows away from it and the leader meets the plate edge', async (_, release) => {
+    const { ctx, commit, tool } = setup()
+    const target = { x: 300, y: 200 }
+    const label = place(tool, ctx, target, release)
+    label.set({ text: 'PP unit' })
+    const box = plateOf(label)
+    const inside = target.x > box.left && target.x < box.left + box.width && target.y > box.top && target.y < box.top + box.height
+    expect(inside).toBe(false)
+    label.exitEditing()
+    await tick()
+    const leader = calloutParts(commit.mock.calls[0][0])!.leader as fabric.Line
+    const end = { x: leader.x2 ?? 0, y: leader.y2 ?? 0 }
+    const near = (a: number, b: number) => Math.abs(a - b) < 1e-6
+    const onSide = (near(end.x, box.left) || near(end.x, box.left + box.width)) && end.y >= box.top - 1e-6 && end.y <= box.top + box.height + 1e-6
+    const onTopOrBottom = (near(end.y, box.top) || near(end.y, box.top + box.height)) && end.x >= box.left - 1e-6 && end.x <= box.left + box.width + 1e-6
+    expect(onSide || onTopOrBottom).toBe(true)
+    expect(Math.hypot(end.x - target.x, end.y - target.y)).toBeGreaterThan(0)
+  })
+
+  it('finishes with the colour, width and style current at the finish', async () => {
+    const { ctx, commit, tool } = setup()
+    const label = place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })
+    label.set({ text: 'Pass' })
+    Object.assign(ctx, { color: '#00ff00', strokeWidth: 6, style: 'clean' })
+    label.exitEditing()
+    await tick()
+    const { dot, leader, label: committed } = calloutParts(commit.mock.calls[0][0])!
+    expect(dot.fill).toBe('#00ff00')
+    expect((dot as fabric.Circle).radius).toBe(calloutDotRadius(6))
+    expect(leader.stroke).toBe('#00ff00')
+    expect(leader.strokeWidth).toBe(6)
+    expect(leader.shadow).toBeFalsy()
+    expect(committed.fill).toBe('#00ff00')
+  })
+
+  it('a tool switch keeps a typed callout', () => {
+    const { ctx, canvas, commit, tool } = setup()
+    const label = place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })
+    label.set({ text: 'PP unit' })
+    tool.onToolSwitch?.(ctx)
+    expect(commit).toHaveBeenCalledTimes(1)
+    expect(commit.mock.calls[0][1]).toBe('callout')
+    expect(label.isEditing).toBe(false)
+    expect(canvas.getObjects()).toEqual([])
+    expect(tool.isBusy?.()).toBe(false)
+  })
+
+  it('a tool switch drops an empty callout or one still being dragged', async () => {
+    const { ctx, canvas, commit, tool } = setup()
+    place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })
+    tool.onToolSwitch?.(ctx)
+    tool.onDown?.(ctx, { x: 100, y: 100 }, at())
+    tool.onMove?.(ctx, { x: 200, y: 50 }, at())
+    tool.onToolSwitch?.(ctx)
+    await tick()
+    expect(commit).not.toHaveBeenCalled()
+    expect(canvas.getObjects()).toEqual([])
+    expect(document.querySelectorAll('textarea')).toHaveLength(0)
     expect(tool.isBusy?.()).toBe(false)
   })
 })

@@ -16,6 +16,7 @@ import type { CanvasTool, ToolContext } from './tools/types'
 import { ringTool } from './tools/ringTool'
 import { zoneTool } from './tools/zoneTool'
 import { calloutTool } from './tools/calloutTool'
+import { liveToolContext as toolContext } from './tools/toolContext'
 import { frameIndexAt } from '@/utils/frames'
 import { applyDash, dashPattern, strokeTarget, DASH_TOOL_TYPES } from '@/utils/lineDash'
 
@@ -27,12 +28,6 @@ const NEW_TOOLS: Partial<Record<ToolType, CanvasTool>> = {
   ring: ringTool,
   zone: zoneTool,
   callout: calloutTool,
-}
-
-/** Context for a tool module, read from the store at call time so a mid-gesture colour or width change applies. */
-function toolContext(canvas: fabric.Canvas, commit: ToolContext['commit']): ToolContext {
-  const { strokeColor, strokeWidth, annotationStyle, textFormat } = useToolStore.getState()
-  return { canvas, color: strokeColor, strokeWidth, style: annotationStyle, textFormat, commit }
 }
 
 /** Abandons any module tool's gesture in progress (its preview objects go with it). */
@@ -233,16 +228,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       wrapper?.removeEventListener('pointerdown', syncBeforeDraw, true)
     }
   }, [videoElement, syncToVideo])
-
-  // Switching away from a module tool abandons its gesture.
-  const previousToolRef = useRef<ToolType>(currentTool)
-  useEffect(() => {
-    const previous = previousToolRef.current
-    previousToolRef.current = currentTool
-    const canvas = fabricRef.current
-    if (previous === currentTool || !canvas) return
-    NEW_TOOLS[previous]?.cancel?.(toolContext(canvas, () => {}))
-  }, [currentTool])
 
   // Update canvas settings when tool changes
   useEffect(() => {
@@ -495,6 +480,19 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     createAnnotationRef.current(object, toolType)
   }, [])
 
+  // Switching away from a module tool abandons its gesture, unless the tool finishes it instead (a typed callout).
+  const previousToolRef = useRef<ToolType>(currentTool)
+  useEffect(() => {
+    const previous = previousToolRef.current
+    previousToolRef.current = currentTool
+    const canvas = fabricRef.current
+    if (previous === currentTool || !canvas) return
+    const tool = NEW_TOOLS[previous]
+    const ctx = toolContext(canvas, moduleCommit)
+    if (tool?.onToolSwitch) tool.onToolSwitch(ctx)
+    else tool?.cancel?.(ctx)
+  }, [currentTool, moduleCommit])
+
   // Keys, playback and seeks while a module tool's gesture (a zone) is in
   // progress. The key listener is on window in the capture phase, so it runs
   // before every bubble-phase shortcut listener, and stops the keys it handles.
@@ -586,10 +584,6 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       }
     }
 
-    const commit: ToolContext['commit'] = (object, toolType) => {
-      createAnnotation(object, toolType)
-    }
-
     // Erase tool state
     let erasePoints: { x: number; y: number }[] = []
     let erasePreview: fabric.Line[] = []
@@ -605,7 +599,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
         drawTimeRef.current = DRAW_FRAME_TOOLS.has(currentTool) ? useVideoStore.getState().captureDrawFrame() : null
       }
       if (tool) {
-        tool.onDown?.(toolContext(canvas, commit), canvas.getPointer(e.e), e)
+        tool.onDown?.(toolContext(canvas, moduleCommit), canvas.getPointer(e.e), e)
         return
       }
       if (currentTool === 'pen' || currentTool === 'select' || currentTool === 'laser') return
@@ -892,7 +886,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const handleMouseMove = (e: fabric.IEvent) => {
       const tool = NEW_TOOLS[currentTool]
       if (tool) {
-        tool.onMove?.(toolContext(canvas, commit), canvas.getPointer(e.e), e)
+        tool.onMove?.(toolContext(canvas, moduleCommit), canvas.getPointer(e.e), e)
         return
       }
       // Erase tool: extend preview path
@@ -985,7 +979,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const handleMouseUp = (e: fabric.IEvent) => {
       const tool = NEW_TOOLS[currentTool]
       if (tool) {
-        tool.onUp?.(toolContext(canvas, commit), canvas.getPointer(e.e), e)
+        tool.onUp?.(toolContext(canvas, moduleCommit), canvas.getPointer(e.e), e)
         return
       }
       // Erase tool: find intersecting annotations and remove them
@@ -1135,7 +1129,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     }
 
     const handleDoubleClick = (e: fabric.IEvent) => {
-      NEW_TOOLS[currentTool]?.onDoubleClick?.(toolContext(canvas, commit), canvas.getPointer(e.e), e)
+      NEW_TOOLS[currentTool]?.onDoubleClick?.(toolContext(canvas, moduleCommit), canvas.getPointer(e.e), e)
     }
 
     canvas.on('mouse:down', handleMouseDown)
@@ -1149,7 +1143,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       canvas.off('mouse:up', handleMouseUp)
       canvas.off('mouse:dblclick', handleDoubleClick)
     }
-  }, [currentTool, strokeColor, strokeWidth, annotationStyle, textFormat, setIsDrawing, createAnnotation])
+  }, [currentTool, strokeColor, strokeWidth, annotationStyle, textFormat, setIsDrawing, createAnnotation, moduleCommit])
 
   // Update brush when path is created (for pen tool)
   useEffect(() => {

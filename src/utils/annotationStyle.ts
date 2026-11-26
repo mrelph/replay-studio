@@ -22,7 +22,7 @@ export function shadowForStyle(style: AnnotationStyle, color: string, glowBlur?:
   return undefined
 }
 
-const GLOW_BLUR: Record<string, number> = { arrow: 15, 'arc-arrow': 15, rectangle: 12, circle: 12, ring: 12, zone: 12 }
+const GLOW_BLUR: Record<string, number> = { arrow: 15, 'arc-arrow': 15, rectangle: 12, circle: 12, ring: 12, zone: 12, callout: 10 }
 
 function styleOne(object: fabric.Object, toolType: string, style: AnnotationStyle): void {
   const own = toolType === 'text' ? object.fill : object.stroke
