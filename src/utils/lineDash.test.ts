@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { fabric } from '@/lib/fabric'
-import { applyDash, dashPattern, dashSelected, revealDashArray, strokeTarget } from './lineDash'
-import { applyReveal, stripReveal } from '@/export/reveal'
+import { applyDash, dashPattern, revealDashArray, strokeTarget } from './lineDash'
 
 const originalGetContext = HTMLCanvasElement.prototype.getContext
 beforeAll(() => {
@@ -95,33 +94,5 @@ describe('lineDash', () => {
     expect(shaft.strokeLineCap).toBe('butt')
     expect(shaft.strokeUniform).toBe(true)
     expect(head.strokeDashArray).toBeFalsy()
-  })
-  describe('switching mid-reveal', () => {
-    function switchSelected(line: fabric.Line, lineDash: 'solid' | 'dashed') {
-      const canvas = new fabric.Canvas(document.createElement('canvas'), { width: 200, height: 200 })
-      canvases.push(canvas)
-      canvas.add(line)
-      canvas.setActiveObject(line)
-      dashSelected({ canvas, annotations: [{ id: 'l', object: line, toolType: 'line' }], saveState: () => {}, updateAnnotation: () => {} }, lineDash)
-    }
-
-    it('keeps the dashes on a solid line switched to dashed while it draws on', () => {
-      const line = new fabric.Line([0, 0, 100, 0], { stroke: '#f00', strokeWidth: 4, strokeLineCap: 'round' })
-      applyReveal(line, 'line', 0.4)
-      switchSelected(line, 'dashed')
-      stripReveal(line)
-      expect(line.strokeDashArray).toEqual([12, 8])
-      expect(line.strokeLineCap).toBe('butt')
-    })
-
-    it('keeps a dashed line solid once switched while it draws on', () => {
-      const line = new fabric.Line([0, 0, 100, 0], { stroke: '#f00', strokeWidth: 4, strokeLineCap: 'round' })
-      applyDash(line, 'line', true)
-      applyReveal(line, 'line', 0.4, { dashed: true })
-      switchSelected(line, 'solid')
-      stripReveal(line)
-      expect(line.strokeDashArray).toBeFalsy()
-      expect(line.strokeLineCap).toBe('round')
-    })
   })
 })

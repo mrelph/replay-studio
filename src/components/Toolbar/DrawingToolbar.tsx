@@ -11,7 +11,8 @@ import { STAY_PRESETS, STAY_TOOL_TYPES, stayTiming, type StayPreset } from '@/ut
 import { getToolDefaults } from '@/utils/annotationDefaults'
 import { useVideoStore } from '@/stores/videoStore'
 import { restyleObject, STYLED_TOOL_TYPES, type AnnotationStyle } from '@/utils/annotationStyle'
-import { dashSelected, type LineDash } from '@/utils/lineDash'
+import type { LineDash } from '@/utils/lineDash'
+import { dashSelected } from '@/utils/dashSelected'
 import {
   applyTextFormat, ensureFontLoaded, isTextObject, readTextFormat, stepFontSize,
   FONT_FAMILIES, FONT_SIZES, type TextFormat,

@@ -8,7 +8,7 @@ import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
 import { fabric } from '@/lib/fabric'
 import { toast } from '@/components/ui'
 import { stepFrames } from '@/utils/frames'
-import { dashSelected } from '@/utils/lineDash'
+import { dashSelected } from '@/utils/dashSelected'
 
 /**
  * Moves an In or Out edge by whole frames: the selected clip's edge when a
