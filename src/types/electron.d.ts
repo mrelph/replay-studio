@@ -93,6 +93,8 @@ export interface ElectronAPI {
   // Multi-clip export (see docs/CLIPS_PLAN.md)
   /** Width/height/fps/duration/audio of a registered video path. */
   probeVideo: (filePath: string) => Promise<VideoProbe | { error: string }>
+  /** Asks the OS for microphone access (macOS prompt); true when granted or not needed. */
+  requestMicrophone: () => Promise<boolean>
   /** The export folder setting (Downloads by default); main authorizes it for export writes. */
   getExportFolder: () => Promise<ExportFolderInfo>
   /** Folder picker starting at the export folder; saves and authorizes the pick. Null when cancelled. */

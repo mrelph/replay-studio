@@ -76,6 +76,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Export folder setting. Choose errors propagate so the export dialog can
   // tell the user why the picker failed.
+  requestMicrophone: () => ipcRenderer.invoke('voice:requestMicrophone'),
+
   getExportFolder: () => ipcRenderer.invoke('settings:getExportFolder'),
   chooseExportFolder: () => ipcRenderer.invoke('settings:chooseExportFolder'),
   resetExportFolder: () => ipcRenderer.invoke('settings:resetExportFolder'),

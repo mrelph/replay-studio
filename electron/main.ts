@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, screen, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, screen, shell, systemPreferences, type WebContents } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import fs from 'fs'
@@ -833,6 +833,12 @@ async function runExportFolderMenuAction(action: () => Promise<unknown>) {
     }
   }
 }
+
+ipcMain.handle('voice:requestMicrophone', async (event) => {
+  if (!isFromMainWindow(event.sender)) return false
+  if (process.platform !== 'darwin') return true
+  return systemPreferences.askForMediaAccess('microphone')
+})
 
 ipcMain.handle('settings:getExportFolder', () => currentExportFolder())
 

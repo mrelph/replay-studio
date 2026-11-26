@@ -9,6 +9,7 @@ import { fabric } from '@/lib/fabric'
 import { toast } from '@/components/ui'
 import { stepFrames } from '@/utils/frames'
 import { dashSelected } from '@/utils/dashSelected'
+import { beginVoiceRecording, endVoiceRecording } from '@/voice/voiceRecording'
 
 /**
  * Moves an In or Out edge by whole frames: the selected clip's edge when a
@@ -273,6 +274,11 @@ export function useKeyboardShortcuts() {
         if (!e.repeat) useVideoStore.getState().beginSlowRecording()
         return
 
+      case 'video.voice':
+        e.preventDefault()
+        if (!e.repeat) void beginVoiceRecording()
+        return
+
       case 'tool.toggleDash': {
         e.preventDefault()
         useToolStore.getState().toggleLineDash()
@@ -346,10 +352,13 @@ export function useKeyboardShortcuts() {
       // Ends on the key alone: a modifier pressed in between must not leave the recording running.
       const slowKey = useShortcutsStore.getState().getShortcut('video.slow')?.binding.key
       if (e.key.toLowerCase() === slowKey) useVideoStore.getState().endSlowRecording()
+      const voiceKey = useShortcutsStore.getState().getShortcut('video.voice')?.binding.key
+      if (e.key.toLowerCase() === voiceKey) void endVoiceRecording()
     }
     const handleBlur = () => {
       stopKeyHeldRef.current = false
       useVideoStore.getState().endSlowRecording()
+      void endVoiceRecording()
     }
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)

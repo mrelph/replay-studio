@@ -1,7 +1,7 @@
 import {
   SkipBack, RotateCcw, ChevronLeft, Play, Pause, ChevronRight,
   RotateCw, SkipForward, ChevronsLeft, ChevronsRight, Repeat2,
-  Volume2, Volume1, VolumeX, Maximize, Minimize, Snowflake, Gauge
+  Volume2, Volume1, VolumeX, Maximize, Minimize, Snowflake, Gauge, Mic
 } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useSpeedStore } from '@/stores/speedStore'
@@ -10,6 +10,7 @@ import { IconButton, Select, Slider } from '@/components/ui'
 import { useShortcutKeyLabel } from '@/stores/shortcutsStore'
 import { formatTimecode } from '@/utils/frames'
 import { regionBadge } from '@/utils/liveRate'
+import { useVoiceRecording, beginVoiceRecording, endVoiceRecording } from '@/voice/voiceRecording'
 
 // 4x/8x are reachable by tapping the forward shuttle (L), so the picker must be able to show them.
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8]
@@ -83,6 +84,40 @@ function SlowButton({ keyLabel }: { keyLabel: string }) {
   )
 }
 
+/** Records a voice clip at the playhead: click to start, click again to stop (same as holding the key). */
+function VoiceButton({ keyLabel }: { keyLabel: string }) {
+  const recording = useVoiceRecording((s) => s.recording)
+  const hasVideo = useVideoStore((s) => s.duration > 0)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!recording) return
+    setNow(Date.now())
+    const id = setInterval(() => setNow(Date.now()), 250)
+    return () => clearInterval(id)
+  }, [recording])
+
+  const elapsed = recording ? Math.max(0, Math.floor((now - recording.startedAt) / 1000)) : 0
+
+  return (
+    <button
+      type="button"
+      onClick={() => void (recording ? endVoiceRecording() : beginVoiceRecording())}
+      disabled={!hasVideo}
+      aria-pressed={recording !== null}
+      title={`Voice: record narration at the playhead, click again to stop (${keyLabel}: hold)`}
+      className={`h-9 min-w-9 px-2 mr-1 flex items-center justify-center gap-1 rounded-full transition-colors disabled:opacity-25 disabled:cursor-not-allowed ${
+        recording
+          ? 'bg-accent text-accent-text shadow-md'
+          : 'text-text-secondary hover:text-accent hover:bg-surface-elevated'
+      }`}
+    >
+      <Mic className={`w-4 h-4 ${recording ? 'animate-pulse' : ''}`} />
+      {recording && <span className="text-xs font-mono tabular-nums">{elapsed}s</span>}
+    </button>
+  )
+}
+
 export default function VideoControls() {
   const {
     isPlaying,
@@ -129,6 +164,7 @@ export default function VideoControls() {
   const loopKeyLabel = useShortcutKeyLabel('video.toggleLoop')
   const freezeKeyLabel = useShortcutKeyLabel('video.freeze')
   const slowKeyLabel = useShortcutKeyLabel('video.slow')
+  const voiceKeyLabel = useShortcutKeyLabel('video.voice')
   const muteKeyLabel = useShortcutKeyLabel('video.toggleMute')
   const fullscreenKeyLabel = useShortcutKeyLabel('video.toggleFullscreen')
   const playPauseKeyLabel = useShortcutKeyLabel('video.playPause')
@@ -270,6 +306,7 @@ export default function VideoControls() {
           </button>
           <FreezeButton keyLabel={freezeKeyLabel} />
           <SlowButton keyLabel={slowKeyLabel} />
+          <VoiceButton keyLabel={voiceKeyLabel} />
 
           <IconButton onClick={() => stepFrame('forward')} title={`Next Frame (${stepForwardKeyLabel})`} size="sm">
             <ChevronRight className="w-4 h-4" />

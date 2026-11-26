@@ -34,6 +34,7 @@ export type ShortcutAction =
   | 'video.shuttleReverse'
   | 'video.freeze'
   | 'video.slow'
+  | 'video.voice'
   // In/Out points
   | 'inout.setIn'
   | 'inout.setOut'
@@ -99,6 +100,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
   { action: 'video.playPause', label: 'Play / Pause', category: 'Video Playback', binding: { key: ' ' } },
   { action: 'video.freeze', label: 'Freeze: stop on this frame and time it; resume to record the freeze', category: 'Video Playback', binding: { key: 'h' } },
   { action: 'video.slow', label: 'Slow motion: hold while playing', category: 'Video Playback', binding: { key: 'w' } },
+  { action: 'video.voice', label: 'Voice: hold to record', category: 'Video Playback', binding: { key: 'n' } },
   { action: 'video.stepForward', label: 'Next frame', category: 'Video Playback', binding: { key: 'arrowright' } },
   { action: 'video.stepBackward', label: 'Previous frame', category: 'Video Playback', binding: { key: 'arrowleft' } },
   { action: 'video.shuttleReverse', label: 'Shuttle reverse (tap again: faster; hold K: prev frame)', category: 'Video Playback', binding: { key: 'j' } },

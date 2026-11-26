@@ -28,6 +28,12 @@ describe('shortcutsStore', () => {
     resetStore()
   })
 
+  it('binds N to the voice recording action and no other action uses it', () => {
+    expect(DEFAULT_SHORTCUTS.find((d) => d.action === 'video.voice')?.binding.key).toBe('n')
+    const onN = DEFAULT_SHORTCUTS.filter((d) => d.binding.key === 'n' && !d.binding.ctrl && !d.binding.shift && !d.binding.alt)
+    expect(onN.map((d) => d.action)).toEqual(['video.voice'])
+  })
+
   it('Shift+Ctrl/Cmd+Z redoes without disturbing Undo or Ctrl+Y', () => {
     const { getActionForKey } = useShortcutsStore.getState()
     expect(getActionForKey('z', true, true, false)).toBe('edit.redo')
