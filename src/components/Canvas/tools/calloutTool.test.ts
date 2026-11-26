@@ -3,6 +3,7 @@ import { fabric } from '@/lib/fabric'
 import { DEFAULT_TEXT_FORMAT } from '@/utils/textFormat'
 import { calloutDotRadius, calloutParts, leaderEnd, plateBox } from '@/utils/calloutGeometry'
 import { createCalloutTool } from './calloutTool'
+import { abandonGesture, abandonKeepsWork } from './abandon'
 import type { ToolContext, ToolPoint } from './types'
 
 const canvases: Array<InstanceType<typeof fabric.Canvas>> = []
@@ -273,5 +274,51 @@ describe('callout tool', () => {
     expect(canvas.getObjects()).toEqual([])
     expect(document.querySelectorAll('textarea')).toHaveLength(0)
     expect(tool.isBusy?.()).toBe(false)
+  })
+
+  it.each(['play', 'seek'] as const)('a %s keeps a typed callout and commits it once', async (reason) => {
+    const { ctx, canvas, commit, tool } = setup()
+    const label = place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })
+    label.set({ text: 'PP unit' })
+    abandonGesture(tool, ctx, reason, false)
+    await tick()
+    expect(commit).toHaveBeenCalledTimes(1)
+    expect(commit.mock.calls[0][1]).toBe('callout')
+    expect((calloutParts(commit.mock.calls[0][0])!.label as fabric.IText).text).toBe('PP unit')
+    expect(label.isEditing).toBe(false)
+    expect(canvas.getObjects()).toEqual([])
+    expect(tool.isBusy?.()).toBe(false)
+  })
+
+  it.each(['play', 'seek'] as const)('a %s drops an empty callout', async (reason) => {
+    const { ctx, canvas, commit, tool } = setup()
+    place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 }).set({ text: '  ' })
+    abandonGesture(tool, ctx, reason, false)
+    await tick()
+    expect(commit).not.toHaveBeenCalled()
+    expect(canvas.getObjects()).toEqual([])
+    expect(tool.isBusy?.()).toBe(false)
+  })
+
+  it.each([
+    ['an undo/redo or project load', 'restore', false],
+    ['a canvas disposal', 'dispose', false],
+    ['a play during a restore', 'play', true],
+    ['a seek during a restore', 'seek', true],
+  ] as const)('%s drops a typed callout', async (_, reason, restoring) => {
+    const { ctx, canvas, commit, tool } = setup()
+    place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 }).set({ text: 'PP unit' })
+    abandonGesture(tool, ctx, reason, restoring)
+    await tick()
+    expect(commit).not.toHaveBeenCalled()
+    expect(canvas.getObjects()).toEqual([])
+    expect(tool.isBusy?.()).toBe(false)
+  })
+
+  it('only playing and seeking keep the work', () => {
+    expect(abandonKeepsWork('play')).toBe(true)
+    expect(abandonKeepsWork('seek')).toBe(true)
+    expect(abandonKeepsWork('restore')).toBe(false)
+    expect(abandonKeepsWork('dispose')).toBe(false)
   })
 })

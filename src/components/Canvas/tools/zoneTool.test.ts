@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { fabric } from '@/lib/fabric'
 import { DEFAULT_TEXT_FORMAT } from '@/utils/textFormat'
 import { createZoneTool } from './zoneTool'
+import { abandonGesture } from './abandon'
 import type { ToolContext } from './types'
 
 // Fabric schedules renders on requestAnimationFrame; dispose each test canvas
@@ -148,6 +149,15 @@ describe('zone tool', () => {
     canvases.splice(canvases.indexOf(canvas), 1)
     canvas.dispose()
     expect(() => tool.cancel?.(ctx)).not.toThrow()
+    expect(tool.isBusy?.()).toBe(false)
+  })
+
+  it.each(['play', 'seek', 'restore', 'dispose'] as const)('a %s cancels a zone in progress', (reason) => {
+    const { canvas, commit, ctx, tool } = setup()
+    corners.forEach((p) => tool.onDown?.(ctx, p, event))
+    abandonGesture(tool, ctx, reason, false)
+    expect(commit).not.toHaveBeenCalled()
+    expect(canvas.getObjects()).toHaveLength(0)
     expect(tool.isBusy?.()).toBe(false)
   })
 })

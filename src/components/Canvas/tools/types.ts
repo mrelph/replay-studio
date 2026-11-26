@@ -22,7 +22,7 @@ export interface CanvasTool {
   onKey?(ctx: ToolContext, e: KeyboardEvent): boolean
   /** Tool switched away, or the gesture must be abandoned: remove preview objects. */
   cancel?(ctx: ToolContext): void
-  /** The user picked another tool mid-gesture. Without this, `cancel` runs. */
+  /** The user picked another tool mid-gesture, or playback started or the playhead left the gesture's frame (see abandon.ts). Without this, `cancel` runs. */
   onToolSwitch?(ctx: ToolContext): void
   /** True while a multi-step gesture is in progress (used by Task 3). */
   isBusy?(): boolean

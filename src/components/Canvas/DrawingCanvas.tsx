@@ -17,6 +17,7 @@ import { ringTool } from './tools/ringTool'
 import { zoneTool } from './tools/zoneTool'
 import { calloutTool } from './tools/calloutTool'
 import { liveToolContext as toolContext } from './tools/toolContext'
+import { abandonGesture, type AbandonReason } from './tools/abandon'
 import { frameIndexAt } from '@/utils/frames'
 import { applyDash, dashPattern, strokeTarget, DASH_TOOL_TYPES } from '@/utils/lineDash'
 
@@ -33,7 +34,7 @@ const NEW_TOOLS: Partial<Record<ToolType, CanvasTool>> = {
 /** Abandons any module tool's gesture in progress (its preview objects go with it). */
 function cancelBusyTools(canvas: fabric.Canvas) {
   Object.values(NEW_TOOLS).forEach((tool) => {
-    if (tool?.isBusy?.()) tool.cancel?.(toolContext(canvas, () => {}))
+    if (tool) abandonGesture(tool, toolContext(canvas, () => {}), 'dispose', true)
   })
 }
 
@@ -496,15 +497,18 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // Keys, playback and seeks while a module tool's gesture (a zone) is in
   // progress. The key listener is on window in the capture phase, so it runs
   // before every bubble-phase shortcut listener, and stops the keys it handles.
+  // Playing or seeking away finishes a typed callout on the frame it was
+  // started on (drawTimeRef); everything else is dropped (see tools/abandon.ts).
   useEffect(() => {
     const active = () => {
       const canvas = fabricRef.current
       const tool = NEW_TOOLS[useToolStore.getState().currentTool]
       return canvas && tool ? { canvas, tool } : null
     }
-    const abandon = () => {
+    const abandon = (reason: AbandonReason) => {
       const current = active()
-      if (current?.tool.isBusy?.()) current.tool.cancel?.(toolContext(current.canvas, moduleCommit))
+      if (!current) return
+      abandonGesture(current.tool, toolContext(current.canvas, moduleCommit), reason, useDrawingStore.getState().isRestoring)
     }
 
     const handleKey = (e: KeyboardEvent) => {
@@ -522,14 +526,19 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       const anchor = drawTimeRef.current
       const { fps } = useVideoStore.getState()
       if (anchor !== null && frameIndexAt(videoElement.currentTime, fps) === frameIndexAt(anchor, fps)) return
-      abandon()
+      abandon('seek')
+      // A callout finished here asked for a preview hold on its own frame, which the playhead has just left.
+      const { pendingPreview } = useVideoStore.getState()
+      if (pendingPreview !== null && frameIndexAt(videoElement.currentTime, fps) !== frameIndexAt(pendingPreview, fps)) {
+        useVideoStore.getState().setPendingPreview(null)
+      }
     }
     const stopVideo = useVideoStore.subscribe((state, prev) => {
-      if (state.isPlaying && !prev.isPlaying) abandon()
+      if (state.isPlaying && !prev.isPlaying) abandon('play')
     })
     // Undo/redo, a project load or a canvas swap clears the canvas under the preview.
     const stopDrawing = useDrawingStore.subscribe((state, prev) => {
-      if ((state.isRestoring && !prev.isRestoring) || state.restoreToken !== prev.restoreToken) abandon()
+      if ((state.isRestoring && !prev.isRestoring) || state.restoreToken !== prev.restoreToken) abandon('restore')
     })
 
     window.addEventListener('keydown', handleKey, true)

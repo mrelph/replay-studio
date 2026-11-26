@@ -87,7 +87,7 @@ function useSelectedText() {
   return { selectedText: canvas ? canvas.getActiveObjects().filter(isTextObject) : [], refresh }
 }
 
-// Keeps keyboard focus in the text being edited when a format button is clicked.
+// Keeps keyboard focus in the text being edited (a text box or a callout's label) when a toolbar setting is clicked.
 const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 
 function FormatToggle({ active, label, onClick, children }: {
@@ -294,6 +294,7 @@ export default function DrawingToolbar() {
         {PRESET_COLORS.slice(0, 6).map((color) => (
           <button
             key={color}
+            onMouseDown={keepFocus}
             onClick={() => setStrokeColor(color)}
             className={`w-6 h-6 rounded transition-all flex-shrink-0 ${
               strokeColor === color
@@ -313,6 +314,7 @@ export default function DrawingToolbar() {
         {STROKE_WIDTHS.slice(0, 4).map((width) => (
           <button
             key={width}
+            onMouseDown={keepFocus}
             onClick={() => setStrokeWidth(width)}
             className={`w-7 h-7 rounded flex items-center justify-center transition-all ${
               strokeWidth === width
@@ -339,6 +341,7 @@ export default function DrawingToolbar() {
         {ANNOTATION_STYLES.map(({ value, label, title }) => (
           <button
             key={value}
+            onMouseDown={keepFocus}
             onClick={() => chooseAnnotationStyle(value)}
             className={`px-2 h-7 rounded text-xs transition-all ${
               annotationStyle === value
@@ -360,6 +363,7 @@ export default function DrawingToolbar() {
         {LINE_DASHES.map(({ value, label, title }) => (
           <button
             key={value}
+            onMouseDown={keepFocus}
             onClick={() => chooseLineDash(value)}
             className={`px-2 h-7 rounded text-xs transition-all ${
               lineDash === value
@@ -381,6 +385,7 @@ export default function DrawingToolbar() {
         {STAY_PRESETS.map(({ value, label }) => (
           <button
             key={String(value)}
+            onMouseDown={keepFocus}
             onClick={() => chooseStayPreset(value)}
             className={`px-2 h-7 rounded text-xs whitespace-nowrap transition-all ${
               stayPreset === value
