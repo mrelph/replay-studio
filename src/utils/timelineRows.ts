@@ -4,7 +4,7 @@ interface RowItem {
   endTime: number
 }
 
-export function assignRows(items: RowItem[], minSpan: number, maxRows: number): Map<string, number> {
+export function assignRows(items: RowItem[], minSpan: number): Map<string, number> {
   const sorted = [...items].sort((a, b) => a.startTime - b.startTime)
   const rowEnds: number[] = []
   const rows = new Map<string, number>()
@@ -13,7 +13,7 @@ export function assignRows(items: RowItem[], minSpan: number, maxRows: number): 
     let row = rowEnds.findIndex((rowEnd) => rowEnd <= item.startTime)
     if (row === -1) row = rowEnds.length
     rowEnds[row] = end
-    rows.set(item.id, row >= maxRows ? row % maxRows : row)
+    rows.set(item.id, row)
   }
   return rows
 }

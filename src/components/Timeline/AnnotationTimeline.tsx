@@ -300,14 +300,14 @@ export default function AnnotationTimeline() {
   const isResizingRef = useRef(false)
   const [markerDragging, setMarkerDragging] = useState(false)
   const computedRows = useMemo(
-    () => assignRows(annotations, 0.005 * duration, 6),
+    () => assignRows(annotations, 0.005 * duration),
     [annotations, duration],
   )
   // Rows stay put while a bar is dragged so it does not jump under the cursor.
   const rowsRef = useRef(computedRows)
   if (!markerDragging) rowsRef.current = computedRows
   const rows = rowsRef.current
-  const containerHeight = Math.max(trackHeight, laneTopPx + rowCount(rows) * 28 + 8)
+  const containerHeight = Math.max(trackHeight, laneTopPx + Math.min(rowCount(rows), 8) * 28 + 8)
   const handleMarkerDragStart = useCallback(() => setMarkerDragging(true), [])
   const handleMarkerDragEnd = useCallback(() => setMarkerDragging(false), [])
 
@@ -486,7 +486,8 @@ export default function AnnotationTimeline() {
         )}
 
         {/* Annotation markers */}
-        <div className={`absolute inset-x-0 ${laneTop} bottom-0`}>
+        <div className={`absolute inset-x-0 ${laneTop} bottom-0 overflow-y-auto [scrollbar-width:none]`}>
+          <div className="absolute top-0 left-0 w-px pointer-events-none" style={{ height: rowCount(rows) * 28 + 8 }} />
           {annotations.map((annotation) => (
             <TimelineMarker
               key={annotation.id}
