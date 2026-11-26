@@ -16,6 +16,7 @@ import type { CanvasTool, ToolContext } from './tools/types'
 import { ringTool } from './tools/ringTool'
 import { zoneTool } from './tools/zoneTool'
 import { frameIndexAt } from '@/utils/frames'
+import { applyDash, dashPattern, strokeTarget, DASH_TOOL_TYPES } from '@/utils/lineDash'
 
 /** Tools whose pointer-down starts a new drawing, which stops the video on that frame. */
 const DRAW_FRAME_TOOLS = new Set(['pen', 'line', 'arrow', 'arc-arrow', 'rectangle', 'circle', 'text', 'spotlight', 'magnifier', 'ring', 'zone', 'callout'])
@@ -58,7 +59,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
   // Track magnifiers for live video zoom updates
   const magnifiersRef = useRef<Map<string, { circle: fabric.Circle, centerX: number, centerY: number, radius: number }>>(new Map())
 
-  const { currentTool, strokeColor, strokeWidth, annotationStyle, textFormat, setIsDrawing } = useToolStore()
+  const { currentTool, strokeColor, strokeWidth, annotationStyle, textFormat, lineDash, setIsDrawing } = useToolStore()
   const isAudienceOpen = useAudienceStore((s) => s.isAudienceOpen)
   const laserColor = useAudienceStore((s) => s.laserColor)
   const { setCanvas, addAnnotation, annotations } = useDrawingStore()
@@ -278,9 +279,13 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       brush.width = strokeWidth
       const brushShadow = shadowForStyle(annotationStyle, strokeColor)
       if (brushShadow) brush.shadow = brushShadow
+      if (lineDash === 'dashed') {
+        brush.strokeDashArray = dashPattern(strokeWidth)
+        brush.strokeLineCap = 'butt'
+      }
       canvas.freeDrawingBrush = brush
     }
-  }, [currentTool, strokeColor, strokeWidth, annotationStyle])
+  }, [currentTool, strokeColor, strokeWidth, annotationStyle, lineDash])
 
   // Update trackers when video time changes
   useEffect(() => {
@@ -453,6 +458,9 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
           fadeOut: defaults.fadeOut,
         }
     const annotationId = id || `${toolType}-${Date.now()}`
+    const dashed = DASH_TOOL_TYPES.has(toolType) ? useToolStore.getState().lineDash === 'dashed' : undefined
+    // A preview dashed before D switched back to solid mid-drag is cleared too.
+    if (dashed || (dashed === false && strokeTarget(object, toolType).strokeDashArray)) applyDash(object, toolType, dashed)
 
     addAnnotation({
       id: annotationId,
@@ -464,6 +472,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       fadeIn,
       fadeOut,
       drawIn: defaults.drawIn,
+      ...(dashed !== undefined ? { dashed } : {}),
     })
     // The pen's strokes arrive as 'path'; hidden tools stay out of freeze timing.
     if (toolType === 'path' || DRAW_FRAME_TOOLS.has(toolType)) {
@@ -871,6 +880,8 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       }
 
       if (shape) {
+        // Line and arrow previews are the shaft that gets committed; show the dashes while dragging.
+        if (DASH_TOOL_TYPES.has(currentTool) && useToolStore.getState().lineDash === 'dashed') applyDash(shape, 'line', true)
         currentShapeRef.current = shape
         canvas.add(shape)
       }
@@ -926,6 +937,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
             evented: false,
           }
         )
+        if (useToolStore.getState().lineDash === 'dashed') applyDash(newPath, 'path', true)
         canvas.add(newPath)
         currentShapeRef.current = newPath
         canvas.renderAll()

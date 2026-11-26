@@ -109,7 +109,7 @@ export function useLiveReveal(canvasRef: RefObject<fabric.Canvas | null>, videoE
           const opacity = state.opacity
           annotation.object.visible = visible
           annotation.object.opacity = opacity
-          applyReveal(annotation.object, annotation.toolType, fraction)
+          applyReveal(annotation.object, annotation.toolType, fraction, { dashed: annotation.dashed })
           const last = applied.get(annotation.id)
           if (!last || last.object !== annotation.object || last.visible !== visible || last.opacity !== opacity || last.fraction !== fraction || fraction < 1) {
             changed = true

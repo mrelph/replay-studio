@@ -28,6 +28,7 @@ import type { Annotation } from './stores/drawingStore'
 import { ToolRegistry as _ToolRegistry } from './plugins/ToolRegistry'
 export const toolRegistry = _ToolRegistry
 import { fabric } from './lib/fabric'
+import { applyDash } from './utils/lineDash'
 
 
 interface PendingProjectLoad {
@@ -237,6 +238,8 @@ function App() {
           skippedCount += 1
           continue
         }
+        // The dash pattern is derived from the flag, not saved.
+        if (serializedAnn.dashed) applyDash(object, serializedAnn.toolType, true)
         restoredAnnotations.push({
           id: serializedAnn.id,
           object,

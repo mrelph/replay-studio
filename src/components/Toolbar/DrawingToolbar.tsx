@@ -11,6 +11,7 @@ import { STAY_PRESETS, STAY_TOOL_TYPES, stayTiming, type StayPreset } from '@/ut
 import { getToolDefaults } from '@/utils/annotationDefaults'
 import { useVideoStore } from '@/stores/videoStore'
 import { restyleObject, STYLED_TOOL_TYPES, type AnnotationStyle } from '@/utils/annotationStyle'
+import { dashSelected, type LineDash } from '@/utils/lineDash'
 import {
   applyTextFormat, ensureFontLoaded, isTextObject, readTextFormat, stepFontSize,
   FONT_FAMILIES, FONT_SIZES, type TextFormat,
@@ -20,6 +21,11 @@ const ANNOTATION_STYLES: { value: AnnotationStyle; label: string; title: string 
   { value: 'outline', label: 'Outline', title: 'Dark outline: readable on bright ice' },
   { value: 'glow', label: 'Glow', title: 'Soft glow in the shape colour' },
   { value: 'clean', label: 'Clean', title: 'No shadow' },
+]
+
+const LINE_DASHES: { value: LineDash; label: string; title: string }[] = [
+  { value: 'solid', label: 'Solid', title: 'Solid lines, arrows and pen strokes (D)' },
+  { value: 'dashed', label: 'Dashed', title: 'Dashed lines, arrows and pen strokes: a pass or a skating route (D)' },
 ]
 
 interface ToolButtonProps {
@@ -118,8 +124,8 @@ const COLOR_NAMES: Record<string, string> = {
 
 export default function DrawingToolbar() {
   const {
-    currentTool, strokeColor, strokeWidth, annotationStyle, stayPreset, textFormat,
-    setStrokeColor, setStrokeWidth, setAnnotationStyle, setStayPreset, setTextFormat,
+    currentTool, strokeColor, strokeWidth, annotationStyle, stayPreset, textFormat, lineDash,
+    setStrokeColor, setStrokeWidth, setAnnotationStyle, setStayPreset, setTextFormat, setLineDash,
   } = useToolStore()
   const { selectedText, refresh: refreshSelectedText } = useSelectedText()
   const showTextGroup = currentTool === 'text' || selectedText.length > 0
@@ -155,6 +161,10 @@ export default function DrawingToolbar() {
     saveState()
     targets.forEach((a) => restyleObject(a.object, a.toolType, style))
     canvas.requestRenderAll()
+  }
+  const chooseLineDash = (value: LineDash) => {
+    setLineDash(value)
+    dashSelected(useDrawingStore.getState(), value)
   }
   const chooseStayPreset = (preset: StayPreset) => {
     setStayPreset(preset)
@@ -336,6 +346,27 @@ export default function DrawingToolbar() {
             }`}
             title={title}
             aria-pressed={annotationStyle === value}
+          >
+            {label}
+          </button>
+        ))}
+      </ToolGroup>
+
+      <VerticalDivider />
+
+      {/* Solid or dashed lines, arrows and pen strokes; switches selected ones */}
+      <ToolGroup label="Line">
+        {LINE_DASHES.map(({ value, label, title }) => (
+          <button
+            key={value}
+            onClick={() => chooseLineDash(value)}
+            className={`px-2 h-7 rounded text-xs transition-all ${
+              lineDash === value
+                ? 'bg-accent-subtle ring-1 ring-accent'
+                : 'hover:bg-surface-sunken'
+            }`}
+            title={title}
+            aria-pressed={lineDash === value}
           >
             {label}
           </button>

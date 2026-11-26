@@ -1,5 +1,6 @@
 import { fabric } from '@/lib/fabric'
 import { surfaceParts } from '@/utils/surfaceShape'
+import { dashPattern, revealDashArray } from '@/utils/lineDash'
 
 export type RevealKind = 'stroke' | 'arrow' | 'ring' | 'callout' | 'none'
 
@@ -75,7 +76,25 @@ function restoreStroke(object: fabric.Object): void {
   object.dirty = true
 }
 
-function revealStroke(object: fabric.Object, fraction: number): void {
+/**
+ * With strokeUniform, Fabric strokes (and dashes) after undoing the object's
+ * scale, so a dash array is in screen units rather than the object's own.
+ * Exact for a line; for a path under non-uniform scaling the larger scale is
+ * used, so the trailing gap always covers the whole stroke.
+ */
+function dashUnitScale(object: fabric.Object): number {
+  if (!object.strokeUniform) return 1
+  const { scaleX, scaleY } = object.getObjectScaling()
+  if (object instanceof fabric.Line) {
+    const dx = (object.x2 ?? 0) - (object.x1 ?? 0)
+    const dy = (object.y2 ?? 0) - (object.y1 ?? 0)
+    const local = Math.hypot(dx, dy)
+    if (local > 0) return Math.hypot(dx * scaleX, dy * scaleY) / local
+  }
+  return Math.max(scaleX, scaleY)
+}
+
+function revealStroke(object: fabric.Object, fraction: number, dashed = false): void {
   if (fraction >= 1) {
     restoreStroke(object)
     return
@@ -88,8 +107,13 @@ function revealStroke(object: fabric.Object, fraction: number): void {
       strokeDashOffset: object.strokeDashOffset,
     })
   }
-  object.strokeDashArray = [length, length]
-  object.strokeDashOffset = length * (1 - Math.max(0, fraction))
+  if (dashed) {
+    object.strokeDashArray = revealDashArray(dashPattern(object.strokeWidth ?? 1), length * dashUnitScale(object), Math.max(0, fraction))
+    object.strokeDashOffset = 0
+  } else {
+    object.strokeDashArray = [length, length]
+    object.strokeDashOffset = length * (1 - Math.max(0, fraction))
+  }
   object.dirty = true
 }
 
@@ -135,7 +159,7 @@ function arrowParts(object: fabric.Object): [fabric.Object, fabric.Object] | nul
   return items.length === 2 ? [items[0], items[1]] : null
 }
 
-function revealArrow(group: fabric.Object, parts: [fabric.Object, fabric.Object], fraction: number): void {
+function revealArrow(group: fabric.Object, parts: [fabric.Object, fabric.Object], fraction: number, dashed: boolean): void {
   const [shaft, head] = parts
   if (fraction >= 1) {
     restoreStroke(shaft)
@@ -143,7 +167,7 @@ function revealArrow(group: fabric.Object, parts: [fabric.Object, fabric.Object]
     group.dirty = true
     return
   }
-  revealStroke(shaft, Math.min(1, fraction / HEAD_START))
+  revealStroke(shaft, Math.min(1, fraction / HEAD_START), dashed)
   if (!headOriginals.has(head)) {
     headOriginals.set(head, { scaleX: head.scaleX, scaleY: head.scaleY, visible: head.visible })
   }
@@ -160,13 +184,14 @@ function revealArrow(group: fabric.Object, parts: [fabric.Object, fabric.Object]
   group.dirty = true
 }
 
-export function applyReveal(object: fabric.Object, toolType: string, fraction: number): void {
+export function applyReveal(object: fabric.Object, toolType: string, fraction: number, opts?: { dashed?: boolean }): void {
   const kind = revealKind(toolType)
+  const dashed = opts?.dashed === true
   if (kind === 'stroke') {
-    revealStroke(object, fraction)
+    revealStroke(object, fraction, dashed)
   } else if (kind === 'arrow') {
     const parts = arrowParts(object)
-    if (parts) revealArrow(object, parts, fraction)
+    if (parts) revealArrow(object, parts, fraction, dashed)
   } else if (kind === 'ring') {
     revealRing(object, fraction)
   }

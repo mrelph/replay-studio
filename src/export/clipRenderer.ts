@@ -65,6 +65,7 @@ function cloneMagnifierRing(object: fabric.Object): fabric.Object {
 interface ClonedAnnotation {
   annotationId: string
   toolType: string
+  dashed?: boolean
   clone: fabric.Object
 }
 
@@ -75,7 +76,7 @@ async function renderSpanRgba(
   signature: DrawingSpan['signature']
 ): Promise<Uint8Array> {
   const stateById = new Map(signature.map((s) => [s.id, s]))
-  for (const { annotationId, toolType, clone } of clones) {
+  for (const { annotationId, toolType, dashed, clone } of clones) {
     const state = stateById.get(annotationId)
     if (state === undefined) {
       clone.visible = false
@@ -83,7 +84,7 @@ async function renderSpanRgba(
     } else {
       clone.visible = true
       clone.opacity = state.opacityBucket
-      if (toolType !== 'magnifier') applyReveal(clone, toolType, state.revealBucket / state.revealSteps)
+      if (toolType !== 'magnifier') applyReveal(clone, toolType, state.revealBucket / state.revealSteps, { dashed })
     }
   }
   staticCanvas.renderAll()
@@ -187,7 +188,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<RenderClipRes
       stripReveal(annotation.object)
       const clone = isMagnifier ? cloneMagnifierRing(annotation.object) : await cloneAnnotationObject(annotation.object)
       staticCanvas.add(clone)
-      clones.push({ annotationId: annotation.id, toolType: annotation.toolType, clone })
+      clones.push({ annotationId: annotation.id, toolType: annotation.toolType, dashed: annotation.dashed, clone })
     }
 
     // Render each distinct signature once (dedup: a static drawing costs one PNG for its whole "on" span).

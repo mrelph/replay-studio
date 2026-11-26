@@ -3,6 +3,7 @@ import { fabric } from '@/lib/fabric'
 import { applyReveal, stripReveal, strokeLength, revealKind } from './reveal'
 import { buildRing } from '@/components/Canvas/tools/ringTool'
 import { surfaceParts } from '@/utils/surfaceShape'
+import { applyDash, dashPattern, revealDashArray } from '@/utils/lineDash'
 
 // jsdom has no 2D canvas; IText measures text on construction, so stub a permissive context.
 const mockContext = new Proxy({} as Record<string, unknown>, {
@@ -158,6 +159,71 @@ describe('reveal', () => {
       expect(outline.strokeDashArray).toBeFalsy()
       expect(fill.opacity).toBe(1)
       expect(outline.visible).toBe(true)
+    })
+  })
+  describe('dashed', () => {
+    const dashedLine = () => {
+      const line = new fabric.Line([0, 0, 100, 0], { stroke: '#f00', strokeWidth: 4, strokeLineCap: 'round' })
+      applyDash(line, 'line', true)
+      return line
+    }
+
+    it('reveals the dash pattern along the drawn length', () => {
+      const line = dashedLine()
+      applyReveal(line, 'line', 0.5, { dashed: true })
+      expect(line.strokeDashArray).toEqual(revealDashArray(dashPattern(4), 100, 0.5))
+      expect(line.strokeDashOffset).toBe(0)
+      applyReveal(line, 'line', 1, { dashed: true })
+      expect(line.strokeDashArray).toEqual([12, 8])
+    })
+
+    it('stripReveal puts the plain pattern back', () => {
+      const line = dashedLine()
+      applyReveal(line, 'line', 0.4, { dashed: true })
+      stripReveal(line)
+      expect(line.strokeDashArray).toEqual([12, 8])
+    })
+
+    it('a solid line still reveals with [L, L]', () => {
+      const line = new fabric.Line([0, 0, 100, 0], { stroke: '#f00', strokeWidth: 4 })
+      applyReveal(line, 'line', 0.5, { dashed: false })
+      expect(line.strokeDashArray).toEqual([100, 100])
+      expect(line.strokeDashOffset).toBeCloseTo(50)
+    })
+
+    it('measures a uniform-stroke dashed line in screen units when scaled', () => {
+      const line = dashedLine()
+      line.set({ scaleX: 2, scaleY: 2 })
+      applyReveal(line, 'line', 0.5, { dashed: true })
+      expect(line.strokeDashArray).toEqual(revealDashArray(dashPattern(4), 200, 0.5))
+    })
+
+    it('reveals a dashed pen path with many segments', () => {
+      const path = new fabric.Path('M 0 0 L 10 0 L 10 10 L 20 10 L 20 20 L 30 20 L 30 30 L 40 30', { stroke: '#f00', strokeWidth: 2 })
+      applyDash(path, 'path', true)
+      applyReveal(path, 'path', 0.5, { dashed: true })
+      expect(path.strokeDashArray).toEqual(revealDashArray([6, 4], strokeLength(path), 0.5))
+      applyReveal(path, 'path', 1, { dashed: true })
+      expect(path.strokeDashArray).toEqual([6, 4])
+    })
+
+    it('holds a dashed arrow\'s head back until 0.85 and never dashes it', () => {
+      const shaft = new fabric.Line([0, 0, 100, 0], { stroke: '#f00', strokeWidth: 4, strokeLineCap: 'round' })
+      const head = new fabric.Triangle({ width: 24, height: 25 })
+      const arrow = new fabric.Group([shaft, head])
+      applyDash(arrow, 'arrow', true)
+      for (const fraction of [0, 0.5, 0.84]) {
+        applyReveal(arrow, 'arrow', fraction, { dashed: true })
+        expect(head.visible).toBe(false)
+        expect(head.strokeDashArray).toBeFalsy()
+      }
+      expect(shaft.strokeDashArray).toEqual(revealDashArray([12, 8], 100, 0.84 / 0.85))
+      applyReveal(arrow, 'arrow', 0.925, { dashed: true })
+      expect(head.visible).toBe(true)
+      expect(head.strokeDashArray).toBeFalsy()
+      applyReveal(arrow, 'arrow', 1, { dashed: true })
+      expect(shaft.strokeDashArray).toEqual([12, 8])
+      expect(head.strokeDashArray).toBeFalsy()
     })
   })
 })

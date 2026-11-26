@@ -8,6 +8,7 @@ import { useShortcutsStore, type ShortcutAction } from '@/stores/shortcutsStore'
 import { fabric } from '@/lib/fabric'
 import { toast } from '@/components/ui'
 import { stepFrames } from '@/utils/frames'
+import { dashSelected } from '@/utils/lineDash'
 
 /**
  * Moves an In or Out edge by whole frames: the selected clip's edge when a
@@ -270,6 +271,13 @@ export function useKeyboardShortcuts() {
         e.preventDefault()
         if (!e.repeat) useVideoStore.getState().beginSlowRecording()
         return
+
+      case 'tool.toggleDash': {
+        e.preventDefault()
+        useToolStore.getState().toggleLineDash()
+        dashSelected(useDrawingStore.getState(), useToolStore.getState().lineDash)
+        return
+      }
 
       // Editing
       case 'edit.undo':

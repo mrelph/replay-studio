@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AnnotationStyle } from '@/utils/annotationStyle'
 import type { StayPreset } from '@/utils/stayPreset'
+import type { LineDash } from '@/utils/lineDash'
 import { DEFAULT_TEXT_FORMAT, type TextFormat } from '@/utils/textFormat'
 
 export type ToolType =
@@ -30,6 +31,7 @@ interface ToolState {
   isDrawing: boolean
   annotationStyle: AnnotationStyle
   stayPreset: StayPreset
+  lineDash: LineDash
 
   // Actions
   setCurrentTool: (tool: ToolType) => void
@@ -40,6 +42,8 @@ interface ToolState {
   setIsDrawing: (drawing: boolean) => void
   setAnnotationStyle: (style: AnnotationStyle) => void
   setStayPreset: (preset: StayPreset) => void
+  setLineDash: (lineDash: LineDash) => void
+  toggleLineDash: () => void
 }
 
 export const useToolStore = create<ToolState>((set) => ({
@@ -51,6 +55,7 @@ export const useToolStore = create<ToolState>((set) => ({
   isDrawing: false,
   annotationStyle: 'outline',
   stayPreset: 2,
+  lineDash: 'solid',
 
   setCurrentTool: (tool) => set({ currentTool: tool }),
   setStrokeColor: (color) => set({ strokeColor: color }),
@@ -60,6 +65,8 @@ export const useToolStore = create<ToolState>((set) => ({
   setIsDrawing: (drawing) => set({ isDrawing: drawing }),
   setAnnotationStyle: (style) => set({ annotationStyle: style }),
   setStayPreset: (preset) => set({ stayPreset: preset }),
+  setLineDash: (lineDash) => set({ lineDash }),
+  toggleLineDash: () => set((state) => ({ lineDash: state.lineDash === 'dashed' ? 'solid' : 'dashed' })),
 }))
 
 // Broadcast-standard color palette (desaturated, brightness-balanced)
