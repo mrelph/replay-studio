@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { Trash2, Snowflake } from 'lucide-react'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
@@ -14,6 +14,7 @@ import { revealKind } from '@/export/reveal'
 import { recolorKeepingAlpha } from '@/utils/surfaceShape'
 import { parseDrawIn } from '@/utils/drawInInput'
 import { snapTime, snapTargets, freezeFieldState, frameWithin, dragEndSyncTimes, startsOnFrameStart, barStart, carrierDropCollides } from '@/utils/timelineSnap'
+import { assignRows, rowCount } from '@/utils/timelineRows'
 import { setFrameFreeze } from '@/utils/freezeMarkers'
 import { findFreezeCarrierAt } from '@/utils/freezeFrame'
 
@@ -128,10 +129,13 @@ interface TimelineMarkerProps {
   duration: number
   isSelected: boolean
   onSelect: () => void
+  row: number
   onUpdateTime: (startTime: number, endTime: number) => void
+  onDragStart: () => void
+  onDragEnd: () => void
 }
 
-function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTime }: TimelineMarkerProps) {
+function TimelineMarker({ annotation, duration, isSelected, row, onSelect, onUpdateTime, onDragStart, onDragEnd }: TimelineMarkerProps) {
   const [isDragging, setIsDragging] = useState<'move' | 'start' | 'end' | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   const markerRef = useRef<HTMLDivElement>(null)
@@ -146,6 +150,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
     dragStartRef.current = annotation.startTime
     dragEndRef.current = annotation.endTime
     setIsDragging(type)
+    onDragStart()
     onSelect()
   }
 
@@ -179,6 +184,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
 
     const handleMouseUp = () => {
       setIsDragging(null)
+      onDragEnd()
       const finalStart = useDrawingStore.getState().annotations.find((a) => a.id === annotation.id)?.startTime
       if (finalStart === undefined) return
       // One freeze per frame: a carrier dropped on another carrier's frame goes back.
@@ -197,7 +203,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, annotation, duration, onUpdateTime])
+  }, [isDragging, annotation, duration, onUpdateTime, onDragEnd])
 
   // Get color based on annotation type
   const getColor = () => {
@@ -234,7 +240,7 @@ function TimelineMarker({ annotation, duration, isSelected, onSelect, onUpdateTi
       style={{
         left: `${left}%`,
         width: `${Math.max(width, 0.5)}%`,
-        top: `${(annotation.layer % 3) * 28 + 4}px`,
+        top: `${row * 28 + 4}px`,
       }}
       onMouseDown={(e) => handleMouseDown(e, 'move')}
       onMouseEnter={() => setIsHovered(true)}
@@ -285,6 +291,18 @@ export default function AnnotationTimeline() {
   const [trackHeight, setTrackHeight] = useState(96)
   const [trackWidth, setTrackWidth] = useState(0)
   const isResizingRef = useRef(false)
+  const [markerDragging, setMarkerDragging] = useState(false)
+  const computedRows = useMemo(
+    () => assignRows(annotations, 0.005 * duration, 6),
+    [annotations, duration],
+  )
+  // Rows stay put while a bar is dragged so it does not jump under the cursor.
+  const rowsRef = useRef(computedRows)
+  if (!markerDragging) rowsRef.current = computedRows
+  const rows = rowsRef.current
+  const extraRowsHeight = Math.max(0, rowCount(rows) - 3) * 28
+  const handleMarkerDragStart = useCallback(() => setMarkerDragging(true), [])
+  const handleMarkerDragEnd = useCallback(() => setMarkerDragging(false), [])
 
   // Track the timeline div width for waveform rendering
   useEffect(() => {
@@ -400,11 +418,11 @@ export default function AnnotationTimeline() {
         role="region"
         aria-label="Annotation timeline"
         className="relative bg-surface-sunken rounded-lg cursor-pointer overflow-hidden"
-        style={{ height: trackHeight }}
+        style={{ height: trackHeight + extraRowsHeight }}
         onClick={handleTimelineClick}
       >
         {/* Audio waveform background */}
-        <WaveformDisplay width={trackWidth} height={trackHeight} />
+        <WaveformDisplay width={trackWidth} height={trackHeight + extraRowsHeight} />
 
         {/* Time markers */}
         <div className="absolute inset-x-0 top-0 h-4 flex border-b border-border-subtle">
@@ -468,8 +486,11 @@ export default function AnnotationTimeline() {
               annotation={annotation}
               duration={duration}
               isSelected={selectedAnnotationId === annotation.id}
+              row={rows.get(annotation.id) ?? 0}
               onSelect={() => selectAnnotation(annotation.id)}
               onUpdateTime={(start, end) => handleUpdateTime(annotation.id, start, end)}
+              onDragStart={handleMarkerDragStart}
+              onDragEnd={handleMarkerDragEnd}
             />
           ))}
         </div>
