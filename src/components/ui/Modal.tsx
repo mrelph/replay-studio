@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { IconButton } from './IconButton'
 
@@ -33,9 +34,11 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-
 
   if (!open) return null
 
-  return (
+  // Portalled so a transformed or backdrop-filtered ancestor (the drawing
+  // toolbar) cannot become the containing block of the fixed overlay.
+  return createPortal(
     <div
-      className={`chrome-reset fixed inset-0 bg-surface-overlay backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-200 ${
+      className={`fixed inset-0 bg-surface-overlay backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-200 ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={disableClose ? undefined : onClose}
@@ -71,6 +74,7 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

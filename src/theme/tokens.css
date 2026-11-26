@@ -60,6 +60,7 @@
   /* Chrome (header, toolbar, video controls, timeline): equal to the
      regions' current colours so Dark looks unchanged */
   --chrome-bg: #1a1d27;
+  --chrome-bg-base: #0f1117;
   --chrome-bg-raised: #0b0d13;
   --chrome-border: #1f2230;
   --chrome-border-strong: #3a3d4a;
@@ -117,6 +118,7 @@
 
   /* Chrome: equal to the regions' current colours so Light looks unchanged */
   --chrome-bg: #ffffff;
+  --chrome-bg-base: #f8f9fb;
   --chrome-bg-raised: #eef0f4;
   --chrome-border: #e8eaef;
   --chrome-border-strong: #c0c3cc;
@@ -183,6 +185,7 @@
 
   /* Chrome */
   --chrome-bg: #17294a;
+  --chrome-bg-base: #0f1c35;
   --chrome-bg-raised: #223a66;
   --chrome-border: #36507f;
   --chrome-border-strong: #4a6aa3;
@@ -249,6 +252,7 @@
 
   /* Chrome */
   --chrome-bg: #163a2a;
+  --chrome-bg-base: #0f2a1e;
   --chrome-bg-raised: #1f4f3a;
   --chrome-border: #356b52;
   --chrome-border-strong: #4a8a6c;
@@ -276,8 +280,8 @@
   /* Text */
   --color-text-primary: #141b24;
   --color-text-secondary: #5c6878;
-  --color-text-tertiary: #8793a3;
-  --color-text-disabled: #b3bdc9;
+  --color-text-tertiary: #6b7787;
+  --color-text-disabled: #9aa5b3;
 
   /* Accent */
   --color-accent: #e0312b;
@@ -311,10 +315,11 @@
   /* Scrollbar */
   --color-scrollbar-track: #ffffff;
   --color-scrollbar-thumb: #b4bfcc;
-  --color-scrollbar-thumb-hover: #8793a3;
+  --color-scrollbar-thumb-hover: #6b7787;
 
   /* Chrome */
   --chrome-bg: #16263a;
+  --chrome-bg-base: #0f1c2c;
   --chrome-bg-raised: #22384f;
   --chrome-border: #3d5673;
   --chrome-border-strong: #56738f;
@@ -381,6 +386,7 @@
 
   /* Chrome */
   --chrome-bg: #2a2766;
+  --chrome-bg-base: #1f1c50;
   --chrome-bg-raised: #3a3688;
   --chrome-border: #544fb0;
   --chrome-border-strong: #6f69d6;
@@ -394,6 +400,7 @@
    they replace, so this is a no-op there. */
 .chrome {
   color: var(--color-text-primary);
+  --color-bg-base: var(--chrome-bg-base);
   --color-bg-elevated: var(--chrome-bg);
   --color-bg-sunken: var(--chrome-bg-raised);
   --color-border-subtle: var(--chrome-border);
@@ -420,12 +427,22 @@
   --color-text-disabled: var(--chrome-text-tertiary);
 }
 
-/* Ice's red accent is too dark to read as text on its navy chrome; the
-   ice block's `.chrome-reset` selector restores the root values */
+/* Ice's red accent is too dark to read as text on its navy chrome. Each theme
+   block's `.chrome-reset` selector restores the root values. */
 [data-theme="ice"] .chrome {
   --color-accent: #ff6b63;
   --color-accent-hover: #ff8d86;
   --color-accent-text: #2a0500;
+  /* Ice's light-theme status colours fall under 4.5:1 on the navy chrome */
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  --color-info: #60a5fa;
+  --color-warning: #fbbf24;
   /* the theme picker sits in this dark header */
   color-scheme: dark;
+}
+
+/* Courtside's accent reads at 4.47:1 as text on its chrome */
+[data-theme="court"] .chrome {
+  --color-accent: #ff6b80;
 }
