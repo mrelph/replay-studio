@@ -53,6 +53,18 @@ interface AnnotationSnapshot {
 interface UndoSnapshot {
   annotations: AnnotationSnapshot[]
   canvasJSON: string
+  extra?: unknown
+}
+
+interface UndoExtra {
+  capture: () => unknown
+  restore: (value: unknown) => void
+}
+
+let undoExtra: UndoExtra | null = null
+
+export function registerUndoExtra(extra: UndoExtra): void {
+  undoExtra = extra
 }
 
 const ANNOTATION_ID_PROPERTY = 'replayAnnotationId'
@@ -146,6 +158,7 @@ function createSnapshot(canvas: fabric.Canvas, annotations: Annotation[]): UndoS
   return {
     annotations: annotations.map(snapshotMetadata),
     canvasJSON: JSON.stringify(canvasData),
+    extra: undoExtra?.capture(),
   }
 }
 
@@ -628,6 +641,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
           isRestoring: false,
           pendingReplacement: null,
         })
+        if (previousSnapshot.extra !== undefined) undoExtra?.restore(previousSnapshot.extra)
         canvas.requestRenderAll()
         if (pendingReplacement) get().replaceAnnotations(pendingReplacement)
       })
@@ -675,6 +689,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
           isRestoring: false,
           pendingReplacement: null,
         })
+        if (nextSnapshot.extra !== undefined) undoExtra?.restore(nextSnapshot.extra)
         canvas.requestRenderAll()
         if (pendingReplacement) get().replaceAnnotations(pendingReplacement)
       })
