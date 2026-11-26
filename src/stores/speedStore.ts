@@ -71,7 +71,7 @@ export const useSpeedStore = create<SpeedState>((set, get) => ({
   },
 }))
 
-registerUndoExtra({
+registerUndoExtra('speed', {
   capture: () => useSpeedStore.getState().regions,
   restore: (value) => {
     const regions = value as SpeedRegion[]

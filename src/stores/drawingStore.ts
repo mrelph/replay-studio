@@ -61,10 +61,27 @@ interface UndoExtra {
   restore: (value: unknown) => void
 }
 
-let undoExtra: UndoExtra | null = null
+const undoExtras = new Map<string, UndoExtra>()
 
-export function registerUndoExtra(extra: UndoExtra): void {
-  undoExtra = extra
+export function registerUndoExtra(key: string, extra: UndoExtra): void {
+  undoExtras.set(key, extra)
+}
+
+function captureUndoExtras(): Record<string, unknown> | undefined {
+  if (undoExtras.size === 0) return undefined
+  const captured: Record<string, unknown> = {}
+  undoExtras.forEach((extra, key) => {
+    captured[key] = extra.capture()
+  })
+  return captured
+}
+
+function restoreUndoExtras(value: unknown): void {
+  if (!value || typeof value !== 'object') return
+  const captured = value as Record<string, unknown>
+  undoExtras.forEach((extra, key) => {
+    if (key in captured) extra.restore(captured[key])
+  })
 }
 
 const ANNOTATION_ID_PROPERTY = 'replayAnnotationId'
@@ -158,7 +175,7 @@ function createSnapshot(canvas: fabric.Canvas, annotations: Annotation[]): UndoS
   return {
     annotations: annotations.map(snapshotMetadata),
     canvasJSON: JSON.stringify(canvasData),
-    extra: undoExtra?.capture(),
+    extra: captureUndoExtras(),
   }
 }
 
@@ -644,7 +661,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
           isRestoring: false,
           pendingReplacement: null,
         })
-        if (previousSnapshot.extra !== undefined && !pendingReplacement) undoExtra?.restore(previousSnapshot.extra)
+        if (previousSnapshot.extra !== undefined && !pendingReplacement) restoreUndoExtras(previousSnapshot.extra)
         canvas.requestRenderAll()
         if (pendingReplacement) get().replaceAnnotations(pendingReplacement)
       })
@@ -692,7 +709,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
           isRestoring: false,
           pendingReplacement: null,
         })
-        if (nextSnapshot.extra !== undefined && !pendingReplacement) undoExtra?.restore(nextSnapshot.extra)
+        if (nextSnapshot.extra !== undefined && !pendingReplacement) restoreUndoExtras(nextSnapshot.extra)
         canvas.requestRenderAll()
         if (pendingReplacement) get().replaceAnnotations(pendingReplacement)
       })
