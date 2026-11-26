@@ -22,6 +22,8 @@ published with each release too, but it does not auto-update; see Caveats.
 4. Watch the **Release** workflow in the GitHub Actions tab
    (`.github/workflows/release.yml`). It runs on every `v*` tag push, on a
    `ubuntu-latest` + `windows-latest` + `macos-latest` matrix:
+   - A first job creates the GitHub Release for the tag, so the three build
+     jobs upload into one release instead of racing to create it.
    - Verifies the tag matches `package.json`'s version (fails fast if not —
      re-tag or bump the version and try again).
    - `npm ci`, `npm run typecheck`, `npm test`.

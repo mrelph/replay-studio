@@ -15,7 +15,23 @@ permissions:
   contents: write
 
 jobs:
+  # The three build jobs each publish to the GitHub Release for the tag. When
+  # none exists yet they race to create it, and GitHub can end up with two
+  # releases for one tag, each holding part of the files (this happened on
+  # v1.9.1). Creating the release once, up front, removes the race.
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the release if it does not exist
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                 --title "${GITHUB_REF_NAME#v}" --notes "" --verify-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
