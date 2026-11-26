@@ -452,7 +452,7 @@ export default function AnnotationTimeline() {
         )}
         {inPoint !== null && outPoint !== null && (
           <div
-            className={`absolute ${laneTop} bottom-0 bg-accent/10 z-10`}
+            className={`absolute ${laneTop} bottom-0 bg-accent/10 z-10 pointer-events-none`}
             style={{
               left: `${(inPoint / duration) * 100}%`,
               width: `${((outPoint - inPoint) / duration) * 100}%`,
