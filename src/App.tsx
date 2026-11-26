@@ -451,16 +451,10 @@ function App() {
       if (!typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
         setShowShortcuts((prev) => !prev)
       }
-      if (e.key === 'Escape') {
-        if (showShortcutsEditor) setShowShortcutsEditor(false)
-        else if (showShortcuts) setShowShortcuts(false)
-        if (showExport) setShowExport(false)
-        // ExportClipsDialog's Modal handles its own Escape and blocks it mid-export.
-      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [showShortcuts, showShortcutsEditor, showExport])
+  }, [])
 
   const isCurrentVideoReady = Boolean(
     videoElement &&
@@ -558,7 +552,7 @@ function App() {
                   )}
                 </div>
               </div>
-              <div className="relative flex-shrink-0">
+              <div className="relative flex-shrink-0 flex flex-col min-h-0">
                 <ClipPanel
                   isOpen={showClipPanel}
                   onToggle={() => setShowClipPanel(!showClipPanel)}
@@ -566,7 +560,7 @@ function App() {
                   onExportReel={(tags) => { finishCalloutEdit(); setReelDialogTags(tags) }}
                 />
               </div>
-              <div className="relative flex-shrink-0">
+              <div className="relative flex-shrink-0 flex flex-col min-h-0">
                 <LayerPanel isOpen={showLayerPanel} onToggle={() => setShowLayerPanel(!showLayerPanel)} />
               </div>
             </div>

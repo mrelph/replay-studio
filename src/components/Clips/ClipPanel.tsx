@@ -538,7 +538,7 @@ export default function ClipPanel({ isOpen, onToggle, onExportClips, onExportRee
   }
 
   return (
-    <div className="w-72 bg-surface-elevated border-l border-border-subtle flex flex-col animate-slide-in-right">
+    <div className="w-72 flex-1 min-h-0 bg-surface-elevated border-l border-border-subtle flex flex-col animate-slide-in-right">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
         <h3 className="text-sm font-medium text-text-secondary">
