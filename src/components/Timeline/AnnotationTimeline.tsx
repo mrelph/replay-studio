@@ -5,6 +5,9 @@ import { useDrawingStore, type Annotation } from '@/stores/drawingStore'
 import { useClipStore } from '@/stores/clipStore'
 import { useSpeedStore } from '@/stores/speedStore'
 import SpeedLane, { SpeedRegionDetails } from './SpeedLane'
+import VoiceLane, { VoiceClipDetails, VoiceDuckSelect } from './VoiceLane'
+import { useVoiceStore } from '@/stores/voiceStore'
+import { stopVoice } from '@/voice/voicePlayback'
 import { deleteKeyTarget } from '@/utils/speedLane'
 import { PRESET_COLORS } from '@/stores/toolStore'
 import { Button, Select } from '@/components/ui'
@@ -293,8 +296,13 @@ export default function AnnotationTimeline() {
   const selectedSpeedId = useSpeedStore((s) => s.selectedId)
   const selectedSpeedRegion = speedRegions.find((r) => r.id === selectedSpeedId)
   const hasSpeedLane = speedRegions.length > 0
-  const laneTop = hasSpeedLane ? 'top-12' : 'top-8'
-  const laneTopPx = hasSpeedLane ? 48 : 32
+  const voiceClips = useVoiceStore((s) => s.clips)
+  const selectedVoiceId = useVoiceStore((s) => s.selectedId)
+  const selectedVoiceClip = voiceClips.find((c) => c.id === selectedVoiceId)
+  const hasVoiceLane = voiceClips.length > 0
+  const laneTopPx = 32 + (hasSpeedLane ? 16 : 0) + (hasVoiceLane ? 16 : 0)
+  const laneTop = laneTopPx === 64 ? 'top-16' : laneTopPx === 48 ? 'top-12' : 'top-8'
+  const voiceLaneTop = hasSpeedLane ? 'top-12' : 'top-8'
   const [userHeight, setUserHeight] = useState<number | null>(null)
   const [laneScroll, setLaneScroll] = useState(0)
   const laneRef = useRef<HTMLDivElement>(null)
@@ -344,6 +352,7 @@ export default function AnnotationTimeline() {
     seek(x * duration)
     // A click that reaches the track landed on empty space (bars stop propagation).
     useSpeedStore.getState().select(null)
+    useVoiceStore.getState().select(null)
   }, [duration, seek])
 
   const handleUpdateTime = useCallback((id: string, startTime: number, endTime: number) => {
@@ -358,7 +367,10 @@ export default function AnnotationTimeline() {
 
   // Selecting an annotation (here or on the canvas) clears the speed region selection
   useEffect(() => {
-    if (selectedAnnotationId) useSpeedStore.getState().select(null)
+    if (selectedAnnotationId) {
+      useSpeedStore.getState().select(null)
+      useVoiceStore.getState().select(null)
+    }
   }, [selectedAnnotationId])
 
   // Keyboard handler for delete: a selected speed region wins over an annotation
@@ -369,14 +381,18 @@ export default function AnnotationTimeline() {
         { key: e.key, tagName: target.tagName, isContentEditable: target.isContentEditable },
         selectedSpeedId,
         selectedAnnotationId,
+        selectedVoiceId,
       )
-      if (what === 'region' && selectedSpeedId) useSpeedStore.getState().remove(selectedSpeedId)
+      if (what === 'voice' && selectedVoiceId) {
+        stopVoice()
+        useVoiceStore.getState().remove(selectedVoiceId)
+      } else if (what === 'region' && selectedSpeedId) useSpeedStore.getState().remove(selectedSpeedId)
       else if (what === 'deselect-region') useSpeedStore.getState().select(null)
       else if (what === 'annotation') handleDeleteSelected()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedSpeedId, selectedAnnotationId, handleDeleteSelected])
+  }, [selectedSpeedId, selectedAnnotationId, selectedVoiceId, handleDeleteSelected])
 
   // Resize handle for timeline height
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -419,6 +435,7 @@ export default function AnnotationTimeline() {
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-text-tertiary uppercase tracking-wide">Annotations Timeline</span>
         <div className="flex items-center gap-2">
+          {hasVoiceLane && <VoiceDuckSelect />}
           {selectedAnnotationId && (
             <Button onClick={handleDeleteSelected} variant="danger" size="sm">
               <Trash2 className="w-3 h-3" />
@@ -473,6 +490,7 @@ export default function AnnotationTimeline() {
         </div>
 
         {hasSpeedLane && <SpeedLane duration={duration} />}
+        <VoiceLane duration={duration} topClass={voiceLaneTop} />
 
         {/* In/Out point markers */}
         {inPoint !== null && (
@@ -540,6 +558,7 @@ export default function AnnotationTimeline() {
       </div>
 
       {selectedSpeedRegion && <SpeedRegionDetails region={selectedSpeedRegion} />}
+      {selectedVoiceClip && <VoiceClipDetails clip={selectedVoiceClip} />}
 
       {/* Selected annotation details */}
       {selectedAnnotationId && (

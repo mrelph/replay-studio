@@ -70,6 +70,11 @@ describe('deleteKeyTarget', () => {
     expect(deleteKeyTarget(key('Delete'), 's1', 'a1')).toBe('region')
     expect(deleteKeyTarget(key('Backspace'), null, 'a1')).toBe('annotation')
   })
+  it('removes a selected voice clip, below a speed region', () => {
+    expect(deleteKeyTarget(key('Delete'), null, 'a1', 'v1')).toBe('voice')
+    expect(deleteKeyTarget(key('Delete'), 's1', null, 'v1')).toBe('region')
+    expect(deleteKeyTarget(key('Delete', 'INPUT'), null, null, 'v1')).toBeNull()
+  })
   it('does nothing without a selection or for other keys', () => {
     expect(deleteKeyTarget(key('Delete'), null, null)).toBeNull()
     expect(deleteKeyTarget(key('x'), 's1', 'a1')).toBeNull()

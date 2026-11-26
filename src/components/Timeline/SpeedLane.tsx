@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSpeedStore } from '@/stores/speedStore'
 import { useVideoStore } from '@/stores/videoStore'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { useVoiceStore } from '@/stores/voiceStore'
 import { Button } from '@/components/ui'
 import { SPEED_CHIPS, formatSpeed, type SpeedRegion } from '@/utils/speedRegions'
 import { dragSpeedRegion, rampFraction } from '@/utils/speedLane'
@@ -19,6 +20,7 @@ const RAMP_FADE = 'linear-gradient(to right, rgba(0,0,0,0.45), rgba(0,0,0,0))'
 
 function selectSpeedRegion(id: string) {
   useDrawingStore.getState().selectAnnotation(null)
+  useVoiceStore.getState().select(null)
   useSpeedStore.getState().select(id)
 }
 
