@@ -40,9 +40,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   looks smoother than 30 fps. Speed regions are saved in the project file.
   They are not part of Undo yet.
 
+- Player Ring (`G`, in a new Field group of the toolbar). Press on a player's
+  skates and drag outward. A flattened ring with a faint fill appears as if lying
+  on the ice; a plain click makes a standard-size ring. The edge draws on, then
+  the fill fades in. The ring's tilt is fixed.
+- Zone (`Z`). Click each corner of an area and finish with a double-click,
+  Enter, or a click on the first corner. Backspace removes the last corner and
+  Escape cancels; it needs at least three corners. The area fills with a
+  translucent tint of the current colour and fades in. While you place corners,
+  other shortcut keys are ignored (menu shortcuts with Ctrl/Cmd still work), and
+  starting playback, seeking or switching tools cancels the zone.
+- Solid / Dashed switch (`D`, a Line control beside Style) for line, arrow, arc
+  arrow and pen. It applies to new drawings and to selected ones (one Undo
+  step). Dashes scale with the stroke width, draw on along the line, and do not
+  stretch when you resize it; arrowheads stay solid. Use dashed for a pass or a
+  skating route.
+- Callout (`Shift+T`). Press on the thing you are naming, drag to where the
+  label should sit, release and type; click away or press Escape to finish. You
+  get a dot on the target, a leader line and a label on a background plate,
+  using the current text options. An empty label is discarded. The words cannot
+  be edited afterwards (delete it and make a new one); it can be moved,
+  restyled and re-timed like other drawings.
+- The new tools work with automatic freeze and drawn-order reveal, Stays chips,
+  Outline / Glow / Clean (on a ring or zone these apply to the edge only, so the
+  inside stays a clean tint), slow-motion regions, Undo / Redo, saving and
+  loading, and MP4 and GIF export.
+
 ### Changed
 - A newly opened video now starts muted when the mute button shows muted.
   Before, it played with sound while the button showed muted.
+- Recolouring a ring, zone or spotlight in the timeline's colour picker now keeps
+  it see-through. Before, a spotlight turned solid.
+
+### Fixed
+- The text tool now uses the font you pick. It was always Arial.
+- Arrowheads keep their position and angle after a project is saved and
+  reloaded.
+- A drawing the app cannot read is skipped, with a message saying how many,
+  instead of loading as a small rectangle.
 
 ## [1.8.0] - 2026-11-25
 

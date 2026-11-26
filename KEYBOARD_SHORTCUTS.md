@@ -21,6 +21,10 @@ exactly. If you change a default binding in that file, update this doc too.
 | `S` | Spotlight tool |
 | `Shift+M` | Magnifier tool |
 | `Shift+A` | Arc arrow tool |
+| `G` | Player ring tool (Field group) |
+| `Z` | Zone tool (see Zones) |
+| `Shift+T` | Callout tool |
+| `D` | Toggle line style: Solid / Dashed (line, arrow, arc arrow, pen; also selected drawings) |
 | `E` | Eraser tool |
 
 ## Video Playback
@@ -198,3 +202,14 @@ stretch as a slow-motion region.
 - Slow motion repeats frames rather than inventing new ones, so 60 fps footage
   looks smoother than 30 fps.
 - Regions are saved in the project file. They are not part of Undo yet.
+
+## Zones
+
+Press `Z`, then click each corner of the area. It needs at least three corners.
+
+- Finish with a double-click, `Enter`, or a click on the first corner.
+- `Backspace` removes the last corner.
+- `Escape` cancels the zone.
+- While corners are being placed, other shortcut keys are ignored (menu
+  shortcuts with `Ctrl` / `Cmd` still work). Starting playback, seeking or
+  switching tools also cancels the zone.
