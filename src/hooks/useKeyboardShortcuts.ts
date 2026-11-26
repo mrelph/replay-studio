@@ -353,12 +353,12 @@ export function useKeyboardShortcuts() {
       const slowKey = useShortcutsStore.getState().getShortcut('video.slow')?.binding.key
       if (e.key.toLowerCase() === slowKey) useVideoStore.getState().endSlowRecording()
       const voiceKey = useShortcutsStore.getState().getShortcut('video.voice')?.binding.key
-      if (e.key.toLowerCase() === voiceKey) void endVoiceRecording()
+      if (e.key.toLowerCase() === voiceKey) void endVoiceRecording('key')
     }
     const handleBlur = () => {
       stopKeyHeldRef.current = false
       useVideoStore.getState().endSlowRecording()
-      void endVoiceRecording()
+      void endVoiceRecording('key')
     }
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)

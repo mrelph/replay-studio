@@ -40,6 +40,7 @@ function setup(video: FakeVideo) {
 
 let recorders: { stop: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn> }[]
 let started: number
+let endedCallbacks: (() => void)[]
 let stopResult: { blob: Blob; mime: string } | null
 
 beforeEach(() => {
@@ -47,9 +48,11 @@ beforeEach(() => {
   vi.mocked(toast).mockClear()
   recorders = []
   started = 0
+  endedCallbacks = []
   stopResult = { blob: new Blob(['x']), mime: 'audio/webm' }
-  setVoiceRecorderFactory(async () => {
+  setVoiceRecorderFactory(async (onEnded) => {
     started += 1
+    endedCallbacks.push(onEnded)
     const recorder = { stop: vi.fn(async () => stopResult), cancel: vi.fn() }
     recorders.push(recorder)
     return recorder as unknown as VoiceRecorder
@@ -67,6 +70,76 @@ afterEach(() => {
 })
 
 describe('voice recording', () => {
+  it('a microphone lost mid-recording saves the time up to the loss', async () => {
+    setup(new FakeVideo(false, 1))
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(1000)
+    endedCallbacks[0]()
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    await vi.advanceTimersByTimeAsync(4000)
+    await endVoiceRecording()
+    const clips = useVoiceStore.getState().clips
+    expect(clips).toHaveLength(1)
+    expect(clips[0].duration).toBe(1)
+  })
+
+  it('a microphone lost within 0.3 s saves nothing and shows an error', async () => {
+    setup(new FakeVideo(false, 1))
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(100)
+    endedCallbacks[0]()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useVoiceStore.getState().clips).toHaveLength(0)
+    expect(toast).toHaveBeenCalledWith('error', expect.stringContaining('microphone stopped'))
+  })
+
+  it('a lost recording whose stop yields nothing shows an error', async () => {
+    setup(new FakeVideo(false, 1))
+    stopResult = null
+    await beginVoiceRecording()
+    vi.advanceTimersByTime(2000)
+    await endVoiceRecording()
+    expect(toast).toHaveBeenCalledWith('error', expect.stringContaining('lost'))
+  })
+
+  it('releasing the key while the recorder is still starting cancels it', async () => {
+    setup(new FakeVideo(false, 1))
+    const pending = beginVoiceRecording('key')
+    await endVoiceRecording('key')
+    await pending
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(recorders[0].cancel).toHaveBeenCalled()
+    expect(useVoiceStore.getState().clips).toHaveLength(0)
+  })
+
+  it('says the microphone is ready when a permission wait outlasted the key hold', async () => {
+    setup(new FakeVideo(false, 1))
+    window.electronAPI = { requestMicrophone: () => new Promise((r) => setTimeout(() => r(true), 1500)) } as never
+    const pending = beginVoiceRecording('key')
+    await endVoiceRecording('key')
+    await vi.advanceTimersByTimeAsync(1500)
+    await pending
+    delete (window as { electronAPI?: unknown }).electronAPI
+    expect(toast).toHaveBeenCalledWith('info', 'Microphone ready. Hold N to record.')
+    expect(useVoiceStore.getState().clips).toHaveLength(0)
+  })
+
+  it('a key release or blur does not end a button-started recording; a key-started one ends', async () => {
+    setup(new FakeVideo(false, 1))
+    await beginVoiceRecording('button')
+    vi.advanceTimersByTime(1000)
+    await endVoiceRecording('key')
+    expect(useVoiceRecording.getState().recording).not.toBeNull()
+    await endVoiceRecording()
+    expect(useVoiceStore.getState().clips).toHaveLength(1)
+
+    await beginVoiceRecording('key')
+    vi.advanceTimersByTime(1000)
+    await endVoiceRecording('key')
+    expect(useVoiceRecording.getState().recording).toBeNull()
+    expect(useVoiceStore.getState().clips).toHaveLength(2)
+  })
+
   it('begin while paused freezes on the exact frame start', async () => {
     setup(new FakeVideo(true, 1.0005))
     await beginVoiceRecording()

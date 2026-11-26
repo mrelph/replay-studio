@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { startVoiceRecorder } from './recorder'
 
 function fakeStream() {
-  const track = { stop: vi.fn() }
+  const listeners: (() => void)[] = []
+  const track = { stop: vi.fn(), addEventListener: (_: string, fn: () => void) => listeners.push(fn), end: () => listeners.forEach((fn) => fn()) }
   return { track, stream: { getTracks: () => [track] } as unknown as MediaStream }
 }
 
@@ -77,5 +78,32 @@ describe('startVoiceRecorder', () => {
       }),
     ).rejects.toThrow('no codec')
     expect(track.stop).toHaveBeenCalled()
+  })
+
+  it('reports a track that ends mid-recording once and still returns the audio', async () => {
+    const { stream, track } = fakeStream()
+    const rec = new FakeMediaRecorder()
+    const onEnded = vi.fn()
+    const recorder = await startVoiceRecorder({
+      getUserMedia: vi.fn().mockResolvedValue(stream),
+      createRecorder: () => rec as unknown as MediaRecorder,
+      onEnded,
+    })
+    track.end()
+    expect(onEnded).toHaveBeenCalledTimes(1)
+    expect((await recorder.stop())?.blob.size).toBe(3)
+    expect(onEnded).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not report an end that stop() or cancel() caused', async () => {
+    const { stream } = fakeStream()
+    const onEnded = vi.fn()
+    const recorder = await startVoiceRecorder({
+      getUserMedia: vi.fn().mockResolvedValue(stream),
+      createRecorder: () => new FakeMediaRecorder() as unknown as MediaRecorder,
+      onEnded,
+    })
+    await recorder.stop()
+    expect(onEnded).not.toHaveBeenCalled()
   })
 })

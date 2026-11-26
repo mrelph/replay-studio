@@ -102,7 +102,7 @@ function VoiceButton({ keyLabel }: { keyLabel: string }) {
   return (
     <button
       type="button"
-      onClick={() => void (recording ? endVoiceRecording() : beginVoiceRecording())}
+      onClick={() => void (recording ? endVoiceRecording() : beginVoiceRecording('button'))}
       disabled={!hasVideo}
       aria-pressed={recording !== null}
       title={`Voice: record narration at the playhead, click again to stop (${keyLabel}: hold)`}
