@@ -1,4 +1,6 @@
 import { fabric } from '@/lib/fabric'
+// reveal.ts imports this module too; the cycle is safe because neither uses the other at load time.
+import { stripReveal } from '@/export/reveal'
 
 export type LineDash = 'solid' | 'dashed'
 
@@ -74,6 +76,8 @@ export function dashSelected(store: DashStore, lineDash: LineDash): void {
   const dashed = lineDash === 'dashed'
   saveState()
   targets.forEach((a) => {
+    // A mid-reveal drawing holds its pre-switch pattern for the reveal to restore; drop it first.
+    stripReveal(a.object)
     applyDash(a.object, a.toolType, dashed)
     updateAnnotation(a.id, { dashed })
   })
