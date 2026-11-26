@@ -1,7 +1,7 @@
 import { fabric } from '@/lib/fabric'
 import { restyleObject, type AnnotationStyle } from '@/utils/annotationStyle'
 import { textFormatProps } from '@/utils/textFormat'
-import { calloutDotRadius, labelOrigin, labelPosition, leaderEnd, plateBox } from '@/utils/calloutGeometry'
+import { calloutDotRadius, labelClearOfDot, labelOrigin, labelPosition, leaderEnd, plateBox } from '@/utils/calloutGeometry'
 import type { CanvasTool, ToolContext, ToolPoint } from './types'
 
 export interface CalloutOptions {
@@ -165,11 +165,13 @@ export function createCalloutTool(): CanvasTool {
         return
       }
       const at = labelPosition(target, p)
+      const format = textFormatProps(ctx.textFormat)
+      const anchor = labelClearOfDot(target, at, ctx.textFormat.fontSize, calloutDotRadius(ctx.strokeWidth))
       const text = new fabric.IText('', {
-        left: at.x,
-        top: at.y,
+        left: anchor.x,
+        top: anchor.y,
         ...labelOrigin(target, at),
-        ...textFormatProps(ctx.textFormat),
+        ...format,
         textPlate: true,
         fill: ctx.color,
       } as fabric.ITextOptions)
@@ -200,6 +202,12 @@ export function createCalloutTool(): CanvasTool {
       label.off('editing:exited', onExited)
       if (label.isEditing) label.exitEditing()
       finish()
+    },
+    onColorChange(ctx) {
+      // The label shows the colour it will be committed in.
+      if (!label || !canvas || !isLive(canvas)) return
+      label.set({ fill: ctx.color })
+      canvas.requestRenderAll()
     },
     isBusy() {
       return target !== null

@@ -215,14 +215,20 @@ describe('callout tool', () => {
     ['just left and above', { x: 294, y: 194 }],
     ['just left', { x: 291, y: 200 }],
     ['just above', { x: 300, y: 191 }],
-  ])('a label %s of the target grows away from it and the leader meets the plate edge', async (_, release) => {
+  ])('a label %s of the target grows away from it, its plate clear of the dot, and the leader meets the plate edge', async (_, release) => {
     const { ctx, commit, tool } = setup()
+    ctx.strokeWidth = 6
     const target = { x: 300, y: 200 }
     const label = place(tool, ctx, target, release)
     label.set({ text: 'PP unit' })
     const box = plateOf(label)
     const inside = target.x > box.left && target.x < box.left + box.width && target.y > box.top && target.y < box.top + box.height
     expect(inside).toBe(false)
+    const nearest = {
+      x: Math.min(Math.max(target.x, box.left), box.left + box.width),
+      y: Math.min(Math.max(target.y, box.top), box.top + box.height),
+    }
+    expect(Math.hypot(nearest.x - target.x, nearest.y - target.y)).toBeGreaterThanOrEqual(calloutDotRadius(6) - 1e-6)
     label.exitEditing()
     await tick()
     const leader = calloutParts(commit.mock.calls[0][0])!.leader as fabric.Line
@@ -320,5 +326,19 @@ describe('callout tool', () => {
     expect(abandonKeepsWork('seek')).toBe(true)
     expect(abandonKeepsWork('restore')).toBe(false)
     expect(abandonKeepsWork('dispose')).toBe(false)
+  })
+
+  it('recolours the label being typed when the colour changes', () => {
+    const { ctx, canvas, tool } = setup()
+    const label = place(tool, ctx, { x: 100, y: 100 }, { x: 100, y: 100 })
+    label.set({ text: 'PP' })
+    const render = vi.spyOn(canvas, 'requestRenderAll')
+    ctx.color = '#00ff00'
+    tool.onColorChange?.(ctx)
+    expect(label.fill).toBe('#00ff00')
+    expect(render).toHaveBeenCalled()
+    expect(label.isEditing).toBe(true)
+    tool.cancel?.(ctx)
+    expect(() => tool.onColorChange?.(ctx)).not.toThrow()
   })
 })

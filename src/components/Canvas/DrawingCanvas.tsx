@@ -536,6 +536,11 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
     const stopVideo = useVideoStore.subscribe((state, prev) => {
       if (state.isPlaying && !prev.isPlaying) abandon('play')
     })
+    const stopColor = useToolStore.subscribe((state, prev) => {
+      if (state.strokeColor === prev.strokeColor) return
+      const current = active()
+      if (current?.tool.isBusy?.()) current.tool.onColorChange?.(toolContext(current.canvas, moduleCommit))
+    })
     // Undo/redo, a project load or a canvas swap clears the canvas under the preview.
     const stopDrawing = useDrawingStore.subscribe((state, prev) => {
       if ((state.isRestoring && !prev.isRestoring) || state.restoreToken !== prev.restoreToken) abandon('restore')
@@ -547,6 +552,7 @@ export default function DrawingCanvas({ videoElement }: DrawingCanvasProps) {
       window.removeEventListener('keydown', handleKey, true)
       videoElement.removeEventListener('seeking', handleSeeking)
       stopVideo()
+      stopColor()
       stopDrawing()
     }
   }, [videoElement, moduleCommit])

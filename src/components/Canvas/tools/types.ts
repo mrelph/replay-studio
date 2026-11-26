@@ -24,6 +24,8 @@ export interface CanvasTool {
   cancel?(ctx: ToolContext): void
   /** The user picked another tool mid-gesture, or playback started or the playhead left the gesture's frame (see abandon.ts). Without this, `cancel` runs. */
   onToolSwitch?(ctx: ToolContext): void
+  /** The tool colour changed while the gesture is in progress. */
+  onColorChange?(ctx: ToolContext): void
   /** True while a multi-step gesture is in progress (used by Task 3). */
   isBusy?(): boolean
 }

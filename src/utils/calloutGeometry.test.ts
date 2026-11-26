@@ -6,6 +6,7 @@ import {
   CALLOUT_DRAG_MIN,
   calloutDotRadius,
   calloutParts,
+  labelClearOfDot,
   labelOrigin,
   labelPosition,
   leaderEnd,
@@ -48,6 +49,16 @@ describe('callout geometry', () => {
     expect(labelOrigin(target, { x: 50, y: 50 })).toEqual({ originX: 'right', originY: 'bottom' })
     expect(labelOrigin(target, { x: 150, y: 50 })).toEqual({ originX: 'left', originY: 'bottom' })
     expect(labelOrigin(target, { x: 100, y: 100 })).toEqual({ originX: 'left', originY: 'top' })
+  })
+
+  it('moves a label close to the target out on the facing axis by the plate padding and the dot radius', () => {
+    const target = { x: 300, y: 200 }
+    // Font size 20 pads by 6 across and 2.4 down; dot radius 9.
+    expect(labelClearOfDot(target, { x: 300, y: 191 }, 20, 9)).toEqual({ x: 300, y: 200 - 11.4 })
+    expect(labelClearOfDot(target, { x: 300, y: 209 }, 20, 9)).toEqual({ x: 300, y: 200 + 11.4 })
+    expect(labelClearOfDot(target, { x: 291, y: 200 }, 20, 9)).toEqual({ x: 285, y: 200 })
+    expect(labelClearOfDot(target, { x: 310, y: 196 }, 20, 9)).toEqual({ x: 315, y: 196 })
+    expect(labelClearOfDot(target, { x: 380, y: 120 }, 20, 9)).toEqual({ x: 380, y: 120 })
   })
 
   it('grows the text box by the padding the plate is drawn with', () => {

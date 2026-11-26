@@ -45,6 +45,23 @@ export function labelPosition(target: ToolPoint, release: ToolPoint): ToolPoint 
   return { x: target.x + CALLOUT_CLICK_OFFSET.x, y: target.y + CALLOUT_CLICK_OFFSET.y }
 }
 
+/**
+ * Moves the label position out along the axis facing the target (the one the
+ * release is further along) until the plate, padded around the text, clears
+ * the dot by its radius. A label already that far away is left where it is.
+ */
+export function labelClearOfDot(target: ToolPoint, at: ToolPoint, fontSize: number, dotRadius: number): ToolPoint {
+  const pad = plateRect(0, 0, fontSize)
+  const dx = at.x - target.x
+  const dy = at.y - target.y
+  if (Math.abs(dx) > Math.abs(dy)) {
+    const min = -pad.x + dotRadius
+    return { x: dx < 0 ? Math.min(at.x, target.x - min) : Math.max(at.x, target.x + min), y: at.y }
+  }
+  const min = -pad.y + dotRadius
+  return { x: at.x, y: dy < 0 ? Math.min(at.y, target.y - min) : Math.max(at.y, target.y + min) }
+}
+
 /** The label's corner nearest the target sits at the label position, so the text grows away from the target as it is typed. */
 export function labelOrigin(target: ToolPoint, at: ToolPoint): { originX: 'left' | 'right'; originY: 'top' | 'bottom' } {
   return { originX: at.x < target.x ? 'right' : 'left', originY: at.y < target.y ? 'bottom' : 'top' }
