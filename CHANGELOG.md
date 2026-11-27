@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collaborative annotation features
 - Cloud storage integration
 
+## [1.10.0] - 2026-11-26
+
+### Added
+- Voice narration. Hold `N`, or click the mic button beside Freeze and Slow, to
+  record your voice. A tap under 0.3 seconds records nothing, and a clip stops
+  by itself at 120 seconds.
+- Recording on a paused frame attaches the voice to that frame. On replay and
+  in exports the frame holds for as long as the voice lasts, or for its own
+  freeze if that is longer. Recording again on the same frame replaces the
+  clip.
+- Recording while the video plays puts the voice over the moving video, and the
+  game sound drops under it. A setting in the timeline header chooses Low
+  (25%), Off or Full.
+- A Voice lane on the timeline. Click a clip to select and hear it; Delete or
+  Backspace removes it.
+- MP4 exports (single, clips and reels) carry the voice mixed with the game
+  sound. GIF exports stay silent.
+- Undo and redo cover voice clips.
+- The Mac build asks for microphone permission on first use.
+
+### Changed
+- The project file is version 1.5 and stores the voice audio inside it.
+  Projects from 1.4 and earlier open unchanged.
+
+### Fixed
+- Selecting a drawing on the canvas clears the timeline selection, so Delete
+  no longer removes a selected slow-motion region as well.
+
 ## [1.9.2] - 2026-11-26
 
 ### Added
